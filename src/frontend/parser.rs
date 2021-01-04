@@ -1,7 +1,7 @@
-use logos::Logos;
+use logos::{Logos, Lexer, Span};
 
-#[derive(Logos, PartialEq, Debug)]
-pub enum Tokens
+#[derive(Logos, PartialEq, Debug, Copy, Clone)]
+pub enum Token
 {
     #[token("(")]
     LParen,
@@ -48,8 +48,11 @@ pub enum Tokens
     #[token("=")]
     Assign,
     
-    #[regex(r"\*|/|%")]
-    MulDiv,
+    #[token("*")]
+    Mul,
+    
+    #[regex(r"/|%")]
+    DivMod,
     
     #[regex(r"\+|-")]
     AddSub,
@@ -147,4 +150,88 @@ pub enum Tokens
     Xor,
 }
 
+struct Parser<'a>
+{
+    lexer: Lexer<'a, Token>,
+    tokens: Vec<(Span, Token)>,
+    token_pos: usize
+}
+
+impl<'a> Iterator for Parser<'a>
+{
+    type Item = (Span, Token);
+
+    fn next(&mut self) -> Option<(Span, Token)>
+    {
+        if self.token_pos < self.tokens.len()
+        {
+            let token = self.tokens[self.token_pos].clone();
+            self.token_pos += 1;
+            Some(token)
+        } else
+        {
+            let token = (self.lexer.span(), self.lexer.next()?);
+            self.tokens.push(token.clone());
+            Some(token)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum AST
+{
+    Int(i64),
+    Float(f64),
+    String(String),
+    Symbol(String),
+    Infix(String, Box<AST>, Box<AST>)
+}
+
+// value(&mut Lexer<Token>) -> Option<AST>
+// Gets the next value.
+fn value(parser: &mut Parser) -> Option<AST>
+{
+    let mut peekable = parser.peekable();
+    let token = peekable.peek()?.1;
+
+    if let Token::Int(n) = token
+    {
+        parser.next();
+        Some(AST::Int(n))
+    } else if let Token::Float(n) = token
+    {
+        parser.next();
+        Some(AST::Float(n))
+    } else if let Token::String = token
+    {
+        let s = parser.lexer.slice();
+        parser.next();
+        Some(AST::String(String::from(s)))
+    } else if let Token::Symbol = token
+    {
+        let s = parser.lexer.slice();
+        parser.next();
+        Some(AST::Symbol(String::from(s)))
+    } else
+    {
+        None
+    }
+}
+
+// muldivmod(&mut Lexer<Token>) -> Option<AST::Infix>
+// Gets the next multiplication/division/modulus expression.
+fn muldivmod(parser: &mut Parser) -> Option<AST>
+{
+
+    let left = value(parser)?;
+    let mut peekable = parser.peekable();
+    let op = match peekable.peek()?.1
+    {
+        Token::Mul => String::from("*"),
+        Token::DivMod => String::from(parser.lexer.slice()),
+        _ => return None
+    };
+    let right = value(parser)?;
+    Some(AST::Infix(op, Box::new(left), Box::new(right)))
+}
 
