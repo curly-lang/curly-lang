@@ -1,0 +1,80 @@
+# statically type - types are inferred
+# a variable must remain the same type through its lifetime
+
+variable = expression # assignment
+head..tail = expression # getting the head and tail of an iterable
+
+with var1 = expression, # create a scope in which var[123] are used
+     var2 = expression, # these are the only way to define variables in functions, loops, and conditions
+	 var3 = expression,
+	 f var1 var2 var3
+
+function arg1: type1 arg2: type2 = expression # function
+# a function can only have one signature type1 -> type2 -> return_type
+
+function arg1 (function arg2 arg3) # function application
+function arg1 # partial application
+function (*list) # currying
+
+if condition then expression else expression # if else expression
+
+debug expression # can place anywhere, prints out a message like this if debug is enabled:
+# (db) expression evaluated to value on file.curly:lino:charno
+
+range a b # numbers in [a, b) as a generator
+list.i.j.k # get the kth element of the jth element of the ith element of list
+dict.a # get the value of key a in dict
+list.(range a b) # get the sublist of list with indices in the range
+x in set # check if x is in set
+
+# list compehensions are generated lazily
+for i in iter f i # creates a list
+with acc = value, for i in iter acc = f acc i # folds iterable into a single value
+# pass - does not return a value
+# stop - halts a loop
+# true, false, and, or, xor
+
+# quantifiers
+for all i in iter f i # checks that all elements of the iterable follow some predicate
+for some i in iter f i # checks that some element of the iterable follows some predicate
+
+# filtering
+x in iter where f x # lazy list / generator
+
+"string owo" # a string
+"" expression # expression as a string / concatenation
+
+# type names: int, float, string, list, set, dict, gen, type, func
+
+# example: fibonacci
+fib 0 = 1
+fib 1 = 1
+fib n: Int = (fib n - 1) + (fib n - 2)
+
+ExType = type isFloat: bool & (num: int | num: float)
+
+instance: ExType = {
+    isFloat = false,
+    num = 42
+}
+
+instance.isFloat # false
+instance.0 # false
+instance.num # 42
+instance.1 # 42
+
+# types: & - intersection type; * - product type; | - union type; >> - function type; *type - generator of type; [type] - list of type
+Complex = type rect: (x: Float & y: Float) | polar: (r: Float & theta: Float)
+Pair = type Int * Int
+Tree = type T => leaf: T | branch: (Tree T * Tree T)
+
+z1: Complex = {r = 1, theta = 2}
+p: Pair = {5, 4}
+t1: (Tree Bool) = {
+	branch = {
+		leaf = true, leaf = false
+	}, leaf = false
+}
+
+z2: Complex = {1, 2}
+t2: (Tree Bool) = {{true, false}, false}

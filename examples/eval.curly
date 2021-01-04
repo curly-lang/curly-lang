@@ -1,0 +1,12 @@
+BinOp = enum Mul | Div | Add | Sub
+
+Expr = type value: Int
+     | bin: (op: BinOp * Expr * Expr)
+
+eval: Expr -> Int
+eval n: Expr.value = n
+eval bin: Expr.bin = match bin.op
+	to Mul => eval bin.1 * eval bin.2
+	to Div => eval bin.1 / eval bin.2
+	to Add => eval bin.1 + eval bin.2
+	to Sub => eval bin.1 - eval bin.2

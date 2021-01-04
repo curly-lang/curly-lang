@@ -1,0 +1,5 @@
+sum = ( # create a generator
+	with acc = 0, # acc (accumulator) starts at 0
+	for i in (range 1 101 (-2)) # iterate over the range 100, 98, 96, ..., 4, 2
+		acc = i + acc # sum the values up
+)

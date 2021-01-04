@@ -1,0 +1,11 @@
+add_vars x:t1 y:t2 z:t3 = x + y + z
+add_vars 4 2 5
+
+a b c d # comment
+s (n s z) # more comments
+x y z a \
+	f g y \
+	b e # even more comments
+ o r # one last comment
+
+# this is a comment

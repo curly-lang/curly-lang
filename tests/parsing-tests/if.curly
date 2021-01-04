@@ -1,0 +1,12 @@
+# I know you know how if statements work
+# I'm just testing comments
+if x <= 2 or x in myList # condition
+then y = "less than" # on true
+else z = "greater than" # on false
+
+
+"here is
+a multiline
+string
+with a \"
+quotation mark"

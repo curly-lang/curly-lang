@@ -1,0 +1,11 @@
+factorials = with acc = 1,
+	for i in (from 0)
+		acc = (
+			if i == 0
+			then 1
+			else i
+		) * acc
+
+e = with acc = 0,
+	for n in factorials
+		acc = 1 / n + acc

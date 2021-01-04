@@ -1,0 +1,42 @@
+# assignments
+a = 0
+b: int = 1
+x..xs = [
+	1,2,3
+]
+add 0 y: int = y
+add x: int y: int = 1 + (add x - 1 y)
+
+# with expressions
+with a = 2, a
+with a = 2, b = 3, add a b
+
+# if statements
+if true then x = 2
+x = if x >= 3 then 3 else x
+
+# for loops
+for i in iter i
+with acc = 0,
+	for i in iter
+		acc = acc + i
+[for i in iter i]
+for all i in iter f i
+for some i in iter f i
+
+# where expressions
+[x in iter where f x]
+
+# lists
+[
+	1,2,3,
+4,5
+]
+[[[3,1,4], [1,5,9]], [[2,6,5],[3,5,8]]]
+
+# structures
+{a, b=2, {c=3}}
+
+# function application
+a b c (d e f) g (*h) i (-j)
+"three strings" " " "concated"

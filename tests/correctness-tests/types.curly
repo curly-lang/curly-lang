@@ -1,0 +1,72 @@
+# types:
+# & - intersection type
+# * - product type
+# | - union type
+# >> - function type
+# *type - generator of type
+# [type] - list of type
+
+# n: (a:Int & b:Bool) = {2, false} # succeeds
+# y: Int = 0 # succeeds
+# y = 2 # succeeds
+# t: Type = int # succeeds
+# l = [1,2,3] # succeeds
+# l2 = ["a", "b", 3] # fails
+# y = "" # fails
+# y: String = "" # fails
+# x: String = x # fails
+# y # succeeds
+# z # fails
+
+# Pair = type T => T * T
+# p: Pair Int = {5, 4}
+
+# Comp = type rect: (x: Float & y: Float) | polar: (r: Float & theta: Float)
+# z1: Comp = {r = 1.0, theta = 2.0}
+# z2: Comp = {1.0, 2.0}
+
+Tree = type T => leaf: T | branch: (Tree T * Tree T)
+# t1: Tree Bool = {
+#	branch = {
+#		leaf = true, leaf = false
+#	}, leaf = false
+# }
+# t2: Tree Bool = {{true, false}, false}
+# test: Bool = t2.branch.0
+# test: Tree Bool = false
+# test2: List (Tree Bool) = [test, {false, true}]
+
+# trees: List (Tree Bool) = [Tree {false, true}, Tree false]
+
+# func arg0: Int arg1: String = arg0
+
+# y: Bool = for all i in [1,2,3] i = true
+# y: Int = if true then 0 else false
+
+# x: *Int = x in [1,2,3] where x < 3 and x != 1
+
+# func a:Int b:String c:Float = 0
+# func (*{0, "", 0.0})
+
+# x..xs = [1,2,3]
+# None: Enum = Nothing
+# Maybe: (Type >> Type)
+# Maybe T: Type = just: T | none: None
+
+# x test:Int = 2
+
+# Test: Enum = A | B
+# t1: Test = A
+# t2: Test = B
+
+# inp A = 0
+# inp B = 1
+# func a: Int b: Int c: Int d: Int e: Int f: Int g: Int = 0
+# func 1 2 3 4 5 6 7
+# "" 1 2 func A [1,2,3]
+# [1,2,3].""
+
+# Linked: Type >> Type
+# Linked T: Type = T * (Maybe (Linked T))
+# iterate: (Linked Int) >> *Int
+# iterate l: (Linked Int) = gen l.0 (*(iterate l.1))
