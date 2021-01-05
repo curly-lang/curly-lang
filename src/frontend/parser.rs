@@ -153,27 +153,60 @@ pub enum Token
 struct Parser<'a>
 {
     lexer: Lexer<'a, Token>,
-    tokens: Vec<(Span, Token)>,
+    tokens: Vec<(Token, Span)>,
     token_pos: usize
 }
 
-impl<'a> Iterator for Parser<'a>
+impl<'a> Parser<'a>
 {
-    type Item = (Span, Token);
+    fn new(s: &str) -> Parser
+    {
+        Parser {
+            lexer: Token::lexer(s),
+            tokens: vec![],
+            token_pos: 0
+        }
+    }
 
-    fn next(&mut self) -> Option<(Span, Token)>
+    fn next<'b>(&'b mut self) -> Option<&'b (Token, Span)>
     {
         if self.token_pos < self.tokens.len()
         {
-            let token = self.tokens[self.token_pos].clone();
+            let token = &self.tokens[self.token_pos];
             self.token_pos += 1;
             Some(token)
         } else
         {
-            let token = (self.lexer.span(), self.lexer.next()?);
-            self.tokens.push(token.clone());
-            Some(token)
+            let span = self.lexer.span();
+            
+            self.tokens.push((self.lexer.next()?, span));
+            self.tokens.last()
         }
+    }
+
+
+    fn peek<'b>(&'b mut self) -> Option<&'b (Token, Span)>
+    {
+        if self.token_pos < self.tokens.len()
+        {
+            let token = &self.tokens[self.token_pos];
+            Some(token)
+        } else
+        {
+            let span = self.lexer.span();
+            self.tokens.push((self.lexer.next()?, span));
+            self.tokens.last()
+        }
+    }
+
+    fn save_state(&self) -> usize
+    {
+        self.token_pos
+    }
+
+    fn return_state(&mut self, state: usize)
+    {
+        self.token_pos = state;
     }
 }
 
@@ -191,8 +224,7 @@ pub enum AST
 // Gets the next value.
 fn value(parser: &mut Parser) -> Option<AST>
 {
-    let mut peekable = parser.peekable();
-    let token = peekable.peek()?.1;
+    let token = parser.peek()?.0;
 
     if let Token::Int(n) = token
     {
@@ -223,15 +255,40 @@ fn value(parser: &mut Parser) -> Option<AST>
 fn muldivmod(parser: &mut Parser) -> Option<AST>
 {
 
-    let left = value(parser)?;
-    let mut peekable = parser.peekable();
-    let op = match peekable.peek()?.1
+    let mut left = value(parser)?;
+    let mut state = parser.save_state();
+    
+    loop
     {
-        Token::Mul => String::from("*"),
-        Token::DivMod => String::from(parser.lexer.slice()),
-        _ => return None
-    };
-    let right = value(parser)?;
-    Some(AST::Infix(op, Box::new(left), Box::new(right)))
+        if let Some(op) = parser.peek()
+        {
+            let op = match op.0
+            {
+                Token::Mul => String::from("*"),
+                Token::DivMod => String::from(parser.lexer.slice()),
+                _ => {
+                    parser.return_state(state);
+                    break;
+                }
+            };
+
+            let right = match value(parser)
+            {
+                Some(v) => v,
+                None => {
+                    parser.return_state(state);
+                    return None;
+                }
+            };
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+            state = parser.save_state();
+        } else
+        {
+            parser.return_state(state);
+            break;
+        }
+    }
+
+    Some(left)
 }
 
