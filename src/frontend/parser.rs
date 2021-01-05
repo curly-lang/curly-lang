@@ -272,54 +272,68 @@ pub enum AST
     Infix(String, Box<AST>, Box<AST>)
 }
 
-// value(&mut Lexer<Token>) -> Option<AST>
+#[derive(Debug)]
+pub struct ParseError
+{
+    
+}
+
+// value(&mut Parser) -> Result<AST, ParseError>
 // Gets the next value.
-fn value(parser: &mut Parser) -> Option<AST>
+fn value(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get token
-    let token = parser.peek()?.0;
+    let token = match parser.peek()
+    {
+        Some(v) => v.0,
+        None => return Err(ParseError {
+
+        })
+    };
 
     // Check for int
     if let Token::Int(n) = token
     {
         parser.next();
-        Some(AST::Int(n))
+        Ok(AST::Int(n))
 
     // Check for float
     } else if let Token::Float(n) = token
     {
         parser.next();
-        Some(AST::Float(n))
+        Ok(AST::Float(n))
 
     // Check for string
     } else if let Token::String = token
     {
         let s = parser.slice();
         parser.next();
-        Some(AST::String(String::from(s)))
+        Ok(AST::String(String::from(s)))
 
     // Check for symbol
     } else if let Token::Symbol = token
     {
         let s = parser.slice();
         parser.next();
-        Some(AST::Symbol(String::from(s)))
+        Ok(AST::Symbol(String::from(s)))
 
     // Not a value
     } else
     {
-        None
+        Err(ParseError {
+
+        })
     }
 }
 
-// muldivmod(&mut Lexer<Token>) -> Option<AST::Infix>
+// muldivmod(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next multiplication/division/modulus expression.
-fn muldivmod(parser: &mut Parser) -> Option<AST>
+fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
     let mut left = value(parser)?;
     let state = parser.save_state();
-    
+
     loop
     {
         // Save current state
@@ -343,16 +357,18 @@ fn muldivmod(parser: &mut Parser) -> Option<AST>
             // Get right hand side
             let right = match value(parser)
             {
-                Some(v) => v,
-                None => {
+                Ok(v) => v,
+                Err(_) => {
                     parser.return_state(state);
-                    return None;
+                    return Err(ParseError {
+
+                    });
                 }
             };
 
             // Build ast
             left = AST::Infix(op, Box::new(left), Box::new(right));
-        
+
         // If there's no operator, break
         } else
         {
@@ -360,7 +376,7 @@ fn muldivmod(parser: &mut Parser) -> Option<AST>
         }
     }
 
-    Some(left)
+    Ok(left)
 }
 
 #[cfg(test)]
