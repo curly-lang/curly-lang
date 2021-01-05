@@ -300,6 +300,16 @@ pub struct ParseError
     
 }
 
+// newline(&mut Parser) -> ()
+// Optionally parses a newline.
+fn newline(parser: &mut Parser)
+{
+    if let Some((Token::Newline, _)) = parser.peek()
+    {
+        parser.next();
+    }
+}
+
 // value(&mut Parser) -> Result<AST, ParseError>
 // Gets the next value.
 fn value(parser: &mut Parser) -> Result<AST, ParseError>
@@ -357,6 +367,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         // Get value
         let state = parser.save_state();
         parser.next();
+        newline(parser);
         let value = match expression(parser) {
             Ok(v) => v,
             Err(e) => {
@@ -366,6 +377,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         };
 
         // Get right parenthesis
+        newline(parser);
         if let Some((Token::RParen, _)) = parser.peek()
         {
             parser.next();
@@ -825,6 +837,8 @@ fn xor(parser: &mut Parser) -> Result<AST, ParseError>
     Ok(left)
 }
 
+// if_expr(&mut Parser) -> Result<AST, ParseError>
+// Parses an if expression.
 fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get if keyword
@@ -832,6 +846,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
     {
         let state = parser.save_state();
         parser.next();
+        newline(parser);
 
         // Get condition
         let cond = match expression(parser)
@@ -844,6 +859,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         };
 
         // Get then keyword
+        newline(parser);
         match parser.peek()
         {
             Some((Token::Then, _)) => {
@@ -858,6 +874,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         }
 
         // Get body
+        newline(parser);
         let then = match expression(parser)
         {
             Ok(v) => v,
@@ -868,6 +885,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         };
 
         // Get else keyword
+        newline(parser);
         match parser.peek()
         {
             Some((Token::Else, _)) => {
@@ -882,6 +900,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         }
 
         // Get else clause
+        newline(parser);
         let elsy = match expression(parser)
         {
             Ok(v) => v,
@@ -943,6 +962,13 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     {
         xor(parser)
     }
+}
+
+// parse(&str) -> Result<AST, ParseError>
+// Parses curly code.
+pub fn parse(s: &str) -> Result<AST, ParseError>
+{
+    expression(&mut Parser::new(s))
 }
 
 #[cfg(test)]
