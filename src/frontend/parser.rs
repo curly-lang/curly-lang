@@ -210,7 +210,7 @@ impl<'a> Parser<'a>
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AST
 {
     Int(i64),
@@ -256,10 +256,12 @@ fn muldivmod(parser: &mut Parser) -> Option<AST>
 {
 
     let mut left = value(parser)?;
-    let mut state = parser.save_state();
+    let state = parser.save_state();
     
     loop
     {
+        let mut state2 = parser.save_state();
+
         if let Some(op) = parser.peek()
         {
             let op = match op.0
@@ -267,10 +269,11 @@ fn muldivmod(parser: &mut Parser) -> Option<AST>
                 Token::Mul => String::from("*"),
                 Token::DivMod => String::from(parser.lexer.slice()),
                 _ => {
-                    parser.return_state(state);
+                    parser.return_state(state2);
                     break;
                 }
             };
+            parser.next();
 
             let right = match value(parser)
             {
@@ -281,10 +284,8 @@ fn muldivmod(parser: &mut Parser) -> Option<AST>
                 }
             };
             left = AST::Infix(op, Box::new(left), Box::new(right));
-            state = parser.save_state();
         } else
         {
-            parser.return_state(state);
             break;
         }
     }
@@ -292,3 +293,34 @@ fn muldivmod(parser: &mut Parser) -> Option<AST>
     Some(left)
 }
 
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    #[test]
+    fn ints()
+    {
+        let mut parser = Parser::new("32 0x123abc 0b010101");
+        assert_eq!(value(&mut parser).unwrap(), AST::Int(32));
+        assert_eq!(value(&mut parser).unwrap(), AST::Int(0x123abc));
+        assert_eq!(value(&mut parser).unwrap(), AST::Int(0b010101));
+    }
+
+    #[test]
+    fn floats()
+    {
+        let mut parser = Parser::new("0.25 2e3 2e-3");
+        assert_eq!(value(&mut parser).unwrap(), AST::Float(0.25));
+        assert_eq!(value(&mut parser).unwrap(), AST::Float(2e3));
+        assert_eq!(value(&mut parser).unwrap(), AST::Float(2e-3))
+    }
+
+    #[test]
+    fn mul()
+    {
+        let mut parser = Parser::new("2*3 2*3*4");
+        assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3))));
+        assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3)))), Box::new(AST::Int(4))));
+    }
+}
