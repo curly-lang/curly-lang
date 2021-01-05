@@ -98,8 +98,11 @@ pub enum Token
     String,
     
     // Booleans
-    #[regex("true|false")]
-    Bool,
+    #[token("true")]
+    True,
+
+    #[token("false")]
+    False,
     
     // Arrows
     #[token("->")]
@@ -265,6 +268,10 @@ pub enum AST
     Int(i64),
     Float(f64),
 
+    // Booleans
+    True,
+    False,
+
     // String
     String(String),
 
@@ -275,7 +282,10 @@ pub enum AST
     Prefix(String, Box<AST>),
 
     // Infix expressions
-    Infix(String, Box<AST>, Box<AST>)
+    Infix(String, Box<AST>, Box<AST>),
+
+    // If expressions
+    If(Box<AST>, Box<AST>, Box<AST>),
 }
 
 #[derive(Debug)]
@@ -315,6 +325,18 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         let s = parser.slice();
         parser.next();
         Ok(AST::String(String::from(s)))
+    
+    // True
+    } else if let Token::True = token
+    {
+        parser.next();
+        Ok(AST::True)
+
+    // False
+    } else if let Token::False = token
+    {
+        parser.next();
+        Ok(AST::False)
 
     // Check for symbol
     } else if let Token::Symbol = token
@@ -322,6 +344,33 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         let s = parser.slice();
         parser.next();
         Ok(AST::Symbol(String::from(s)))
+
+    // Parenthesised expressions
+    } else if let Token::LParen = token
+    {
+        // Get value
+        let state = parser.save_state();
+        parser.next();
+        let value = match expression(parser) {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+
+        // Get right parenthesis
+        if let Some((Token::RParen, _)) = parser.peek()
+        {
+            parser.next();
+            Ok(value)
+        } else
+        {
+            parser.return_state(state);
+            Err(ParseError {
+
+            })
+        }
 
     // Not a value
     } else
@@ -396,7 +445,7 @@ fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -449,7 +498,7 @@ fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -502,7 +551,7 @@ fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -554,7 +603,7 @@ fn compare(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -606,7 +655,7 @@ fn and(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -658,7 +707,7 @@ fn or(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -710,7 +759,7 @@ fn xor(parser: &mut Parser) -> Result<AST, ParseError>
     loop
     {
         // Save current state
-        let mut state2 = parser.save_state();
+        let state2 = parser.save_state();
 
         // Check for operator
         if let Some(op) = parser.peek()
@@ -751,6 +800,96 @@ fn xor(parser: &mut Parser) -> Result<AST, ParseError>
     Ok(left)
 }
 
+fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Get if keyword
+    if let Some((Token::If, _)) = parser.peek()
+    {
+        let state = parser.save_state();
+        parser.next();
+
+        // Get condition
+        let cond = match expression(parser)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+
+        // Get then keyword
+        match parser.peek()
+        {
+            Some((Token::Then, _)) => {
+                parser.next();
+            }
+            _ => {
+                parser.return_state(state);
+                return Err(ParseError {
+
+                });
+            }
+        }
+
+        // Get body
+        let then = match expression(parser)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+
+        // Get else keyword
+        match parser.peek()
+        {
+            Some((Token::Else, _)) => {
+                parser.next();
+            }
+            _ => {
+                parser.return_state(state);
+                return Err(ParseError {
+
+                });
+            }
+        }
+
+        // Get else clause
+        let elsy = match expression(parser)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+
+        Ok(AST::If(Box::new(cond), Box::new(then), Box::new(elsy)))
+
+    // Not an if expression
+    } else
+    {
+        Err(ParseError {
+
+        })
+    }
+}
+
+// expression(&mut Parser) -> Result<AST, ParseError>
+// Parses an expression.
+fn expression(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    if let Ok(iffy) = if_expr(parser)
+    {
+        Ok(iffy)
+    } else
+    {
+        xor(parser)
+    }
+}
+
 #[cfg(test)]
 mod tests
 {
@@ -774,6 +913,7 @@ mod tests
         assert_eq!(value(&mut parser).unwrap(), AST::Float(2e-3))
     }
 
+    #[test]
     fn prefix()
     {
         let mut parser = Parser::new("-2");
@@ -786,5 +926,20 @@ mod tests
         let mut parser = Parser::new("2*3 2*3*4");
         assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3))));
         assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3)))), Box::new(AST::Int(4))));
+    }
+
+    #[test]
+    fn parentheses()
+    {
+        let mut parser = Parser::new("2*(3+4)");
+        assert_eq!(expression(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Infix(String::from("+"), Box::new(AST::Int(3)), Box::new(AST::Int(4))))));
+
+    }
+
+    #[test]
+    fn iffy()
+    {
+        let mut parser = Parser::new("if true then 1 else 0");
+        assert_eq!(if_expr(&mut parser).unwrap(), AST::If(Box::new(AST::True), Box::new(AST::Int(1)), Box::new(AST::Int(0))));
     }
 }
