@@ -59,8 +59,11 @@ pub enum Token
     #[regex(r"/|%")]
     DivMod,
     
-    #[regex(r"\+|-")]
-    AddSub,
+    #[token("+")]
+    Add,
+
+    #[token("-")]
+    Sub,
     
     #[regex(r"<<|>>")]
     BitShift,
@@ -268,6 +271,9 @@ pub enum AST
     // Symbol (variables and stuff)
     Symbol(String),
 
+    // Prefix expressions
+    Prefix(String, Box<AST>),
+
     // Infix expressions
     Infix(String, Box<AST>, Box<AST>)
 }
@@ -326,12 +332,65 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// prefix(&mut Parser) -> Result<AST, ParseError>
+// Gets the next prefix expression.
+fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let state = parser.save_state();
+    let token = match parser.peek()
+    {
+        Some(v) => v,
+        None => return Err(ParseError {
+
+        })
+    };
+
+    // Unary minus
+    if let Token::Sub = token.0
+    {
+        parser.next();
+
+        // Get value
+        let value = match value(parser)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+        Ok(AST::Prefix(String::from("-"), Box::new(value)))
+
+    // Span
+    } else if let Token::Mul = token.0
+    {
+        parser.next();
+
+        // Get value
+        let value = match value(parser)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+        Ok(AST::Prefix(String::from("-"), Box::new(value)))
+    
+    // Default to regular value
+    } else
+    {
+        value(parser)
+    }
+}
+
 // muldivmod(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next multiplication/division/modulus expression.
 fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
-    let mut left = value(parser)?;
+    let mut left = prefix(parser)?;
     let state = parser.save_state();
 
     loop
@@ -355,7 +414,320 @@ fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
             parser.next();
 
             // Get right hand side
-            let right = match value(parser)
+            let right = match prefix(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// addsub(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next addition/subtraction expression.
+fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = muldivmod(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let mut state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::Add => String::from("+"),
+                Token::Sub => String::from("-"),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match muldivmod(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// bitshift(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next bitshift expression.
+fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = addsub(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let mut state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::BitShift => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match addsub(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// compare(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next comparison expression.
+fn compare(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = bitshift(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let mut state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::Compare => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match bitshift(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// and(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next logical and expression.
+fn and(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = compare(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let mut state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::And => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match compare(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// or(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next logical or expression.
+fn or(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = and(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let mut state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::Or => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match and(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// xor(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next logical xor expression.
+fn xor(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = or(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let mut state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::Xor => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match or(parser)
             {
                 Ok(v) => v,
                 Err(_) => {
@@ -400,6 +772,12 @@ mod tests
         assert_eq!(value(&mut parser).unwrap(), AST::Float(0.25));
         assert_eq!(value(&mut parser).unwrap(), AST::Float(2e3));
         assert_eq!(value(&mut parser).unwrap(), AST::Float(2e-3))
+    }
+
+    fn prefix()
+    {
+        let mut parser = Parser::new("-2");
+        assert_eq!(super::prefix(&mut parser).unwrap(), AST::Prefix(String::from("-"), Box::new(AST::Int(2))));
     }
 
     #[test]
