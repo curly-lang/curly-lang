@@ -27,7 +27,7 @@ pub enum Token
     #[token("\n")]
     Newline,
    
-    #[regex(r"[ \t\f]+", logos::skip)]
+    #[regex(r"([ \t\f]|\\\n)+", logos::skip)]
     Whitespace,
 
     // Error
@@ -68,7 +68,7 @@ pub enum Token
     #[regex(r"<<|>>")]
     BitShift,
     
-    #[regex(r"<|>|<=|>=|==|!=|in", priority=3)]
+    #[regex(r"<|>|<=|>=|==|!=")]
     Compare,
     
     #[token("&")]
@@ -88,22 +88,22 @@ pub enum Token
     
     #[regex(r"[0-9]+(\.[0-9]*([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)", |lex| lex.slice().parse())]
     Float(f64),
-    
+
     // Symbols (variables and stuff)
-    #[regex(r"[a-zA-Z_\$][a-zA-Z0-9_']")]
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_']*")]
     Symbol,
-    
+
     // Strings
     #[regex(r#""([^\\]|\\.)*""#)]
     String,
-    
+
     // Booleans
     #[token("true")]
     True,
 
     #[token("false")]
     False,
-    
+
     // Arrows
     #[token("->")]
     RightArrow,
@@ -165,6 +165,9 @@ pub enum Token
     
     #[token("xor")]
     Xor,
+
+    #[token("in")]
+    In,
 }
 
 // Represents a parser.
@@ -207,8 +210,8 @@ impl<'a> Parser<'a>
         // Otherwise get token from the lexer
         } else
         {
-            let span = self.lexer.span();
-            self.tokens.push((self.lexer.next()?, span));
+            self.tokens.push((self.lexer.next()?, self.lexer.span()));
+            self.token_pos += 1;
             self.tokens.last()
         }
     }
@@ -226,8 +229,7 @@ impl<'a> Parser<'a>
         // Otherwise get token from lexer
         } else
         {
-            let span = self.lexer.span();
-            self.tokens.push((self.lexer.next()?, span));
+            self.tokens.push((self.lexer.next()?, self.lexer.span()));
             self.tokens.last()
         }
     }
@@ -239,10 +241,11 @@ impl<'a> Parser<'a>
         if self.token_pos < self.tokens.len()
         {
             let range = &self.tokens[self.token_pos].1;
+            println!("{}..{}", range.start, range.end);
             String::from(&self.lexer.source()[range.start..range.end])
         } else
         {
-            String::from(self.lexer.slice())
+            panic!("you aren't supposed to be here!");
         }
     }
 
@@ -277,6 +280,9 @@ pub enum AST
 
     // Symbol (variables and stuff)
     Symbol(String),
+
+    // Function Application
+    Application(Box<AST>, Box<AST>),
 
     // Prefix expressions
     Prefix(String, Box<AST>),
@@ -381,6 +387,24 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// application(&mut Parser) -> Result<AST, ParseError>
+// Parses function application.
+fn application(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let mut left = value(parser)?;
+
+    loop
+    {
+        let right = match value(parser)
+        {
+            Ok(v) => v,
+            Err(_) => break Ok(left)
+        };
+        
+        left = AST::Application(Box::new(left), Box::new(right));
+    }
+}
+
 // prefix(&mut Parser) -> Result<AST, ParseError>
 // Gets the next prefix expression.
 fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
@@ -401,7 +425,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
 
         // Get value
-        let value = match value(parser)
+        let value = match application(parser)
         {
             Ok(v) => v,
             Err(e) => {
@@ -417,7 +441,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
 
         // Get value
-        let value = match value(parser)
+        let value = match application(parser)
         {
             Ok(v) => v,
             Err(e) => {
@@ -430,7 +454,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
     // Default to regular value
     } else
     {
-        value(parser)
+        application(parser)
     }
 }
 
@@ -612,6 +636,7 @@ fn compare(parser: &mut Parser) -> Result<AST, ParseError>
             let op = match op.0
             {
                 Token::Compare => String::from(parser.slice()),
+                Token::In => String::from("in"),
                 _ => {
                     parser.return_state(state2);
                     break;
@@ -877,6 +902,36 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// type_expr(&mut Parser) -> Result<AST, ParseError>
+// Parses a type (currently just a symbol).
+fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Symbol
+    if let Some((Token::Symbol, _)) = parser.peek()
+    {
+        let s = parser.slice();
+        parser.next();
+        Ok(AST::Symbol(String::from(s)))
+    } else
+    {
+        Err(ParseError {
+
+        })
+    }
+}
+
+// declare(&mut Parser) -> Result<AST, ParseError>
+// Parses a declaration.
+fn declare(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    Err(ParseError {})
+}
+
+fn assignment(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    Err(ParseError {})
+}
+
 // expression(&mut Parser) -> Result<AST, ParseError>
 // Parses an expression.
 fn expression(parser: &mut Parser) -> Result<AST, ParseError>
@@ -914,6 +969,13 @@ mod tests
     }
 
     #[test]
+    fn symbol()
+    {
+        let mut parser = Parser::new("a");
+        assert_eq!(value(&mut parser).unwrap(), AST::Symbol(String::from("a")));
+    }
+
+    #[test]
     fn prefix()
     {
         let mut parser = Parser::new("-2");
@@ -923,8 +985,10 @@ mod tests
     #[test]
     fn mul()
     {
-        let mut parser = Parser::new("2*3 2*3*4");
+        let mut parser = Parser::new("2*3");
         assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3))));
+
+        let mut parser = Parser::new("2*3*4");
         assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3)))), Box::new(AST::Int(4))));
     }
 
@@ -941,5 +1005,12 @@ mod tests
     {
         let mut parser = Parser::new("if true then 1 else 0");
         assert_eq!(if_expr(&mut parser).unwrap(), AST::If(Box::new(AST::True), Box::new(AST::Int(1)), Box::new(AST::Int(0))));
+    }
+
+    #[test]
+    fn apps()
+    {
+        let mut parser = Parser::new("a (b c)");
+        assert_eq!(application(&mut parser).unwrap(), AST::Application(Box::new(AST::Symbol(String::from("a"))), Box::new(AST::Application(Box::new(AST::Symbol(String::from("b"))), Box::new(AST::Symbol(String::from("c")))))));
     }
 }
