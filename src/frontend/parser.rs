@@ -300,6 +300,9 @@ pub enum AST
 
     // Assignment of functions
     AssignFunction {name: String, args: Vec<(String, AST)>, val: Box<AST>},
+
+    // Scoping
+    With(Vec<AST>, Box<AST>),
 }
 
 #[derive(Debug)]
@@ -940,6 +943,9 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     if let Ok(iffy) = if_expr(parser)
     {
         Ok(iffy)
+    } else if let Ok(withy) = with(parser)
+    {
+        Ok(withy)
     } else
     {
         xor(parser)
@@ -1008,6 +1014,8 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// declaration(&mut Parser) -> Result<(String, AST), ParseError>
+// Parses a declaration.
 fn declaration(parser: &mut Parser) -> Result<(String, AST), ParseError>
 {
     // Get the variable name
@@ -1151,11 +1159,97 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     })
 }
 
+// assignment(&mut Parser) -> Result<AST, ParseError>
+// Parses an assignment.
+fn assignment(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    if let Ok(typed) = assignment_typed(parser)
+    {
+        Ok(typed)
+    } else if let Ok(func) = assignment_func(parser)
+    {
+        Ok(func)
+    } else
+    {
+        assignment_raw(parser)
+    }
+}
+
+// with(&mut Parser) -> Result<AST, ParseError>
+// Parses a with expression (scoping).
+fn with(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Get the with keyword
+    let state = parser.save_state();
+    match parser.peek()
+    {
+        Some((Token::With, _)) => (),
+        _ => return Err(ParseError {
+
+        })
+    }
+
+    // Get assignments
+    parser.next();
+    let mut assigns = vec![];
+    loop
+    {
+        let assign = match assignment(parser)
+        {
+            Ok(v) => v,
+            Err(_) => break
+        };
+        assigns.push(assign);
+
+        // Comma
+        match parser.peek()
+        {
+            Some((Token::Comma, _)) => (),
+            _ => {
+                parser.return_state(state);
+                return Err(ParseError {
+
+                })
+            }
+        }
+        parser.next();
+    }
+
+    // Check that there is at least one assignment
+    if assigns.len() == 0
+    {
+        parser.return_state(state);
+        return Err(ParseError {
+
+        });
+    }
+
+    // Get the body
+    let body = match expression(parser)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            parser.return_state(state);
+            return Err(e);
+        }
+    };
+
+    Ok(AST::With(assigns, Box::new(body)))
+}
+
 // parse(&str) -> Result<AST, ParseError>
 // Parses curly code.
 pub fn parse(s: &str) -> Result<AST, ParseError>
 {
-    expression(&mut Parser::new(s))
+    let mut parser = Parser::new(s);
+
+    if let Ok(assign) = assignment(&mut parser)
+    {
+        Ok(assign)
+    } else
+    {
+        expression(&mut parser)
+    }
 }
 
 #[cfg(test)]
@@ -1261,5 +1355,15 @@ mod tests
             args: vec![(String::from("x"), AST::Symbol(String::from("Int")))],
             val: Box::new(AST::Symbol(String::from("x")))
         });
+    }
+
+    #[test]
+    fn with_expr()
+    {
+        let mut parser = Parser::new("with x = 2, x");
+        assert_eq!(with(&mut parser).unwrap(), AST::With(vec![AST::Assign {
+            name: String::from("x"),
+            val: Box::new(AST::Int(2))
+        }], Box::new(AST::Symbol(String::from("x")))));
     }
 }
