@@ -155,6 +155,26 @@ pub struct IR
     pub sexprs: Vec<SExpr>
 }
 
+impl IR
+{
+    // new() -> IR
+    // Creates a new root IR.
+    pub fn new() -> IR
+    {
+        IR {
+            funcs: vec![],
+            sexprs: vec![]
+        }
+    }
+
+    // clear(&mut self) -> ()
+    // Clears the root of any sexpressions.
+    pub fn clear(&mut self)
+    {
+        self.sexprs.clear();
+    }
+}
+
 // convert_node(AST) -> SExpr
 // Converts an ast node into an sexpression.
 fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
@@ -303,19 +323,11 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
 
 // convert_ast_to_ir(Vec<AST>) -> IR
 // Converts a list of asts into ir.
-pub fn convert_ast_to_ir(asts: Vec<AST>) -> IR
+pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
-    let mut sexprs = vec![];
-    let mut funcs = vec![];
-
     for ast in asts
     {
-        sexprs.push(convert_node(ast, &mut funcs));
-    }
-
-    IR {
-        funcs,
-        sexprs
+        ir.sexprs.push(convert_node(ast, &mut ir.funcs));
     }
 }
 

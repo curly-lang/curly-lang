@@ -2,6 +2,7 @@ use rustyline::Editor;
 use rustyline::error::ReadlineError;
 
 use curly_lang::frontend::ir;
+use curly_lang::frontend::ir::IR;
 use curly_lang::frontend::parser;
 
 fn main()
@@ -12,6 +13,8 @@ fn main()
     {
         println!("No previous history.");
     }
+
+    let mut ir = IR::new();
 
     loop
     {
@@ -27,7 +30,7 @@ fn main()
                     break;
                 }
 
-                execute(&line);
+                execute(&line, &mut ir);
             }
 
             Err(ReadlineError::Interrupted) => {
@@ -50,7 +53,7 @@ fn main()
     rl.save_history("history.txt").unwrap();
 }
 
-fn execute(code: &str)
+fn execute(code: &str, ir: &mut IR)
 {
     let ast = match parser::parse(code)
     {
@@ -58,6 +61,8 @@ fn execute(code: &str)
         Err(_) => return
     };
     println!("{:#?}", &ast);
-    let root = ir::convert_ast_to_ir(ast);
-    println!("{:#?}", &root);
+    ir.clear();
+    ir::convert_ast_to_ir(ast, ir);
+    println!("{:#?}", &ir);
 }
+
