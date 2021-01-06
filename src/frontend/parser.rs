@@ -299,7 +299,7 @@ pub enum AST
     AssignTyped {name: String, _type: Box<AST>, val: Box<AST>},
 
     // Assignment of functions
-    AssignFunction {name: String, args: Vec<AST>, val: Box<AST>},
+    AssignFunction {name: String, args: Vec<(String, AST)>, val: Box<AST>},
 }
 
 #[derive(Debug)]
@@ -1008,9 +1008,7 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
-// assignment_typed(&mut Parser) -> Result<AST, ParseError>
-// Parses an assignment annotated with a type.
-fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
+fn declaration(parser: &mut Parser) -> Result<(String, AST), ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
@@ -1046,6 +1044,16 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
+    Ok((name, type_val))
+}
+
+// assignment_typed(&mut Parser) -> Result<AST, ParseError>
+// Parses an assignment annotated with a type.
+fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let (name, type_val) = declaration(parser)?;
+
     // Get the assign operator
     match parser.peek()
     {
@@ -1072,6 +1080,73 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
     Ok(AST::AssignTyped {
         name,
         _type: Box::new(type_val),
+        val: Box::new(value)
+    })
+}
+
+// assignment_func(&mut Parser) -> Result<AST, ParseError>
+// Parses an assignment for a function.
+fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Get the variable name
+    let state = parser.save_state();
+    let mut args = vec![];
+    let name = match parser.peek()
+    {
+        Some((Token::Symbol, _)) => parser.slice(),
+        _ => return Err(ParseError {
+
+        })
+    };
+
+    // Get arguments
+    parser.next();
+    loop
+    {
+        let arg = match declaration(parser)
+        {
+            Ok(v) => v,
+            Err(_) => break
+        };
+
+        args.push(arg);
+    }
+
+    // Check that there is at least one argument
+    if args.len() == 0
+    {
+        parser.return_state(state);
+        return Err(ParseError {
+
+        });
+    }
+
+    // Get the assign operator
+    match parser.peek()
+    {
+        Some((Token::Assign, _)) => (),
+        _ => {
+            parser.return_state(state);
+            return Err(ParseError {
+
+            });
+        }
+    }
+
+    // Get the value
+    parser.next();
+    let value = match expression(parser)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            parser.return_state(state);
+            return Err(e);
+        }
+    };
+
+    Ok(AST::AssignFunction {
+        name,
+        args,
         val: Box::new(value)
     })
 }
@@ -1174,6 +1249,17 @@ mod tests
             name: String::from("a"),
             _type: Box::new(AST::Symbol(String::from("Int"))),
             val: Box::new(AST::Int(2))
+        });
+    }
+
+    #[test]
+    fn func_assign()
+    {
+        let mut parser = Parser::new("id x: Int = x");
+        assert_eq!(assignment_func(&mut parser).unwrap(), AST::AssignFunction {
+            name: String::from("id"),
+            args: vec![(String::from("x"), AST::Symbol(String::from("Int")))],
+            val: Box::new(AST::Symbol(String::from("x")))
         });
     }
 }
