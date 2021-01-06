@@ -290,16 +290,16 @@ pub enum AST
     Infix(String, Box<AST>, Box<AST>),
 
     // If expressions
-    If(Box<AST>, Box<AST>, Box<AST>),
+    If {cond: Box<AST>, then: Box<AST>, elsy: Box<AST>},
 
     // Assignments
-    Assign(String, Box<AST>),
+    Assign {name: String, val: Box<AST>},
 
     // Assignments with types
-    AssignTyped(String, Box<AST>, Box<AST>),
+    AssignTyped {name: String, _type: Box<AST>, val: Box<AST>},
 
     // Assignment of functions
-    AssignFunction(String, Vec<AST>, Box<AST>),
+    AssignFunction {name: String, args: Vec<AST>, val: Box<AST>},
 }
 
 #[derive(Debug)]
@@ -918,7 +918,11 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
             }
         };
 
-        Ok(AST::If(Box::new(cond), Box::new(then), Box::new(elsy)))
+        Ok(AST::If {
+            cond: Box::new(cond),
+            then: Box::new(then),
+            elsy: Box::new(elsy)
+        })
 
     // Not an if expression
     } else
@@ -980,7 +984,10 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
-    Ok(AST::Assign(name, Box::new(value)))
+    Ok(AST::Assign {
+        name,
+        val: Box::new(value)
+    })
 }
 
 // type_expr(&mut Parser) -> Result<AST, ParseError>
@@ -1062,7 +1069,11 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
-    Ok(AST::AssignTyped(name, Box::new(type_val), Box::new(value)))
+    Ok(AST::AssignTyped {
+        name,
+        _type: Box::new(type_val),
+        val: Box::new(value)
+    })
 }
 
 // parse(&str) -> Result<AST, ParseError>
@@ -1131,7 +1142,11 @@ mod tests
     fn iffy()
     {
         let mut parser = Parser::new("if true then 1 else 0");
-        assert_eq!(if_expr(&mut parser).unwrap(), AST::If(Box::new(AST::True), Box::new(AST::Int(1)), Box::new(AST::Int(0))));
+        assert_eq!(if_expr(&mut parser).unwrap(), AST::If {
+            cond: Box::new(AST::True),
+            then: Box::new(AST::Int(1)),
+            elsy: Box::new(AST::Int(0))
+        });
     }
 
     #[test]
@@ -1145,13 +1160,20 @@ mod tests
     fn raw_assign()
     {
         let mut parser = Parser::new("a = 2");
-        assert_eq!(assignment_raw(&mut parser).unwrap(), AST::Assign(String::from("a"), Box::new(AST::Int(2))));
+        assert_eq!(assignment_raw(&mut parser).unwrap(), AST::Assign {
+            name: String::from("a"),
+            val: Box::new(AST::Int(2))
+        });
     }
 
     #[test]
     fn typed_assign()
     {
         let mut parser = Parser::new("a: Int = 2");
-        assert_eq!(assignment_typed(&mut parser).unwrap(), AST::AssignTyped(String::from("a"), Box::new(AST::Symbol(String::from("Int"))), Box::new(AST::Int(2))));
+        assert_eq!(assignment_typed(&mut parser).unwrap(), AST::AssignTyped {
+            name: String::from("a"),
+            _type: Box::new(AST::Symbol(String::from("Int"))),
+            val: Box::new(AST::Int(2))
+        });
     }
 }
