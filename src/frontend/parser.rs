@@ -981,6 +981,7 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 
     // Get the value
     parser.next();
+    newline(parser);
     let value = match expression(parser)
     {
         Ok(v) => v,
@@ -1076,6 +1077,7 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
 
     // Get the value
     parser.next();
+    newline(parser);
     let value = match expression(parser)
     {
         Ok(v) => v,
@@ -1143,6 +1145,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
 
     // Get the value
     parser.next();
+    newline(parser);
     let value = match expression(parser)
     {
         Ok(v) => v,
@@ -1213,6 +1216,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
             }
         }
         parser.next();
+        newline(parser);
     }
 
     // Check that there is at least one assignment
