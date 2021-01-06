@@ -1,6 +1,7 @@
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 
+use curly_lang::frontend::ir;
 use curly_lang::frontend::parser;
 
 fn main()
@@ -51,6 +52,12 @@ fn main()
 
 fn execute(code: &str)
 {
-    let ast = parser::parse(code);
-    println!("{:#?}", ast);
+    let ast = match parser::parse(code)
+    {
+        Ok(v) => v,
+        Err(_) => return
+    };
+    println!("{:#?}", &ast);
+    let root = ir::convert_ast_to_ir(ast);
+    println!("{:#?}", &root);
 }
