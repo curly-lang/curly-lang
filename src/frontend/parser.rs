@@ -241,7 +241,6 @@ impl<'a> Parser<'a>
         if self.token_pos < self.tokens.len()
         {
             let range = &self.tokens[self.token_pos].1;
-            println!("{}..{}", range.start, range.end);
             String::from(&self.lexer.source()[range.start..range.end])
         } else
         {
@@ -292,6 +291,15 @@ pub enum AST
 
     // If expressions
     If(Box<AST>, Box<AST>, Box<AST>),
+
+    // Assignments
+    Assign(String, Box<AST>),
+
+    // Assignments with types
+    AssignTyped(String, Box<AST>, Box<AST>),
+
+    // Assignment of functions
+    AssignFunction(String, Vec<AST>, Box<AST>),
 }
 
 #[derive(Debug)]
@@ -921,6 +929,60 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// expression(&mut Parser) -> Result<AST, ParseError>
+// Parses an expression.
+fn expression(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    if let Ok(iffy) = if_expr(parser)
+    {
+        Ok(iffy)
+    } else
+    {
+        xor(parser)
+    }
+}
+
+// assignment_raw(&mut Parser) -> Result<AST, ParseError>
+// Parses an assignment without any types or arguments.
+fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Get the variable name
+    let state = parser.save_state();
+    let name = match parser.peek()
+    {
+        Some((Token::Symbol, _)) => parser.slice(),
+        _ => return Err(ParseError {
+
+        })
+    };
+
+    // Get the assign operator
+    parser.next();
+    match parser.peek()
+    {
+        Some((Token::Assign, _)) => (),
+        _ => {
+            parser.return_state(state);
+            return Err(ParseError {
+
+            });
+        }
+    }
+
+    // Get the value
+    parser.next();
+    let value = match expression(parser)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            parser.return_state(state);
+            return Err(e);
+        }
+    };
+
+    Ok(AST::Assign(name, Box::new(value)))
+}
+
 // type_expr(&mut Parser) -> Result<AST, ParseError>
 // Parses a type (currently just a symbol).
 fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
@@ -939,29 +1001,68 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
-// declare(&mut Parser) -> Result<AST, ParseError>
-// Parses a declaration.
-fn declare(parser: &mut Parser) -> Result<AST, ParseError>
+// assignment_typed(&mut Parser) -> Result<AST, ParseError>
+// Parses an assignment annotated with a type.
+fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    Err(ParseError {})
-}
-
-fn assignment(parser: &mut Parser) -> Result<AST, ParseError>
-{
-    Err(ParseError {})
-}
-
-// expression(&mut Parser) -> Result<AST, ParseError>
-// Parses an expression.
-fn expression(parser: &mut Parser) -> Result<AST, ParseError>
-{
-    if let Ok(iffy) = if_expr(parser)
+    // Get the variable name
+    let state = parser.save_state();
+    let name = match parser.peek()
     {
-        Ok(iffy)
-    } else
+        Some((Token::Symbol, _)) => parser.slice(),
+        _ => return Err(ParseError {
+
+        })
+    };
+
+    // Get the colon
+    parser.next();
+    match parser.peek()
     {
-        xor(parser)
+        Some((Token::Colon, _)) => (),
+        _ => {
+            parser.return_state(state);
+            return Err(ParseError {
+
+            });
+        }
     }
+
+    // Get the type
+    parser.next();
+    let type_val = match type_expr(parser)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            parser.return_state(state);
+            return Err(e);
+        }
+    };
+
+    // Get the assign operator
+    match parser.peek()
+    {
+        Some((Token::Assign, _)) => (),
+        _ => {
+            parser.return_state(state);
+            return Err(ParseError {
+
+            });
+        }
+    }
+
+    // Get the value
+    parser.next();
+    let value = match expression(parser)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            parser.return_state(state);
+            return Err(e);
+        }
+    };
+
+    Ok(AST::AssignTyped(name, Box::new(type_val), Box::new(value)))
 }
 
 // parse(&str) -> Result<AST, ParseError>
@@ -1038,5 +1139,19 @@ mod tests
     {
         let mut parser = Parser::new("a (b c)");
         assert_eq!(application(&mut parser).unwrap(), AST::Application(Box::new(AST::Symbol(String::from("a"))), Box::new(AST::Application(Box::new(AST::Symbol(String::from("b"))), Box::new(AST::Symbol(String::from("c")))))));
+    }
+
+    #[test]
+    fn raw_assign()
+    {
+        let mut parser = Parser::new("a = 2");
+        assert_eq!(assignment_raw(&mut parser).unwrap(), AST::Assign(String::from("a"), Box::new(AST::Int(2))));
+    }
+
+    #[test]
+    fn typed_assign()
+    {
+        let mut parser = Parser::new("a: Int = 2");
+        assert_eq!(assignment_typed(&mut parser).unwrap(), AST::AssignTyped(String::from("a"), Box::new(AST::Symbol(String::from("Int"))), Box::new(AST::Int(2))));
     }
 }
