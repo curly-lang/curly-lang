@@ -2,7 +2,7 @@ use logos::{Logos, Lexer, Span};
 
 // The tokens parsed by the lexer.
 #[derive(Logos, PartialEq, Debug, Copy, Clone)]
-pub enum Token
+enum Token
 {
     // Brackets
     #[token("(")]
@@ -693,7 +693,7 @@ fn compare(parser: &mut Parser) -> Result<AST, ParseError>
 }
 
 // and(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next logical and expression.
+// Gets the next bitwise and expression.
 fn and(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
@@ -711,7 +711,7 @@ fn and(parser: &mut Parser) -> Result<AST, ParseError>
             // Get operator
             let op = match op.0
             {
-                Token::And => String::from(parser.slice()),
+                Token::Ampersand => String::from(parser.slice()),
                 _ => {
                     parser.return_state(state2);
                     break;
@@ -745,7 +745,7 @@ fn and(parser: &mut Parser) -> Result<AST, ParseError>
 }
 
 // or(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next logical or expression.
+// Gets the next bitwise or expression.
 fn or(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
@@ -763,7 +763,7 @@ fn or(parser: &mut Parser) -> Result<AST, ParseError>
             // Get operator
             let op = match op.0
             {
-                Token::Or => String::from(parser.slice()),
+                Token::Bar => String::from(parser.slice()),
                 _ => {
                     parser.return_state(state2);
                     break;
@@ -797,11 +797,167 @@ fn or(parser: &mut Parser) -> Result<AST, ParseError>
 }
 
 // xor(&mut Parser) -> Option<AST::Infix, ParseError>
-// Gets the next logical xor expression.
+// Gets the next bitwise xor expression.
 fn xor(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
     let mut left = or(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::Caret => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match or(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// bool_and(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next logical and expression.
+fn bool_and(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = xor(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::And => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match xor(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// bool_or(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next logical or expression.
+fn bool_or(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = bool_and(parser)?;
+    let state = parser.save_state();
+
+    loop
+    {
+        // Save current state
+        let state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            let op = match op.0
+            {
+                Token::Or => String::from(parser.slice()),
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            };
+            parser.next();
+
+            // Get right hand side
+            let right = match bool_and(parser)
+            {
+                Ok(v) => v,
+                Err(_) => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+
+                    });
+                }
+            };
+
+            // Build ast
+            left = AST::Infix(op, Box::new(left), Box::new(right));
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(left)
+}
+
+// bool_xor(&mut Parser) -> Option<AST::Infix, ParseError>
+// Gets the next logical xor expression.
+fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    let mut left = bool_or(parser)?;
     let state = parser.save_state();
 
     loop
@@ -824,7 +980,7 @@ fn xor(parser: &mut Parser) -> Result<AST, ParseError>
             parser.next();
 
             // Get right hand side
-            let right = match or(parser)
+            let right = match bool_or(parser)
             {
                 Ok(v) => v,
                 Err(_) => {
@@ -948,7 +1104,7 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
         Ok(withy)
     } else
     {
-        xor(parser)
+        bool_xor(parser)
     }
 }
 
@@ -1243,17 +1399,37 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
 
 // parse(&str) -> Result<AST, ParseError>
 // Parses curly code.
-pub fn parse(s: &str) -> Result<AST, ParseError>
+pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
 {
     let mut parser = Parser::new(s);
+    let mut lines = vec![];
 
-    if let Ok(assign) = assignment(&mut parser)
+    while let Some(_) = parser.peek()
     {
-        Ok(assign)
-    } else
-    {
-        expression(&mut parser)
+        // Parse one line
+        if let Ok(assign) = assignment(&mut parser)
+        {
+            lines.push(assign)
+        } else
+        {
+            lines.push(expression(&mut parser)?)
+        }
+
+        // Skip newlines
+        loop
+        {
+            match parser.peek()
+            {
+                Some((Token::Newline, _)) => {
+                    parser.next();
+                }
+
+                _ => break
+            }
+        }
     }
+
+    Ok(lines)
 }
 
 #[cfg(test)]

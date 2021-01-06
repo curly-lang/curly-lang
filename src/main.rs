@@ -45,6 +45,7 @@ fn main()
             }
         }
     }
+
     rl.save_history("history.txt").unwrap();
 }
 
