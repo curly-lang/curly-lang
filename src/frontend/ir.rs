@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use super::parser::AST;
+use super::scopes::Scope;
 use super::types;
 use super::types::Type;
 
@@ -152,6 +155,7 @@ pub struct IRFunction
 pub struct IR
 {
     pub funcs: Vec<IRFunction>,
+    pub scope: Scope,
     pub sexprs: Vec<SExpr>
 }
 
@@ -163,6 +167,11 @@ impl IR
     {
         IR {
             funcs: vec![],
+            scope: Scope {
+                variables: HashMap::new(),
+                funcs: HashMap::new(),
+                parent: None
+            },
             sexprs: vec![]
         }
     }
@@ -172,6 +181,41 @@ impl IR
     pub fn clear(&mut self)
     {
         self.sexprs.clear();
+    }
+
+    // push_scope(&mut self) -> ()
+    // Pushes a new scope to the top of the scope stack.
+    pub fn push_scope(&mut self)
+    {
+        use std::mem::swap;
+
+        let mut scope = Scope {
+            variables: HashMap::new(),
+            funcs: HashMap::new(),
+            parent: None
+        };
+
+        swap(&mut scope, &mut self.scope);
+        self.scope.parent = Some(Box::new(scope));
+    }
+
+    // pop_scop(&mut self) -> ()
+    // Pops a scope from the stack if a parent scope exists.
+    pub fn pop_scope(&mut self)
+    {
+        use std::mem::swap;
+
+        if let Some(v) = &mut self.scope.parent
+        {
+            let mut scope = Scope {
+                variables: HashMap::with_capacity(0),
+                funcs: HashMap::with_capacity(0),
+                parent: None
+            };
+
+            swap(&mut scope, v);
+            swap(&mut self.scope, &mut scope);
+        }
     }
 }
 
