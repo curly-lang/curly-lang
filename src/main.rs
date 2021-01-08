@@ -63,11 +63,18 @@ fn execute(code: &str, ir: &mut IR)
         Ok(v) => v,
         Err(_) => return
     };
+
     println!("{:#?}", &ast);
     ir.clear();
     ir::convert_ast_to_ir(ast, ir);
     println!("{:#?}", ir);
-    correctness::check_correctness(ir);
-    println!("{:#?}", &ir);
+
+    let err = correctness::check_correctness(ir);
+
+    match err
+    {
+        Ok(_) => println!("{:#?}", &ir),
+        Err(e) => println!("{:?}", e)
+    }
 }
 
