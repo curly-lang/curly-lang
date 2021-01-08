@@ -13,11 +13,11 @@ Just type in the following:
 ```bash
 git clone https://github.com/jenra-uwu/curly-lang && cargo build
 ```
-This project will depend on `llvm`, which can each be installed using your favourite package manager (`apt`/`pacman`/`yum` for Linux and Homebrew/MacPorts for macOS).
+This project will depend on `llvm`, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
 
 Note: On Fedora, you also need to install `llvm-devel`.
 
 Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
 ## Progress
-The parser is done; current work is on the type checker and other correctness stuff. Everything is highly experimental. Be cautious: code may be explosive.
+The parser is done for the first iteration of the language; current work is on the type checker and other correctness stuff. Everything is highly experimental. Be cautious: code may be explosive.
