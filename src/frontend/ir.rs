@@ -102,21 +102,22 @@ impl SExpr
     {
         match self
         {
-            Self::Int(m, _) => m,
-            Self::Float(m, _) => m,
-            Self::True(m) => m,
-            Self::False(m) => m,
-            Self::Symbol(m, _) => m,
-            Self::String(m, _) => m,
-            Self::Function(m, _) => m,
-            Self::Prefix(m, _, _) => m,
-            Self::Infix(m, _, _, _) => m,
-            Self::And(m, _, _) => m,
-            Self::Or(m, _, _) => m,
-            Self::If(m, _, _, _) => m,
-            Self::Application(m, _, _) => m,
-            Self::Assign(m, _, _) => m,
-            Self::With(m, _, _) => m
+            Self::Int(m, _)
+                | Self::Float(m, _)
+                | Self::True(m)
+                | Self::False(m)
+                | Self::Symbol(m, _)
+                | Self::String(m, _)
+                | Self::Function(m, _)
+                | Self::Prefix(m, _, _)
+                | Self::Infix(m, _, _, _)
+                | Self::And(m, _, _)
+                | Self::Or(m, _, _)
+                | Self::If(m, _, _, _)
+                | Self::Application(m, _, _)
+                | Self::Assign(m, _, _)
+                | Self::With(m, _, _)
+                => m
         }
     }
 
@@ -126,21 +127,22 @@ impl SExpr
     {
         match self
         {
-            Self::Int(m, _) => m,
-            Self::Float(m, _) => m,
-            Self::True(m) => m,
-            Self::False(m) => m,
-            Self::Symbol(m, _) => m,
-            Self::String(m, _) => m,
-            Self::Function(m, _) => m,
-            Self::Prefix(m, _, _) => m,
-            Self::Infix(m, _, _, _) => m,
-            Self::And(m, _, _) => m,
-            Self::Or(m, _, _) => m,
-            Self::If(m, _, _, _) => m,
-            Self::Application(m, _, _) => m,
-            Self::Assign(m, _, _) => m,
-            Self::With(m, _, _) => m
+            Self::Int(m, _)
+                | Self::Float(m, _)
+                | Self::True(m)
+                | Self::False(m)
+                | Self::Symbol(m, _)
+                | Self::String(m, _)
+                | Self::Function(m, _)
+                | Self::Prefix(m, _, _)
+                | Self::Infix(m, _, _, _)
+                | Self::And(m, _, _)
+                | Self::Or(m, _, _)
+                | Self::If(m, _, _, _)
+                | Self::Application(m, _, _)
+                | Self::Assign(m, _, _)
+                | Self::With(m, _, _)
+                => m
         }
     }
 }

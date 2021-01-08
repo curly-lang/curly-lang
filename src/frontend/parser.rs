@@ -168,6 +168,8 @@ enum Token
 
     #[token("in")]
     In,
+
+    Unreachable
 }
 
 // Represents a parser.
@@ -348,6 +350,9 @@ impl AST
 pub struct ParseError
 {
     pub span: Span,
+    // pub msg: String,
+    // pub continuable: bool,
+    // fatal: bool,
 }
 
 // newline(&mut Parser) -> ()
@@ -369,7 +374,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some(v) => v,
         None => return Err(ParseError {
-            span: parser.span()
+            span: parser.span(),
         })
     };
 
@@ -438,7 +443,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         {
             parser.return_state(state);
             Err(ParseError {
-                span
+                span,
             })
         }
 
@@ -446,7 +451,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         Err(ParseError {
-            span
+            span,
         })
     }
 }
@@ -464,7 +469,7 @@ fn application(parser: &mut Parser) -> Result<AST, ParseError>
             Ok(v) => v,
             Err(_) => break Ok(left)
         };
-        
+
         left = AST::Application(Span {
             start: left.get_span().start,
             end: right.get_span().end
@@ -482,7 +487,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some(v) => v,
         None => return Err(ParseError {
-            span: parser.span()
+            span: parser.span(),
         })
     };
 
@@ -531,557 +536,132 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// infix_op(ident, ident, pat, pat) -> Result<AST, ParseError>
+// Parses an infix operator.
+macro_rules! infix_op
+{
+    ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
+        // Set up
+        let mut left = $subfunc($parser)?;
+        let state = $parser.save_state();
+
+        loop
+        {
+            // Save current state
+            let state2 = $parser.save_state();
+
+            // Check for operator
+            if let Some(op) = $parser.peek()
+            {
+                // Get operator
+                let op = match op.0
+                {
+                    $op1 | $op2 => String::from($parser.slice()),
+                    _ => {
+                        $parser.return_state(state2);
+                        break;
+                    }
+                };
+                $parser.next();
+
+                // Get right hand side
+                let right = match $subfunc($parser)
+                {
+                    Ok(v) => v,
+                    Err(_) => {
+                        $parser.return_state(state);
+                        return Err(ParseError {
+                            span: $parser.span(),
+                        });
+                    }
+                };
+
+                // Build ast
+                left = AST::Infix(Span {
+                    start: left.get_span().start,
+                    end: right.get_span().end
+                }, op, Box::new(left), Box::new(right));
+
+            // If there's no operator, break
+            } else
+            {
+                break;
+            }
+        }
+
+        Ok(left)
+    }}
+}
+
 // muldivmod(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next multiplication/division/modulus expression.
 fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = prefix(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Mul => String::from("*"),
-                Token::DivMod => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match prefix(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, prefix, Token::Mul, Token::DivMod)
 }
 
 // addsub(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next addition/subtraction expression.
 fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = muldivmod(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Add => String::from("+"),
-                Token::Sub => String::from("-"),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match muldivmod(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    
+    infix_op!(parser, muldivmod, Token::Add, Token::Sub)
 }
 
 // bitshift(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitshift expression.
 fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = addsub(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::BitShift => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match addsub(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, addsub, Token::BitShift, Token::Unreachable)
 }
 
 // compare(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next comparison expression.
 fn compare(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = bitshift(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Compare => String::from(parser.slice()),
-                Token::In => String::from("in"),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match bitshift(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, bitshift, Token::Compare, Token::In)
 }
 
 // and(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitwise and expression.
 fn and(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = compare(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Ampersand => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match compare(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, compare, Token::Ampersand, Token::Unreachable)
 }
 
 // or(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitwise or expression.
 fn or(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = and(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Bar => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match and(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, and, Token::Bar, Token::Unreachable) 
 }
 
 // xor(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitwise xor expression.
 fn xor(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = or(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Caret => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match or(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, or, Token::Caret, Token::Unreachable) 
 }
 
 // bool_and(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next logical and expression.
 fn bool_and(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = xor(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::And => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match xor(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, xor, Token::And, Token::Or) 
 }
 
 // bool_or(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next logical or expression.
 fn bool_or(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = bool_and(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Or => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match bool_and(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, bool_and, Token::Or, Token::Unreachable)
 }
 
 // bool_xor(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next logical xor expression.
 fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    let mut left = bool_or(parser)?;
-    let state = parser.save_state();
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            let op = match op.0
-            {
-                Token::Xor => String::from(parser.slice()),
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            };
-            parser.next();
-
-            // Get right hand side
-            let right = match bool_or(parser)
-            {
-                Ok(v) => v,
-                Err(_) => {
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span: parser.span()
-                    });
-                }
-            };
-
-            // Build ast
-            left = AST::Infix(Span {
-                start: left.get_span().start,
-                end: right.get_span().end
-            }, op, Box::new(left), Box::new(right));
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(left)
+    infix_op!(parser, bool_or, Token::Xor, Token::Unreachable)
 }
 
 // if_expr(&mut Parser) -> Result<AST, ParseError>
@@ -1115,7 +695,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
             _ => {
                 parser.return_state(state);
                 return Err(ParseError {
-                    span: parser.span()
+                    span: parser.span(),
                 });
             }
         }
@@ -1141,7 +721,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
             _ => {
                 parser.return_state(state);
                 return Err(ParseError {
-                    span: parser.span()
+                    span: parser.span(),
                 });
             }
         }
@@ -1166,7 +746,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         Err(ParseError {
-            span: parser.span()
+            span: parser.span(),
         })
     }
 }
@@ -1197,7 +777,7 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
-            span: parser.span()
+            span: parser.span(),
         })
     };
 
@@ -1209,7 +789,7 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-                span: parser.span()
+                span: parser.span(),
             });
         }
     }
@@ -1245,7 +825,7 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         Err(ParseError {
-            span: parser.span()
+            span: parser.span(),
         })
     }
 }
@@ -1260,7 +840,7 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
     {
         Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
-            span: parser.span()
+            span: parser.span(),
         })
     };
 
@@ -1272,7 +852,7 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-                span: parser.span()
+                span: parser.span(),
             });
         }
     }
@@ -1305,7 +885,7 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-                span: parser.span()
+                span: parser.span(),
             });
         }
     }
