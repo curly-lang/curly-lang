@@ -1,7 +1,8 @@
 use super::ir::{IR, IRMetadata, PrefixOp, SExpr};
 use super::scopes::FunctionName;
-use super::types::Type;
 
+// check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
+// Checks an s expression for type correctness and correct symbol usage.
 fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata)
 {
     match sexpr
@@ -14,11 +15,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata)
             match op
             {
                 PrefixOp::Neg => {
-                    m._type = match v.get_metadata()._type
+                    if let Some(t) = root.scope.func_ret_types.get(&FunctionName::Prefix(v.get_metadata()._type.clone()))
                     {
-                        Type::Int => Type::Int,
-                        Type::Float => Type::Float,
-                        _ => panic!("unsupported prefix expression!")
+                        m._type = t.clone();
                     }
                 }
 
@@ -40,6 +39,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata)
     }
 }
 
+// check_correctness(&mut IR) -> ()
+// Checks the correctness of ir.
 pub fn check_correctness(ir: &mut IR)
 {
     for sexpr in &mut ir.sexprs

@@ -179,7 +179,7 @@ impl IR
                     funcs: HashMap::new(),
                     func_ret_types: HashMap::new(),
                     parent: None
-                }
+                }.init_builtins()
             },
             sexprs: vec![]
         }

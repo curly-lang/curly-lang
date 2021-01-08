@@ -54,6 +54,8 @@ fn main()
     rl.save_history("history.txt").unwrap();
 }
 
+// execute(&str, &mut IR) -> ()
+// Executes Curly code.
 fn execute(code: &str, ir: &mut IR)
 {
     let ast = match parser::parse(code)
