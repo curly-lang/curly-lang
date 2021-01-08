@@ -6,7 +6,7 @@ use super::types;
 use super::types::Type;
 
 // Represents a prefix operator.
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub enum PrefixOp
 {
     Neg,
@@ -14,7 +14,7 @@ pub enum PrefixOp
 }
 
 // Represents an infix operator.
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub enum BinOp
 {
     Mul,
@@ -41,7 +41,7 @@ pub enum BinOp
 #[derive(Debug)]
 pub struct SExprMetadata
 {
-    _type: Type,
+    pub _type: Type,
 }
 
 // Represents an s expression
@@ -94,7 +94,7 @@ pub enum SExpr
 
 impl SExpr
 {
-    // get_metadata(&SExpr) -> &mut SExprMetadata
+    // get_metadata(&SExpr) -> &SExprMetadata
     // Returns an immutable reference to the metadata.
     pub fn get_metadata(&self) -> &SExprMetadata
     {
@@ -150,12 +150,18 @@ pub struct IRFunction
     pub body: SExpr
 }
 
+#[derive(Debug)]
+pub struct IRMetadata
+{
+    pub funcs: Vec<IRFunction>,
+    pub scope: Scope,
+}
+
 // Represents the ir.
 #[derive(Debug)]
 pub struct IR
 {
-    pub funcs: Vec<IRFunction>,
-    pub scope: Scope,
+    pub metadata: IRMetadata,
     pub sexprs: Vec<SExpr>
 }
 
@@ -166,11 +172,14 @@ impl IR
     pub fn new() -> IR
     {
         IR {
-            funcs: vec![],
-            scope: Scope {
-                variables: HashMap::new(),
-                funcs: HashMap::new(),
-                parent: None
+            metadata: IRMetadata {
+                funcs: vec![],
+                scope: Scope {
+                    variables: HashMap::new(),
+                    funcs: HashMap::new(),
+                    func_ret_types: HashMap::new(),
+                    parent: None
+                }
             },
             sexprs: vec![]
         }
@@ -192,11 +201,12 @@ impl IR
         let mut scope = Scope {
             variables: HashMap::new(),
             funcs: HashMap::new(),
+            func_ret_types: HashMap::new(),
             parent: None
         };
 
-        swap(&mut scope, &mut self.scope);
-        self.scope.parent = Some(Box::new(scope));
+        swap(&mut scope, &mut self.metadata.scope);
+        self.metadata.scope.parent = Some(Box::new(scope));
     }
 
     // pop_scop(&mut self) -> ()
@@ -205,16 +215,17 @@ impl IR
     {
         use std::mem::swap;
 
-        if let Some(v) = &mut self.scope.parent
+        if let Some(v) = &mut self.metadata.scope.parent
         {
             let mut scope = Scope {
                 variables: HashMap::with_capacity(0),
                 funcs: HashMap::with_capacity(0),
+                func_ret_types: HashMap::with_capacity(0),
                 parent: None
             };
 
             swap(&mut scope, v);
-            swap(&mut self.scope, &mut scope);
+            swap(&mut self.metadata.scope, &mut scope);
         }
     }
 }
@@ -265,7 +276,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
             };
 
             SExpr::Prefix(SExprMetadata {
-                _type: Type::Bool
+                _type: Type::Unknown
             }, op, Box::new(convert_node(*v, funcs)))
         }
 
@@ -283,7 +294,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
                     _type: Type::Bool
                 }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
            } else
-            {
+           {
                 // Get operator
                 let op = match op.as_str()
                 {
@@ -371,7 +382,7 @@ pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
     for ast in asts
     {
-        ir.sexprs.push(convert_node(ast, &mut ir.funcs));
+        ir.sexprs.push(convert_node(ast, &mut ir.metadata.funcs));
     }
 }
 

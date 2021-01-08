@@ -1,7 +1,7 @@
 use super::parser::AST;
 
 // Represents a type.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Type
 {
     Unknown,
