@@ -11,13 +11,13 @@ primes = n <span class="hljs-keyword">in</span> (from <span class="hljs-number">
 ## Build
 Just type in the following:
 ```bash
-git clone https://github.com/jenra-uwu/curly-lang && cd curly-lang && make
+git clone https://github.com/jenra-uwu/curly-lang && cargo build
 ```
-This project depends on `libedit-dev`/`libedit-devel`/`readline` (for Linux and macOS respectively) and `llvm`, which can each be installed using your favourite package manager (`apt`/`pacman`/`yum` for Linux and Homebrew/MacPorts for macOS).
+This project will depend on `llvm`, which can each be installed using your favourite package manager (`apt`/`pacman`/`yum` for Linux and Homebrew/MacPorts for macOS).
 
 Note: On Fedora, you also need to install `llvm-devel`.
 
-Note: This repo has been tested on macOS, Ubuntu, and Fedora as of now, but will not build on Windows. Windows support is coming soon.
+Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
 ## Progress
-The parser is done, and the type checker is mostly done. Current effort is focused on the LLVM backend. Everything is highly experimental. Be cautious: code may be explosive.
+The parser is done; current work is on the type checker and other correctness stuff. Everything is highly experimental. Be cautious: code may be explosive.
