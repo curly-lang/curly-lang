@@ -358,7 +358,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
         AST::AssignFunction(span, name, args, val) => {
             // Get function id
             let func_id = SExpr::Function(SExprMetadata {
-                span: span.clone(),
+                span: val.get_span(),
                 _type: Type::Unknown
             }, funcs.len());
 

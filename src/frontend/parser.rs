@@ -249,6 +249,19 @@ impl<'a> Parser<'a>
         }
     }
 
+    // span(&self) -> Span
+    // Returns the current span.
+    fn span(&mut self) -> Span
+    {
+        if let Some((_, s)) = self.peek()
+        {
+            s
+        } else
+        {
+            self.lexer.span()
+        }
+    }
+
     // save_state(&self) -> usize
     // Saves the current token position by returning it.
     fn save_state(&self) -> usize
@@ -334,7 +347,7 @@ impl AST
 #[derive(Debug)]
 pub struct ParseError
 {
-    
+    pub span: Span,
 }
 
 // newline(&mut Parser) -> ()
@@ -356,7 +369,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some(v) => v,
         None => return Err(ParseError {
-
+            span: parser.span()
         })
     };
 
@@ -425,7 +438,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         {
             parser.return_state(state);
             Err(ParseError {
-
+                span
             })
         }
 
@@ -433,7 +446,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         Err(ParseError {
-
+            span
         })
     }
 }
@@ -469,7 +482,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some(v) => v,
         None => return Err(ParseError {
-
+            span: parser.span()
         })
     };
 
@@ -553,7 +566,7 @@ fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -609,7 +622,7 @@ fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -664,7 +677,7 @@ fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -720,7 +733,7 @@ fn compare(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -775,7 +788,7 @@ fn and(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -830,7 +843,7 @@ fn or(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -885,7 +898,7 @@ fn xor(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -940,7 +953,7 @@ fn bool_and(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -995,7 +1008,7 @@ fn bool_or(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -1050,7 +1063,7 @@ fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError>
                 Err(_) => {
                     parser.return_state(state);
                     return Err(ParseError {
-
+                        span: parser.span()
                     });
                 }
             };
@@ -1102,7 +1115,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
             _ => {
                 parser.return_state(state);
                 return Err(ParseError {
-
+                    span: parser.span()
                 });
             }
         }
@@ -1128,7 +1141,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
             _ => {
                 parser.return_state(state);
                 return Err(ParseError {
-
+                    span: parser.span()
                 });
             }
         }
@@ -1153,7 +1166,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         Err(ParseError {
-
+            span: parser.span()
         })
     }
 }
@@ -1184,7 +1197,7 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
-
+            span: parser.span()
         })
     };
 
@@ -1196,7 +1209,7 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-
+                span: parser.span()
             });
         }
     }
@@ -1232,7 +1245,7 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         Err(ParseError {
-
+            span: parser.span()
         })
     }
 }
@@ -1247,7 +1260,7 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
     {
         Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
-
+            span: parser.span()
         })
     };
 
@@ -1259,7 +1272,7 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-
+                span: parser.span()
             });
         }
     }
@@ -1292,7 +1305,7 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-
+                span: parser.span()
             });
         }
     }
@@ -1326,7 +1339,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
-
+            span: parser.span()
         })
     };
 
@@ -1348,7 +1361,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     {
         parser.return_state(state);
         return Err(ParseError {
-
+            span: parser.span()
         });
     }
 
@@ -1359,7 +1372,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
         _ => {
             parser.return_state(state);
             return Err(ParseError {
-
+                span: parser.span()
             });
         }
     }
@@ -1408,7 +1421,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
     {
         Some((Token::With, s)) => s,
         _ => return Err(ParseError {
-
+            span: parser.span()
         })
     };
 
@@ -1431,7 +1444,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
             _ => {
                 parser.return_state(state);
                 return Err(ParseError {
-
+                    span: parser.span()
                 })
             }
         }
@@ -1444,7 +1457,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
     {
         parser.return_state(state);
         return Err(ParseError {
-
+            span: parser.span()
         });
     }
 

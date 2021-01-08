@@ -61,13 +61,16 @@ fn execute(code: &str, ir: &mut IR)
     let ast = match parser::parse(code)
     {
         Ok(v) => v,
-        Err(_) => return
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
     };
 
     println!("{:#?}", &ast);
     ir.clear();
     ir::convert_ast_to_ir(ast, ir);
-    println!("{:#?}", ir);
+    println!("{:#?}", &ir);
 
     let err = correctness::check_correctness(ir);
 
