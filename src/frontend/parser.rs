@@ -218,19 +218,20 @@ impl<'a> Parser<'a>
 
     // peek(&mut self) -> Option<&(Token, Span)>
     // Peeks at the next token.
-    fn peek<'b>(&'b mut self) -> Option<&'b (Token, Span)>
+    fn peek<'b>(&'b mut self) -> Option<(&'b Token, Span)>
     {
         // Get token from list of already parsed tokens if it exists
         if self.token_pos < self.tokens.len()
         {
             let token = &self.tokens[self.token_pos];
-            Some(token)
+            Some((&token.0, token.1.clone()))
 
         // Otherwise get token from lexer
         } else
         {
             self.tokens.push((self.lexer.next()?, self.lexer.span()));
-            self.tokens.last()
+            let token = self.tokens.last()?;
+            Some((&token.0, token.1.clone()))
         }
     }
 
@@ -267,42 +268,67 @@ impl<'a> Parser<'a>
 pub enum AST
 {
     // Numbers
-    Int(i64),
-    Float(f64),
+    Int(Span, i64),
+    Float(Span, f64),
 
     // Booleans
-    True,
-    False,
+    True(Span),
+    False(Span),
 
     // String
-    String(String),
+    String(Span, String),
 
     // Symbol (variables and stuff)
-    Symbol(String),
+    Symbol(Span, String),
 
     // Function Application
-    Application(Box<AST>, Box<AST>),
+    Application(Span, Box<AST>, Box<AST>),
 
     // Prefix expressions
-    Prefix(String, Box<AST>),
+    Prefix(Span, String, Box<AST>),
 
     // Infix expressions
-    Infix(String, Box<AST>, Box<AST>),
+    Infix(Span, String, Box<AST>, Box<AST>),
 
     // If expressions
-    If {cond: Box<AST>, then: Box<AST>, elsy: Box<AST>},
+    If(Span, Box<AST>, Box<AST>, Box<AST>),
 
     // Assignments
-    Assign {name: String, val: Box<AST>},
+    Assign(Span, String, Box<AST>),
 
     // Assignments with types
-    AssignTyped {name: String, _type: Box<AST>, val: Box<AST>},
+    AssignTyped(Span, String, Box<AST>, Box<AST>),
 
     // Assignment of functions
-    AssignFunction {name: String, args: Vec<(String, AST)>, val: Box<AST>},
+    AssignFunction(Span, String, Vec<(String, AST)>, Box<AST>),
 
     // Scoping
-    With(Vec<AST>, Box<AST>),
+    With(Span, Vec<AST>, Box<AST>),
+}
+
+impl AST
+{
+    pub fn get_span(&self) -> Span
+    {
+        match self
+        {
+            Self::Int(s, _)
+                | Self::Float(s, _)
+                | Self::True(s)
+                | Self::False(s)
+                | Self::String(s, _)
+                | Self::Symbol(s, _)
+                | Self::Application(s, _, _)
+                | Self::Prefix(s, _, _)
+                | Self::Infix(s, _, _, _)
+                | Self::If(s, _, _, _)
+                | Self::Assign(s, _, _)
+                | Self::AssignTyped(s, _, _, _)
+                | Self::AssignFunction(s, _, _, _)
+                | Self::With(s, _, _)
+                => s.clone(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -326,9 +352,9 @@ fn newline(parser: &mut Parser)
 fn value(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get token
-    let token = match parser.peek()
+    let (token, span) = match parser.peek()
     {
-        Some(v) => v.0,
+        Some(v) => v,
         None => return Err(ParseError {
 
         })
@@ -337,40 +363,42 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     // Check for int
     if let Token::Int(n) = token
     {
+        let n = *n;
         parser.next();
-        Ok(AST::Int(n))
+        Ok(AST::Int(span, n))
 
     // Check for float
     } else if let Token::Float(n) = token
     {
+        let n = *n;
         parser.next();
-        Ok(AST::Float(n))
+        Ok(AST::Float(span, n))
 
     // Check for string
     } else if let Token::String = token
     {
         let s = parser.slice();
         parser.next();
-        Ok(AST::String(String::from(s)))
+        Ok(AST::String(span, String::from(s)))
     
     // True
     } else if let Token::True = token
     {
         parser.next();
-        Ok(AST::True)
+        Ok(AST::True(span))
 
     // False
     } else if let Token::False = token
     {
         parser.next();
-        Ok(AST::False)
+        Ok(AST::False(span))
 
     // Check for symbol
     } else if let Token::Symbol = token
     {
         let s = parser.slice();
         parser.next();
-        Ok(AST::Symbol(String::from(s)))
+        Ok(AST::Symbol(span, String::from(s)))
 
     // Parenthesised expressions
     } else if let Token::LParen = token
@@ -424,7 +452,10 @@ fn application(parser: &mut Parser) -> Result<AST, ParseError>
             Err(_) => break Ok(left)
         };
         
-        left = AST::Application(Box::new(left), Box::new(right));
+        left = AST::Application(Span {
+            start: left.get_span().start,
+            end: right.get_span().end
+        }, Box::new(left), Box::new(right));
     }
 }
 
@@ -434,7 +465,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
     let state = parser.save_state();
-    let token = match parser.peek()
+    let (token, span) = match parser.peek()
     {
         Some(v) => v,
         None => return Err(ParseError {
@@ -443,7 +474,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
     };
 
     // Unary minus
-    if let Token::Sub = token.0
+    if let Token::Sub = token
     {
         parser.next();
 
@@ -456,10 +487,13 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
                 return Err(e);
             }
         };
-        Ok(AST::Prefix(String::from("-"), Box::new(value)))
+        Ok(AST::Prefix(Span {
+            start: span.start,
+            end: value.get_span().end
+        }, String::from("-"), Box::new(value)))
 
     // Span
-    } else if let Token::Mul = token.0
+    } else if let Token::Mul = token
     {
         parser.next();
 
@@ -472,7 +506,10 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
                 return Err(e);
             }
         };
-        Ok(AST::Prefix(String::from("-"), Box::new(value)))
+        Ok(AST::Prefix(Span {
+            start: span.start,
+            end: value.get_span().end
+        }, String::from("*"), Box::new(value)))
     
     // Default to regular value
     } else
@@ -522,7 +559,10 @@ fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -575,7 +615,10 @@ fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -627,7 +670,10 @@ fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -680,7 +726,10 @@ fn compare(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -732,7 +781,10 @@ fn and(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -784,7 +836,10 @@ fn or(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -836,7 +891,10 @@ fn xor(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -888,7 +946,10 @@ fn bool_and(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -940,7 +1001,10 @@ fn bool_or(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -992,7 +1056,10 @@ fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError>
             };
 
             // Build ast
-            left = AST::Infix(op, Box::new(left), Box::new(right));
+            left = AST::Infix(Span {
+                start: left.get_span().start,
+                end: right.get_span().end
+            }, op, Box::new(left), Box::new(right));
 
         // If there's no operator, break
         } else
@@ -1009,7 +1076,7 @@ fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError>
 fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get if keyword
-    if let Some((Token::If, _)) = parser.peek()
+    if let Some((Token::If, span)) = parser.peek()
     {
         let state = parser.save_state();
         parser.next();
@@ -1077,11 +1144,10 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
             }
         };
 
-        Ok(AST::If {
-            cond: Box::new(cond),
-            then: Box::new(then),
-            elsy: Box::new(elsy)
-        })
+        Ok(AST::If(Span {
+            start: span.start,
+            end: elsy.get_span().end
+        }, Box::new(cond), Box::new(then), Box::new(elsy)))
 
     // Not an if expression
     } else
@@ -1114,9 +1180,9 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
-    let name = match parser.peek()
+    let (name, span) = match parser.peek()
     {
-        Some((Token::Symbol, _)) => parser.slice(),
+        Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
 
         })
@@ -1147,10 +1213,10 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
-    Ok(AST::Assign {
-        name,
-        val: Box::new(value)
-    })
+    Ok(AST::Assign(Span {
+        start: span.start,
+        end: value.get_span().end
+    }, name, Box::new(value)))
 }
 
 // type_expr(&mut Parser) -> Result<AST, ParseError>
@@ -1158,11 +1224,11 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Symbol
-    if let Some((Token::Symbol, _)) = parser.peek()
+    if let Some((Token::Symbol, span)) = parser.peek()
     {
         let s = parser.slice();
         parser.next();
-        Ok(AST::Symbol(String::from(s)))
+        Ok(AST::Symbol(span, String::from(s)))
     } else
     {
         Err(ParseError {
@@ -1171,15 +1237,15 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
-// declaration(&mut Parser) -> Result<(String, AST), ParseError>
+// declaration(&mut Parser) -> Result<(Span, String, AST), ParseError>
 // Parses a declaration.
-fn declaration(parser: &mut Parser) -> Result<(String, AST), ParseError>
+fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
-    let name = match parser.peek()
+    let (name, span) = match parser.peek()
     {
-        Some((Token::Symbol, _)) => parser.slice(),
+        Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
 
         })
@@ -1209,7 +1275,7 @@ fn declaration(parser: &mut Parser) -> Result<(String, AST), ParseError>
         }
     };
 
-    Ok((name, type_val))
+    Ok((span, name, type_val))
 }
 
 // assignment_typed(&mut Parser) -> Result<AST, ParseError>
@@ -1217,7 +1283,7 @@ fn declaration(parser: &mut Parser) -> Result<(String, AST), ParseError>
 fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (name, type_val) = declaration(parser)?;
+    let (span, name, type_val) = declaration(parser)?;
 
     // Get the assign operator
     match parser.peek()
@@ -1243,11 +1309,10 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
-    Ok(AST::AssignTyped {
-        name,
-        _type: Box::new(type_val),
-        val: Box::new(value)
-    })
+    Ok(AST::AssignTyped(Span {
+        start: span.start,
+        end: value.get_span().end
+    }, name, Box::new(type_val), Box::new(value)))
 }
 
 // assignment_func(&mut Parser) -> Result<AST, ParseError>
@@ -1257,9 +1322,9 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     // Get the variable name
     let state = parser.save_state();
     let mut args = vec![];
-    let name = match parser.peek()
+    let (name, span) = match parser.peek()
     {
-        Some((Token::Symbol, _)) => parser.slice(),
+        Some((Token::Symbol, s)) => (parser.slice(), s),
         _ => return Err(ParseError {
 
         })
@@ -1271,7 +1336,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     {
         let arg = match declaration(parser)
         {
-            Ok(v) => v,
+            Ok(v) => (v.1, v.2),
             Err(_) => break
         };
 
@@ -1311,11 +1376,10 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
-    Ok(AST::AssignFunction {
-        name,
-        args,
-        val: Box::new(value)
-    })
+    Ok(AST::AssignFunction(Span {
+        start: span.start,
+        end: value.get_span().end
+    }, name, args, Box::new(value)))
 }
 
 // assignment(&mut Parser) -> Result<AST, ParseError>
@@ -1340,13 +1404,13 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get the with keyword
     let state = parser.save_state();
-    match parser.peek()
+    let span = match parser.peek()
     {
-        Some((Token::With, _)) => (),
+        Some((Token::With, s)) => s,
         _ => return Err(ParseError {
 
         })
-    }
+    };
 
     // Get assignments
     parser.next();
@@ -1394,7 +1458,10 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
         }
     };
 
-    Ok(AST::With(assigns, Box::new(body)))
+    Ok(AST::With(Span {
+        start: span.start,
+        end: body.get_span().end
+    }, assigns, Box::new(body)))
 }
 
 // parse(&str) -> Result<AST, ParseError>
@@ -1432,118 +1499,3 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
     Ok(lines)
 }
 
-#[cfg(test)]
-mod tests
-{
-    use super::*;
-
-    #[test]
-    fn ints()
-    {
-        let mut parser = Parser::new("32 0x123abc 0b010101");
-        assert_eq!(value(&mut parser).unwrap(), AST::Int(32));
-        assert_eq!(value(&mut parser).unwrap(), AST::Int(0x123abc));
-        assert_eq!(value(&mut parser).unwrap(), AST::Int(0b010101));
-    }
-
-    #[test]
-    fn floats()
-    {
-        let mut parser = Parser::new("0.25 2e3 2e-3");
-        assert_eq!(value(&mut parser).unwrap(), AST::Float(0.25));
-        assert_eq!(value(&mut parser).unwrap(), AST::Float(2e3));
-        assert_eq!(value(&mut parser).unwrap(), AST::Float(2e-3))
-    }
-
-    #[test]
-    fn symbol()
-    {
-        let mut parser = Parser::new("a");
-        assert_eq!(value(&mut parser).unwrap(), AST::Symbol(String::from("a")));
-    }
-
-    #[test]
-    fn prefix()
-    {
-        let mut parser = Parser::new("-2");
-        assert_eq!(super::prefix(&mut parser).unwrap(), AST::Prefix(String::from("-"), Box::new(AST::Int(2))));
-    }
-
-    #[test]
-    fn mul()
-    {
-        let mut parser = Parser::new("2*3");
-        assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3))));
-
-        let mut parser = Parser::new("2*3*4");
-        assert_eq!(muldivmod(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Int(3)))), Box::new(AST::Int(4))));
-    }
-
-    #[test]
-    fn parentheses()
-    {
-        let mut parser = Parser::new("2*(3+4)");
-        assert_eq!(expression(&mut parser).unwrap(), AST::Infix(String::from("*"), Box::new(AST::Int(2)), Box::new(AST::Infix(String::from("+"), Box::new(AST::Int(3)), Box::new(AST::Int(4))))));
-
-    }
-
-    #[test]
-    fn iffy()
-    {
-        let mut parser = Parser::new("if true then 1 else 0");
-        assert_eq!(if_expr(&mut parser).unwrap(), AST::If {
-            cond: Box::new(AST::True),
-            then: Box::new(AST::Int(1)),
-            elsy: Box::new(AST::Int(0))
-        });
-    }
-
-    #[test]
-    fn apps()
-    {
-        let mut parser = Parser::new("a (b c)");
-        assert_eq!(application(&mut parser).unwrap(), AST::Application(Box::new(AST::Symbol(String::from("a"))), Box::new(AST::Application(Box::new(AST::Symbol(String::from("b"))), Box::new(AST::Symbol(String::from("c")))))));
-    }
-
-    #[test]
-    fn raw_assign()
-    {
-        let mut parser = Parser::new("a = 2");
-        assert_eq!(assignment_raw(&mut parser).unwrap(), AST::Assign {
-            name: String::from("a"),
-            val: Box::new(AST::Int(2))
-        });
-    }
-
-    #[test]
-    fn typed_assign()
-    {
-        let mut parser = Parser::new("a: Int = 2");
-        assert_eq!(assignment_typed(&mut parser).unwrap(), AST::AssignTyped {
-            name: String::from("a"),
-            _type: Box::new(AST::Symbol(String::from("Int"))),
-            val: Box::new(AST::Int(2))
-        });
-    }
-
-    #[test]
-    fn func_assign()
-    {
-        let mut parser = Parser::new("id x: Int = x");
-        assert_eq!(assignment_func(&mut parser).unwrap(), AST::AssignFunction {
-            name: String::from("id"),
-            args: vec![(String::from("x"), AST::Symbol(String::from("Int")))],
-            val: Box::new(AST::Symbol(String::from("x")))
-        });
-    }
-
-    #[test]
-    fn with_expr()
-    {
-        let mut parser = Parser::new("with x = 2, x");
-        assert_eq!(with(&mut parser).unwrap(), AST::With(vec![AST::Assign {
-            name: String::from("x"),
-            val: Box::new(AST::Int(2))
-        }], Box::new(AST::Symbol(String::from("x")))));
-    }
-}

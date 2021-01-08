@@ -1,3 +1,4 @@
+use logos::Span;
 use std::collections::HashMap;
 
 use super::parser::AST;
@@ -41,7 +42,8 @@ pub enum BinOp
 #[derive(Debug)]
 pub struct SExprMetadata
 {
-    pub _type: Type,
+    pub span: Span,
+    pub _type: Type
 }
 
 // Represents an s expression
@@ -154,7 +156,7 @@ pub struct IRFunction
 pub struct IRMetadata
 {
     pub funcs: Vec<IRFunction>,
-    pub scope: Scope,
+    pub scope: Scope
 }
 
 // Represents the ir.
@@ -237,37 +239,43 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
     match ast
     {
         // Int
-        AST::Int(n) => SExpr::Int(SExprMetadata {
+        AST::Int(span, n) => SExpr::Int(SExprMetadata {
+            span,
             _type: Type::Int
         }, n),
 
         // Float
-        AST::Float(n) => SExpr::Float(SExprMetadata {
+        AST::Float(span, n) => SExpr::Float(SExprMetadata {
+            span,
             _type: Type::Float
         }, n),
 
         // True
-        AST::True => SExpr::True(SExprMetadata {
+        AST::True(span) => SExpr::True(SExprMetadata {
+            span,
             _type: Type::Bool
         }),
  
         // False
-        AST::False => SExpr::False(SExprMetadata {
+        AST::False(span) => SExpr::False(SExprMetadata {
+            span,
             _type: Type::Bool
         }),
 
         // Symbol
-        AST::Symbol(s) => SExpr::Symbol(SExprMetadata {
+        AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
+            span,
             _type: Type::Unknown
         }, s),
 
         // String
-        AST::String(s) => SExpr::String(SExprMetadata {
+        AST::String(span, s) => SExpr::String(SExprMetadata {
+            span,
             _type: Type::String
         }, s),
 
         // Prefix
-        AST::Prefix(op, v) => {
+        AST::Prefix(span, op, v) => {
             let op = match op.as_str()
             {
                 "-" => PrefixOp::Neg,
@@ -276,21 +284,24 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
             };
 
             SExpr::Prefix(SExprMetadata {
+                span,
                 _type: Type::Unknown
             }, op, Box::new(convert_node(*v, funcs)))
         }
 
         // Infix
-        AST::Infix(op, l, r) => {
+        AST::Infix(span, op, l, r) => {
             // Separate sexpressions for and and or
             if op == "and"
             {
                 SExpr::And(SExprMetadata {
+                    span,
                     _type: Type::Bool
                 }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
             } else if op == "or"
             {
                  SExpr::Or(SExprMetadata {
+                    span,
                     _type: Type::Bool
                 }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
            } else
@@ -314,34 +325,40 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
 
                 // Return
                 SExpr::Infix(SExprMetadata {
+                    span,
                     _type: Type::Unknown
                 }, op, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
             }
         }
 
         // If expression
-        AST::If { cond, then, elsy } => SExpr::If(SExprMetadata {
+        AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
+            span,
             _type: Type::Unknown
         }, Box::new(convert_node(*cond, funcs)), Box::new(convert_node(*then, funcs)), Box::new(convert_node(*elsy, funcs))),
 
         // Application
-        AST::Application(l, r) => SExpr::Application(SExprMetadata {
+        AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
+            span,
             _type: Type::Unknown
         }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs))),
 
         // Assignment
-        AST::Assign { name, val } => SExpr::Assign(SExprMetadata {
+        AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
+            span,
             _type: Type::Unknown
         }, name, Box::new(convert_node(*val, funcs))),
 
-        AST::AssignTyped { name, _type, val } => SExpr::Assign(SExprMetadata {
+        AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
+            span,
             _type: types::convert_ast_to_type(*_type)
         }, name, Box::new(convert_node(*val, funcs))),
 
         // Assigning functions
-        AST::AssignFunction { name, args, val } => {
+        AST::AssignFunction(span, name, args, val) => {
             // Get function id
             let func_id = SExpr::Function(SExprMetadata {
+                span: span.clone(),
                 _type: Type::Unknown
             }, funcs.len());
 
@@ -362,14 +379,16 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
 
             // Return assigning to the function id
             SExpr::Assign(SExprMetadata {
+                span,
                 _type: type_acc
             }, name, Box::new(func_id))
         }
 
         // With expressions
-        AST::With(a, v) => {
+        AST::With(span, a, v) => {
             let v = convert_node(*v, funcs);
             SExpr::With(SExprMetadata {
+                span,
                 _type: v.get_metadata()._type.clone()
             }, a.into_iter().map(|a| convert_node(a, funcs)).collect(), Box::new(v))
         }

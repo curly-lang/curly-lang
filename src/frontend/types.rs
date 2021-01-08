@@ -18,7 +18,7 @@ pub fn convert_ast_to_type(ast: AST) -> Type
 {
     match ast
     {
-        AST::Symbol(s) => {
+        AST::Symbol(_, s) => {
             match s.as_str()
             {
                 "Int" => Type::Int,
