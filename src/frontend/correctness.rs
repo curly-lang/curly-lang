@@ -14,12 +14,21 @@ pub enum CorrectnessError
     NonmatchingIfBodies(Span, Type, Span, Type),
     NonmatchingAssignTypes(Span, Type, Type),
     SymbolNotFound(Span, String),
+    InvalidType(Span)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
 fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<CorrectnessError>)
 {
+    if let Type::ConversionError = sexpr.get_metadata()._type
+    {
+        errors.push(CorrectnessError::InvalidType(
+            sexpr.get_metadata().span.clone()
+        ));
+        return;
+    }
+
     match sexpr
     {
         // Values

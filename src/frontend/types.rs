@@ -5,6 +5,7 @@ use super::parser::AST;
 pub enum Type
 {
     Error,
+    ConversionError,
     Int,
     Float,
     Bool,
@@ -24,10 +25,10 @@ pub fn convert_ast_to_type(ast: AST) -> Type
                 "Int" => Type::Int,
                 "Float" => Type::Float,
                 "Bool" => Type::Bool,
-                _ => panic!("Invalid type!")
+                _ => Type::ConversionError
             }
         }
 
-        _ => panic!("Invalid type!")
+        _ => Type::ConversionError
     }
 }
