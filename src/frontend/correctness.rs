@@ -1,3 +1,5 @@
+use logos::Span;
+
 use super::ir::{BinOp, IR, IRMetadata, PrefixOp, SExpr};
 use super::scopes::FunctionName;
 use super::types::Type;
@@ -5,9 +7,11 @@ use super::types::Type;
 #[derive(Debug)]
 pub enum CorrectnessError
 {
-    UndefinedPrefixOp(PrefixOp, Type),
-    UndefinedInfixOp(BinOp, Type, Type),
-    NonboolInBoolExpr(Type, Type)
+    UndefinedPrefixOp(Span, PrefixOp, Type),
+    UndefinedInfixOp(Span, BinOp, Type, Type),
+    NonboolInBoolExpr(Span, Type, Type),
+    NonboolInIfCond(Span, Type),
+    NonmatchingIfBodies(Span, Type, Span, Type)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
@@ -44,7 +48,11 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
                         m._type = t.clone();
                     } else
                     {
-                        errors.push(CorrectnessError::UndefinedPrefixOp(PrefixOp::Neg, v.get_metadata()._type.clone()));
+                        errors.push(CorrectnessError::UndefinedPrefixOp(
+                            m.span.clone(),
+                            PrefixOp::Neg,
+                            v.get_metadata()._type.clone()
+                        ));
                     }
                 }
 
@@ -65,17 +73,21 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             }
 
             // Get type
-            if let Some(t) = root.scope.func_ret_types.get(&FunctionName::Infix(*op, left.get_metadata()._type.clone(), right.get_metadata()._type.clone()))
+            if let Some(t) = root.scope.func_ret_types.get(&FunctionName::Infix(
+                *op,
+                left.get_metadata()._type.clone(),
+                right.get_metadata()._type.clone()
+            ))
             {
                 m._type = t.clone();
             } else
             {
-                errors.push(CorrectnessError::UndefinedInfixOp(*op, left.get_metadata()._type.clone(), right.get_metadata()._type.clone()));
+                errors.push(CorrectnessError::UndefinedInfixOp(m.span.clone(), *op, left.get_metadata()._type.clone(), right.get_metadata()._type.clone()));
             }
         }
 
         // Boolean and/or
-        SExpr::And(_, left, right) | SExpr::Or(_, left, right) => {
+        SExpr::And(m, left, right) | SExpr::Or(m, left, right) => {
             // Check child nodes
             check_sexpr(left, root, errors);
             check_sexpr(right, root, errors);
@@ -89,7 +101,45 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             // Check the types of the child nodes are Bool
             if left.get_metadata()._type != Type::Bool || right.get_metadata()._type != Type::Bool
             {
-                errors.push(CorrectnessError::NonboolInBoolExpr(left.get_metadata()._type.clone(), right.get_metadata()._type.clone()));
+                errors.push(CorrectnessError::NonboolInBoolExpr(
+                    m.span.clone(),
+                    left.get_metadata()._type.clone(),
+                    right.get_metadata()._type.clone()
+                ));
+            }
+        }
+
+        // If expressions
+        SExpr::If(_, cond, then, elsy) => {
+            // Check child nodes
+            check_sexpr(cond, root, errors);
+            check_sexpr(then, root, errors);
+            check_sexpr(elsy, root, errors);
+
+            // Check if an error occured
+            if cond.get_metadata()._type == Type::Unknown || then.get_metadata()._type == Type::Unknown || elsy.get_metadata()._type == Type::Unknown
+            {
+                return;
+            }
+
+            // Check that condition is a boolean
+            if cond.get_metadata()._type != Type::Bool
+            {
+                errors.push(CorrectnessError::NonboolInIfCond(
+                    cond.get_metadata().span.clone(),
+                    cond.get_metadata()._type.clone()
+                ));
+            }
+
+            // Check that the types of the then and else blocks match
+            if then.get_metadata()._type != elsy.get_metadata()._type
+            {
+                errors.push(CorrectnessError::NonmatchingIfBodies(
+                    then.get_metadata().span.clone(),
+                    then.get_metadata()._type.clone(),
+                    elsy.get_metadata().span.clone(),
+                    elsy.get_metadata()._type.clone()
+                ));
             }
         }
 
