@@ -338,6 +338,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
             _type: Type::Error
         }, name, Box::new(convert_node(*val, funcs))),
 
+        // Assignment with types
         AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
             span,
             _type: types::convert_ast_to_type(*_type)

@@ -239,16 +239,15 @@ impl<'a> Parser<'a>
 
     // slice(&self) -> String
     // Returns the slice corresponding to the current token.
-    fn slice(&self) -> String
+    fn slice(&mut self) -> String
     {
-        if self.token_pos < self.tokens.len()
+        if self.token_pos >= self.tokens.len()
         {
-            let range = &self.tokens[self.token_pos].1;
-            String::from(&self.lexer.source()[range.start..range.end])
-        } else
-        {
-            panic!("you aren't supposed to be here!");
+            self.peek();
         }
+
+        let range = &self.tokens[self.token_pos].1;
+        String::from(&self.lexer.source()[range.start..range.end])
     }
 
     // span(&self) -> Span
@@ -401,6 +400,20 @@ macro_rules! call_func_fatal
                 continuable: $cont,
                 fatal: true
             })
+        }
+    }
+}
+
+// call_optional(ident, ident) => Result<AST, ParseError>
+// Calls a function and only returns if a fatal error is encountered.
+macro_rules! call_optional
+{
+    ($func: ident, $parser: ident) => {
+        match $func($parser)
+        {
+            Ok(v) => Ok(v),
+            Err(e) if e.fatal => return Err(e),
+            Err(e) => Err(e)
         }
     }
 }
@@ -779,10 +792,11 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
 // Parses an expression.
 fn expression(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    if let Ok(iffy) = if_expr(parser)
+
+    if let Ok(iffy) = call_optional!(if_expr, parser)
     {
         Ok(iffy)
-    } else if let Ok(withy) = with(parser)
+    } else if let Ok(withy) = call_optional!(with, parser)
     {
         Ok(withy)
     } else
@@ -817,15 +831,9 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Symbol
-    if let Some((Token::Symbol, span)) = parser.peek()
-    {
-        let s = parser.slice();
-        parser.next();
-        Ok(AST::Symbol(span, String::from(s)))
-    } else
-    {
-        ParseError::empty()
-    }
+    let state = parser.save_state();
+    let (s, span) = consume_save!(parser, Symbol, state, false, false, "");
+    Ok(AST::Symbol(span, s))
 }
 
 // declaration(&mut Parser) -> Result<(Span, String, AST), ParseError>
@@ -837,7 +845,6 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
     let (name, span) = consume_save!(parser, Symbol, state, false, false, "");
 
     // Get the colon
-    parser.next();
     consume_nosave!(parser, Colon, state, false, false, "");
 
     // Get the type
@@ -877,7 +884,6 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     let (name, span) = consume_save!(parser, Symbol, state, false, false, "");
 
     // Get arguments
-    parser.next();
     loop
     {
         let arg = match declaration(parser)
@@ -915,10 +921,10 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
 // Parses an assignment.
 fn assignment(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    if let Ok(typed) = assignment_typed(parser)
+    if let Ok(typed) = call_optional!(assignment_typed, parser)
     {
         Ok(typed)
-    } else if let Ok(func) = assignment_func(parser)
+    } else if let Ok(func) = call_optional!(assignment_func, parser)
     {
         Ok(func)
     } else
@@ -980,7 +986,8 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
     while let Some(_) = parser.peek()
     {
         // Parse one line
-        if let Ok(assign) = assignment(&mut parser)
+        let p = &mut parser;
+        if let Ok(assign) = call_optional!(assignment, p)
         {
             lines.push(assign)
         } else
@@ -990,7 +997,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
                 Ok(v) => v,
                 Err(e) if e.fatal => return Err(e),
                 Err(_) => {
-                    let peeked = parser.slice();
+                    let peeked = if let Some(_) = parser.peek() { parser.slice() } else { String::from("eof") };
                     return Err(ParseError {
                         span: parser.span(),
                         msg: format!("Unexpected `{}`", peeked),
