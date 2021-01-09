@@ -11,7 +11,10 @@ pub enum CorrectnessError
     UndefinedInfixOp(Span, BinOp, Type, Type),
     NonboolInBoolExpr(Span, Type, Type),
     NonboolInIfCond(Span, Type),
-    NonmatchingIfBodies(Span, Type, Span, Type)
+    NonmatchingIfBodies(Span, Type, Span, Type),
+    NonmatchingAssignTypes(Span, Type, Type),
+    SymbolNotFound(Span, String),
+    SymbolRedeclared(Span, String)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
@@ -26,6 +29,18 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
         SExpr::String(_, _) => (),
         SExpr::True(_) => (),
         SExpr::False(_) => (),
+
+        // Symbols
+        SExpr::Symbol(m, s) => {
+            match root.scope.variables.get(s)
+            {
+                Some(t) => m._type = t.clone(),
+                None => errors.push(CorrectnessError::SymbolNotFound(
+                    m.span.clone(),
+                    s.clone()
+                ))
+            }
+        }
 
         // Prefix operators
         SExpr::Prefix(m, op, v) => {
@@ -140,6 +155,44 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
                     elsy.get_metadata().span.clone(),
                     elsy.get_metadata()._type.clone()
                 ));
+            }
+        }
+
+        SExpr::Assign(m, name, value) => {
+            // Check child node
+            check_sexpr(value, root, errors);
+
+            // Check if an error occured
+            if value.get_metadata()._type == Type::Unknown
+            {
+                return;
+            }
+
+            // Check that the types match
+            match m._type
+            {
+                // No preassigned type
+                Type::Unknown => m._type = value.get_metadata()._type.clone(),
+
+                // Preassigned type
+                _ => {
+                    // Types do not match
+                    if m._type != value.get_metadata()._type
+                    {
+                        errors.push(CorrectnessError::NonmatchingAssignTypes(
+                            m.span.clone(),
+                            m._type.clone(),
+                            value.get_metadata()._type.clone()
+                        ));
+                        m._type = Type::Unknown;
+                    }
+                }
+            }
+
+            // Add variable to scope if no error occured
+            if m._type != Type::Unknown
+            {
+                root.scope.variables.insert(name.clone(), m._type.clone());
             }
         }
 
