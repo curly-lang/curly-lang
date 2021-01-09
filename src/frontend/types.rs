@@ -4,7 +4,7 @@ use super::parser::AST;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Type
 {
-    Unknown,
+    Error,
     Int,
     Float,
     Bool,

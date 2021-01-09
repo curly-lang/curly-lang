@@ -14,7 +14,6 @@ pub enum CorrectnessError
     NonmatchingIfBodies(Span, Type, Span, Type),
     NonmatchingAssignTypes(Span, Type, Type),
     SymbolNotFound(Span, String),
-    SymbolRedeclared(Span, String)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
@@ -52,7 +51,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
                     check_sexpr(v, root, errors);
 
                     // Check if an error occured
-                    if v.get_metadata()._type == Type::Unknown
+                    if v.get_metadata()._type == Type::Error
                     {
                         return;
                     }
@@ -82,7 +81,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             check_sexpr(right, root, errors);
 
             // Check if an error occured
-            if left.get_metadata()._type == Type::Unknown || right.get_metadata()._type == Type::Unknown
+            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
             {
                 return;
             }
@@ -108,7 +107,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             check_sexpr(right, root, errors);
 
             // Check for error
-            if left.get_metadata()._type == Type::Unknown || right.get_metadata()._type == Type::Unknown
+            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
             {
                 return;
             }
@@ -132,7 +131,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             check_sexpr(elsy, root, errors);
 
             // Check if an error occured
-            if cond.get_metadata()._type == Type::Unknown || then.get_metadata()._type == Type::Unknown || elsy.get_metadata()._type == Type::Unknown
+            if cond.get_metadata()._type == Type::Error || then.get_metadata()._type == Type::Error || elsy.get_metadata()._type == Type::Error
             {
                 return;
             }
@@ -163,7 +162,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             check_sexpr(value, root, errors);
 
             // Check if an error occured
-            if value.get_metadata()._type == Type::Unknown
+            if value.get_metadata()._type == Type::Error
             {
                 return;
             }
@@ -172,7 +171,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             match m._type
             {
                 // No preassigned type
-                Type::Unknown => m._type = value.get_metadata()._type.clone(),
+                Type::Error => m._type = value.get_metadata()._type.clone(),
 
                 // Preassigned type
                 _ => {
@@ -184,13 +183,13 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
                             m._type.clone(),
                             value.get_metadata()._type.clone()
                         ));
-                        m._type = Type::Unknown;
+                        m._type = Type::Error;
                     }
                 }
             }
 
             // Add variable to scope if no error occured
-            if m._type != Type::Unknown
+            if m._type != Type::Error
             {
                 root.scope.variables.insert(name.clone(), m._type.clone());
             }

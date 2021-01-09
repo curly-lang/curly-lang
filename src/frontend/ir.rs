@@ -270,7 +270,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
             span,
-            _type: Type::Unknown
+            _type: Type::Error
         }, s),
 
         // String
@@ -290,7 +290,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
 
             SExpr::Prefix(SExprMetadata {
                 span,
-                _type: Type::Unknown
+                _type: Type::Error
             }, op, Box::new(convert_node(*v, funcs)))
         }
 
@@ -331,7 +331,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
                 // Return
                 SExpr::Infix(SExprMetadata {
                     span,
-                    _type: Type::Unknown
+                    _type: Type::Error
                 }, op, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
             }
         }
@@ -339,19 +339,19 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
         // If expression
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
             span,
-            _type: Type::Unknown
+            _type: Type::Error
         }, Box::new(convert_node(*cond, funcs)), Box::new(convert_node(*then, funcs)), Box::new(convert_node(*elsy, funcs))),
 
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
             span,
-            _type: Type::Unknown
+            _type: Type::Error
         }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs))),
 
         // Assignment
         AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
             span,
-            _type: Type::Unknown
+            _type: Type::Error
         }, name, Box::new(convert_node(*val, funcs))),
 
         AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
@@ -364,7 +364,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
             // Get function id
             let func_id = SExpr::Function(SExprMetadata {
                 span: val.get_span(),
-                _type: Type::Unknown
+                _type: Type::Error
             }, funcs.len());
 
             // Create the function
