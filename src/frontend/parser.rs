@@ -458,10 +458,10 @@ macro_rules! consume_save
 }
 
 // newline(&mut Parser) -> ()
-// Optionally parses a newline.
+// Optionally parses newlines.
 fn newline(parser: &mut Parser)
 {
-    if let Some((Token::Newline, _)) = parser.peek()
+    while let Some((Token::Newline, _)) = parser.peek()
     {
         parser.next();
     }
@@ -985,7 +985,20 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
             lines.push(assign)
         } else
         {
-            lines.push(expression(&mut parser)?)
+            lines.push(match expression(&mut parser)
+            {
+                Ok(v) => v,
+                Err(e) if e.fatal => return Err(e),
+                Err(_) => {
+                    let peeked = parser.slice();
+                    return Err(ParseError {
+                        span: parser.span(),
+                        msg: format!("Unexpected `{}`", peeked),
+                        continuable: false,
+                        fatal: true
+                    })
+                }
+            });
         }
 
         // Skip newlines

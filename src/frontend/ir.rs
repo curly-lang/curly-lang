@@ -161,6 +161,46 @@ pub struct IRMetadata
     pub scope: Scope
 }
 
+impl IRMetadata
+{
+    // push_scope(&mut self) -> ()
+    // Pushes a new scope to the top of the scope stack.
+    pub fn push_scope(&mut self)
+    {
+        use std::mem::swap;
+
+        let mut scope = Scope {
+            variables: HashMap::new(),
+            funcs: HashMap::new(),
+            func_ret_types: HashMap::new(),
+            parent: None
+        };
+
+        swap(&mut scope, &mut self.scope);
+        self.scope.parent = Some(Box::new(scope));
+    }
+
+    // pop_scop(&mut self) -> ()
+    // Pops a scope from the stack if a parent scope exists.
+    pub fn pop_scope(&mut self)
+    {
+        use std::mem::swap;
+
+        if let Some(v) = &mut self.scope.parent
+        {
+            let mut scope = Scope {
+                variables: HashMap::with_capacity(0),
+                funcs: HashMap::with_capacity(0),
+                func_ret_types: HashMap::with_capacity(0),
+                parent: None
+            };
+
+            swap(&mut scope, v);
+            swap(&mut self.scope, &mut scope);
+        }
+    }
+}
+
 // Represents the ir.
 #[derive(Debug)]
 pub struct IR
@@ -194,43 +234,6 @@ impl IR
     pub fn clear(&mut self)
     {
         self.sexprs.clear();
-    }
-
-    // push_scope(&mut self) -> ()
-    // Pushes a new scope to the top of the scope stack.
-    pub fn push_scope(&mut self)
-    {
-        use std::mem::swap;
-
-        let mut scope = Scope {
-            variables: HashMap::new(),
-            funcs: HashMap::new(),
-            func_ret_types: HashMap::new(),
-            parent: None
-        };
-
-        swap(&mut scope, &mut self.metadata.scope);
-        self.metadata.scope.parent = Some(Box::new(scope));
-    }
-
-    // pop_scop(&mut self) -> ()
-    // Pops a scope from the stack if a parent scope exists.
-    pub fn pop_scope(&mut self)
-    {
-        use std::mem::swap;
-
-        if let Some(v) = &mut self.metadata.scope.parent
-        {
-            let mut scope = Scope {
-                variables: HashMap::with_capacity(0),
-                funcs: HashMap::with_capacity(0),
-                func_ret_types: HashMap::with_capacity(0),
-                parent: None
-            };
-
-            swap(&mut scope, v);
-            swap(&mut self.metadata.scope, &mut scope);
-        }
     }
 }
 

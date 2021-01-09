@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::types::Type;
-use super::ir::{BinOp};
+use super::ir::BinOp;
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub enum FunctionName
