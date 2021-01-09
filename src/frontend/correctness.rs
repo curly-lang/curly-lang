@@ -31,7 +31,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
 
         // Symbols
         SExpr::Symbol(m, s) => {
-            match root.scope.variables.get(s)
+            match root.scope.get_var(s)
             {
                 Some(t) => m._type = t.clone(),
                 None => errors.push(CorrectnessError::SymbolNotFound(
@@ -57,7 +57,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
                     }
 
                     // Get type
-                    if let Some(t) = root.scope.func_ret_types.get(&FunctionName::Prefix(v.get_metadata()._type.clone()))
+                    if let Some(t) = root.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
                     {
                         m._type = t.clone();
                     } else
@@ -87,7 +87,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             }
 
             // Get type
-            if let Some(t) = root.scope.func_ret_types.get(&FunctionName::Infix(
+            println!("{:?} op {:?}", left.get_metadata()._type, right.get_metadata()._type);
+            if let Some(t) = root.scope.get_func_ret(FunctionName::Infix(
                 *op,
                 left.get_metadata()._type.clone(),
                 right.get_metadata()._type.clone()
@@ -157,6 +158,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             }
         }
 
+        // Assignments
         SExpr::Assign(m, name, value) => {
             // Check child node
             check_sexpr(value, root, errors);
@@ -191,8 +193,27 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.scope.variables.insert(name.clone(), m._type.clone());
+                root.scope.put_var(name, &m._type);
             }
+        }
+
+        // With expressions
+        SExpr::With(m, assigns, body) => {
+            // Push a new scope
+            root.push_scope();
+
+            // Check assignments
+            for a in assigns
+            {
+                check_sexpr(a, root, errors);
+            }
+
+            // Check body
+            check_sexpr(body, root, errors);
+            m._type = body.get_metadata()._type.clone();
+
+            // Pop scope
+            root.pop_scope();
         }
 
         _ => panic!("unsupported s expression!")

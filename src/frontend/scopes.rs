@@ -14,14 +14,26 @@ pub enum FunctionName
 #[derive(Debug)]
 pub struct Scope
 {
-    pub variables: HashMap<String, Type>,
-    pub funcs: HashMap<FunctionName, usize>,
-    pub func_ret_types: HashMap<FunctionName, Type>,
+    variables: HashMap<String, Type>,
+    funcs: HashMap<FunctionName, usize>,
+    func_ret_types: HashMap<FunctionName, Type>,
     pub parent: Option<Box<Scope>>
 }
 
 impl Scope
 {
+    // new() -> Scope
+    // Creates a new empty scope.
+    pub fn new() -> Scope
+    {
+        Scope {
+            variables: HashMap::with_capacity(0),
+            funcs: HashMap::with_capacity(0),
+            func_ret_types: HashMap::with_capacity(0),
+            parent: None
+        }
+    }
+
     // init_builtins(mut self) -> Scope
     // Initialises a scope with the builtin operators and returns itself.
     pub fn init_builtins(mut self) -> Scope
@@ -63,4 +75,100 @@ impl Scope
 
         self
     }
+
+    // put_var(&mut self, &str) -> ()
+    // Puts a variable in the current scope.
+    pub fn put_var(&mut self, name: &str, _type: &Type)
+    {
+        self.variables.insert(String::from(name), _type.clone());
+    }
+
+    // get_var(&self, &str) -> Option<&Type>
+    // Gets a variable from the stack of scopes.
+    pub fn get_var(&self, name: &str) -> Option<&Type>
+    {
+        // Set up
+        let name = String::from(name);
+        let mut scope = self;
+
+        loop
+        {
+            // Return success if found
+            if let Some(v) = scope.variables.get(&name)
+            {
+                return Some(v);
+            }
+
+            // Get next scope
+            scope = match &scope.parent
+            {
+                Some(v) => &**v,
+                None => break None
+            }
+        }
+    }
+
+    // put_func(&mut self, FunctionName, &type) -> ()
+    // Puts a function and its return type in the current scope.
+    pub fn put_func(&mut self, name: FunctionName, func_id: usize)
+    {
+        self.funcs.insert(name, func_id);
+    }
+
+    // get_func(&self, FunctionName) -> Option<&Type>
+    // Gets a function from the stack of scopes.
+    pub fn get_func_(&self, name: FunctionName) -> Option<usize>
+    {
+        // Set up
+        let mut scope = self;
+
+        loop
+        {
+            // Return success if found
+            if let Some(v) = scope.funcs.get(&name)
+            {
+                return Some(*v);
+            }
+
+            // Get next scope
+            scope = match &scope.parent
+            {
+                Some(v) => &**v,
+                None => break None
+            }
+        }
+    }
+
+
+    // put_func_ret(&mut self, FunctionName, &type) -> ()
+    // Puts a function and its return type in the current scope.
+    pub fn put_func_ret(&mut self, name: FunctionName, _type: &Type)
+    {
+        self.func_ret_types.insert(name, _type.clone());
+    }
+
+    // get_func_ret(&self, FunctionName) -> Option<&Type>
+    // Gets a function's return type from the stack of scopes.
+    pub fn get_func_ret(&self, name: FunctionName) -> Option<&Type>
+    {
+        // Set up
+        let mut scope = self;
+
+        loop
+        {
+            // Return success if found
+            if let Some(v) = scope.func_ret_types.get(&name)
+            {
+                return Some(v);
+            }
+
+            // Get next scope
+            scope = match &scope.parent
+            {
+                Some(v) => &**v,
+                None => break None
+            }
+        }
+    }
 }
+

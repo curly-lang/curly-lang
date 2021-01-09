@@ -1,5 +1,4 @@
 use logos::Span;
-use std::collections::HashMap;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -169,12 +168,7 @@ impl IRMetadata
     {
         use std::mem::swap;
 
-        let mut scope = Scope {
-            variables: HashMap::new(),
-            funcs: HashMap::new(),
-            func_ret_types: HashMap::new(),
-            parent: None
-        };
+        let mut scope = Scope::new();
 
         swap(&mut scope, &mut self.scope);
         self.scope.parent = Some(Box::new(scope));
@@ -188,12 +182,7 @@ impl IRMetadata
 
         if let Some(v) = &mut self.scope.parent
         {
-            let mut scope = Scope {
-                variables: HashMap::with_capacity(0),
-                funcs: HashMap::with_capacity(0),
-                func_ret_types: HashMap::with_capacity(0),
-                parent: None
-            };
+            let mut scope = Scope::new();
 
             swap(&mut scope, v);
             swap(&mut self.scope, &mut scope);
@@ -218,12 +207,7 @@ impl IR
         IR {
             metadata: IRMetadata {
                 funcs: vec![],
-                scope: Scope {
-                    variables: HashMap::new(),
-                    funcs: HashMap::new(),
-                    func_ret_types: HashMap::new(),
-                    parent: None
-                }.init_builtins()
+                scope: Scope::new().init_builtins()
             },
             sexprs: vec![]
         }
