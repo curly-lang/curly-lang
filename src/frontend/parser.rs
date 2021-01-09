@@ -19,7 +19,7 @@ enum Token
    
     #[token("{")]
     LBrace,
-   
+
     #[token("}")]
     RBrace,
   
@@ -355,6 +355,60 @@ pub struct ParseError
     // fatal: bool,
 }
 
+// call_func(ident, ident, ident) -> Result<AST, ParseError>
+// Calls a function and returns if an error was encountered.
+macro_rules! call_func
+{
+    ($func: ident, $parser: ident, $state: ident) => {
+        match $func($parser)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                $parser.return_state($state);
+                return Err(e);
+            }
+        }
+    }
+}
+
+// consume_nosave(ident, ident, ident) -> Result<AST, ParseError>
+// Consumes a token without saving it, returning if an error was encountered.
+macro_rules! consume_nosave
+{
+    ($parser: ident, $token: ident, $state: ident) => {
+        match $parser.peek()
+        {
+            Some((Token::$token, _)) => {
+                $parser.next();
+            }
+            _ => {
+                $parser.return_state($state);
+                return Err(ParseError {
+                    span: $parser.span(),
+                });
+            }
+        }
+    }
+}
+
+macro_rules! consume_save
+{
+    ($parser: ident, $token: ident) => {
+        match $parser.peek()
+        {
+            Some((Token::$token, s)) => {
+                let v = ($parser.slice(), s);
+                $parser.next();
+                v
+            }
+
+            _ => return Err(ParseError {
+                span: $parser.span(),
+            })
+        };
+    }
+}
+
 // newline(&mut Parser) -> ()
 // Optionally parses a newline.
 fn newline(parser: &mut Parser)
@@ -398,7 +452,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         let s = parser.slice();
         parser.next();
         Ok(AST::String(span, String::from(s)))
-    
+
     // True
     } else if let Token::True = token
     {
@@ -497,14 +551,8 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
 
         // Get value
-        let value = match application(parser)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                parser.return_state(state);
-                return Err(e);
-            }
-        };
+        let value = call_func!(application, parser, state);
+
         Ok(AST::Prefix(Span {
             start: span.start,
             end: value.get_span().end
@@ -516,14 +564,8 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
 
         // Get value
-        let value = match application(parser)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                parser.return_state(state);
-                return Err(e);
-            }
-        };
+        let value = call_func!(application, parser, state);
+
         Ok(AST::Prefix(Span {
             start: span.start,
             end: value.get_span().end
@@ -542,8 +584,8 @@ macro_rules! infix_op
 {
     ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
         // Set up
-        let mut left = $subfunc($parser)?;
         let state = $parser.save_state();
+        let mut left = call_func!($subfunc, $parser, state);
 
         loop
         {
@@ -565,16 +607,7 @@ macro_rules! infix_op
                 $parser.next();
 
                 // Get right hand side
-                let right = match $subfunc($parser)
-                {
-                    Ok(v) => v,
-                    Err(_) => {
-                        $parser.return_state(state);
-                        return Err(ParseError {
-                            span: $parser.span(),
-                        });
-                    }
-                };
+                let right = call_func!($subfunc, $parser, state);
 
                 // Build ast
                 left = AST::Infix(Span {
@@ -676,67 +709,25 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         newline(parser);
 
         // Get condition
-        let cond = match expression(parser)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                parser.return_state(state);
-                return Err(e);
-            }
-        };
+        let cond = call_func!(expression, parser, state);
 
         // Get then keyword
         newline(parser);
-        match parser.peek()
-        {
-            Some((Token::Then, _)) => {
-                parser.next();
-            }
-            _ => {
-                parser.return_state(state);
-                return Err(ParseError {
-                    span: parser.span(),
-                });
-            }
-        }
+        consume_nosave!(parser, Then, state);
 
         // Get body
         newline(parser);
-        let then = match expression(parser)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                parser.return_state(state);
-                return Err(e);
-            }
-        };
+        let then = call_func!(expression, parser, state);
 
         // Get else keyword
         newline(parser);
-        match parser.peek()
-        {
-            Some((Token::Else, _)) => {
-                parser.next();
-            }
-            _ => {
-                parser.return_state(state);
-                return Err(ParseError {
-                    span: parser.span(),
-                });
-            }
-        }
+        consume_nosave!(parser, Else, state);
 
         // Get else clause
         newline(parser);
-        let elsy = match expression(parser)
-        {
-            Ok(v) => v,
-            Err(e) => {
-                parser.return_state(state);
-                return Err(e);
-            }
-        };
+        let elsy = call_func!(expression, parser, state);
 
+        // Return success
         Ok(AST::If(Span {
             start: span.start,
             end: elsy.get_span().end
@@ -773,38 +764,15 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
-    let (name, span) = match parser.peek()
-    {
-        Some((Token::Symbol, s)) => (parser.slice(), s),
-        _ => return Err(ParseError {
-            span: parser.span(),
-        })
-    };
+    let (name, span) = consume_save!(parser, Symbol);
 
     // Get the assign operator
     parser.next();
-    match parser.peek()
-    {
-        Some((Token::Assign, _)) => (),
-        _ => {
-            parser.return_state(state);
-            return Err(ParseError {
-                span: parser.span(),
-            });
-        }
-    }
+    consume_nosave!(parser, Assign, state);
 
     // Get the value
-    parser.next();
     newline(parser);
-    let value = match expression(parser)
-    {
-        Ok(v) => v,
-        Err(e) => {
-            parser.return_state(state);
-            return Err(e);
-        }
-    };
+    let value = call_func!(expression, parser, state);
 
     Ok(AST::Assign(Span {
         start: span.start,
@@ -836,37 +804,14 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
-    let (name, span) = match parser.peek()
-    {
-        Some((Token::Symbol, s)) => (parser.slice(), s),
-        _ => return Err(ParseError {
-            span: parser.span(),
-        })
-    };
+    let (name, span) = consume_save!(parser, Symbol);
 
     // Get the colon
     parser.next();
-    match parser.peek()
-    {
-        Some((Token::Colon, _)) => (),
-        _ => {
-            parser.return_state(state);
-            return Err(ParseError {
-                span: parser.span(),
-            });
-        }
-    }
+    consume_nosave!(parser, Colon, state);
 
     // Get the type
-    parser.next();
-    let type_val = match type_expr(parser)
-    {
-        Ok(v) => v,
-        Err(e) => {
-            parser.return_state(state);
-            return Err(e);
-        }
-    };
+    let type_val = call_func!(type_expr, parser, state);
 
     Ok((span, name, type_val))
 }
@@ -879,28 +824,11 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
     let (span, name, type_val) = declaration(parser)?;
 
     // Get the assign operator
-    match parser.peek()
-    {
-        Some((Token::Assign, _)) => (),
-        _ => {
-            parser.return_state(state);
-            return Err(ParseError {
-                span: parser.span(),
-            });
-        }
-    }
+    consume_nosave!(parser, Assign, state);
 
     // Get the value
-    parser.next();
     newline(parser);
-    let value = match expression(parser)
-    {
-        Ok(v) => v,
-        Err(e) => {
-            parser.return_state(state);
-            return Err(e);
-        }
-    };
+    let value = call_func!(expression, parser, state);
 
     Ok(AST::AssignTyped(Span {
         start: span.start,
@@ -915,13 +843,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     // Get the variable name
     let state = parser.save_state();
     let mut args = vec![];
-    let (name, span) = match parser.peek()
-    {
-        Some((Token::Symbol, s)) => (parser.slice(), s),
-        _ => return Err(ParseError {
-            span: parser.span()
-        })
-    };
+    let (name, span) = consume_save!(parser, Symbol);
 
     // Get arguments
     parser.next();
@@ -946,28 +868,11 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     }
 
     // Get the assign operator
-    match parser.peek()
-    {
-        Some((Token::Assign, _)) => (),
-        _ => {
-            parser.return_state(state);
-            return Err(ParseError {
-                span: parser.span()
-            });
-        }
-    }
+    consume_nosave!(parser, Assign, state);
 
     // Get the value
-    parser.next();
     newline(parser);
-    let value = match expression(parser)
-    {
-        Ok(v) => v,
-        Err(e) => {
-            parser.return_state(state);
-            return Err(e);
-        }
-    };
+    let value = call_func!(expression, parser, state);
 
     Ok(AST::AssignFunction(Span {
         start: span.start,
@@ -997,16 +902,10 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get the with keyword
     let state = parser.save_state();
-    let span = match parser.peek()
-    {
-        Some((Token::With, s)) => s,
-        _ => return Err(ParseError {
-            span: parser.span()
-        })
-    };
+    let span = parser.span();
+    consume_nosave!(parser, With, state);
 
     // Get assignments
-    parser.next();
     let mut assigns = vec![];
     loop
     {
@@ -1018,17 +917,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
         assigns.push(assign);
 
         // Comma
-        match parser.peek()
-        {
-            Some((Token::Comma, _)) => (),
-            _ => {
-                parser.return_state(state);
-                return Err(ParseError {
-                    span: parser.span()
-                })
-            }
-        }
-        parser.next();
+        consume_nosave!(parser, Comma, state);
         newline(parser);
     }
 
@@ -1042,14 +931,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
     }
 
     // Get the body
-    let body = match expression(parser)
-    {
-        Ok(v) => v,
-        Err(e) => {
-            parser.return_state(state);
-            return Err(e);
-        }
-    };
+    let body = call_func!(expression, parser, state);
 
     Ok(AST::With(Span {
         start: span.start,
@@ -1080,10 +962,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
         {
             match parser.peek()
             {
-                Some((Token::Newline, _)) => {
-                    parser.next();
-                }
-
+                Some((Token::Newline, _)) => { parser.next(); }
                 _ => break
             }
         }
