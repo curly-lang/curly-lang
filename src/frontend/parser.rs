@@ -94,7 +94,7 @@ enum Token
     Symbol,
 
     // Strings
-    #[regex(r#""([^\\]|\\.)*""#)]
+    #[regex(r#""([^\\"]|\\.)*""#)]
     String,
 
     // Booleans
