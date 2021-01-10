@@ -1,5 +1,6 @@
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 
@@ -99,6 +100,9 @@ fn repl()
 // Executes Curly code.
 fn execute(code: &str, ir: &mut IR)
 {
+    use std::mem::swap;
+
+    // Generate the ast
     let ast = match parser::parse(code)
     {
         Ok(v) => v,
@@ -108,17 +112,26 @@ fn execute(code: &str, ir: &mut IR)
         }
     };
 
+    // Print out the ast
     println!("{:#?}", &ast);
     ir.clear();
     ir::convert_ast_to_ir(ast, ir);
     println!("{:#?}", &ir);
 
+    // Check correctness
     let err = correctness::check_correctness(ir);
 
+    // Print out the ir or the error
     match err
     {
         Ok(_) => println!("{:#?}", &ir),
         Err(e) => println!("{:?}", e)
     }
+
+    // Filter out nonglobal functions
+    let mut temp = HashMap::with_capacity(0);
+    swap(&mut ir.funcs, &mut temp);
+    let mut temp = temp.into_iter().filter(|v| v.1.global).collect();
+    swap(&mut ir.funcs, &mut temp);
 }
 

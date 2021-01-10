@@ -1,4 +1,5 @@
 use logos::Span;
+use std::collections::HashMap;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -66,7 +67,7 @@ pub enum SExpr
     String(SExprMetadata, String),
 
     // Functions
-    Function(SExprMetadata, usize),
+    Function(SExprMetadata, String),
 
     // Prefix expression
     Prefix(SExprMetadata, PrefixOp, Box<SExpr>),
@@ -150,14 +151,14 @@ impl SExpr
 pub struct IRFunction
 {
     pub args: Vec<(String, Type)>,
-    pub body: SExpr
+    pub body: SExpr,
+    pub global: bool
 }
 
 #[derive(Debug)]
 pub struct IRMetadata
 {
-    pub funcs: Vec<IRFunction>,
-    pub scope: Scope
+    pub scope: Scope,
 }
 
 impl IRMetadata
@@ -195,6 +196,7 @@ impl IRMetadata
 pub struct IR
 {
     pub metadata: IRMetadata,
+    pub funcs: HashMap<String, IRFunction>,
     pub sexprs: Vec<SExpr>
 }
 
@@ -206,9 +208,9 @@ impl IR
     {
         IR {
             metadata: IRMetadata {
-                funcs: vec![],
                 scope: Scope::new().init_builtins()
             },
+            funcs: HashMap::with_capacity(0),
             sexprs: vec![]
         }
     }
@@ -221,9 +223,9 @@ impl IR
     }
 }
 
-// convert_node(AST) -> SExpr
+// convert_node(AST, &mut HashMap<String, IRFunction>, bool) -> SExpr
 // Converts an ast node into an sexpression.
-fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
+fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool) -> SExpr
 {
     match ast
     {
@@ -275,7 +277,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
             SExpr::Prefix(SExprMetadata {
                 span,
                 _type: Type::Error
-            }, op, Box::new(convert_node(*v, funcs)))
+            }, op, Box::new(convert_node(*v, funcs, global)))
         }
 
         // Infix
@@ -286,13 +288,13 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
                 SExpr::And(SExprMetadata {
                     span,
                     _type: Type::Bool
-                }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
+                }, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global)))
             } else if op == "or"
             {
                  SExpr::Or(SExprMetadata {
                     span,
                     _type: Type::Bool
-                }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
+                }, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global)))
            } else
            {
                 // Get operator
@@ -323,7 +325,7 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
                 SExpr::Infix(SExprMetadata {
                     span,
                     _type: Type::Error
-                }, op, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs)))
+                }, op, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global)))
             }
         }
 
@@ -331,25 +333,25 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
             span,
             _type: Type::Error
-        }, Box::new(convert_node(*cond, funcs)), Box::new(convert_node(*then, funcs)), Box::new(convert_node(*elsy, funcs))),
+        }, Box::new(convert_node(*cond, funcs, global)), Box::new(convert_node(*then, funcs, global)), Box::new(convert_node(*elsy, funcs, global))),
 
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
             span,
             _type: Type::Error
-        }, Box::new(convert_node(*l, funcs)), Box::new(convert_node(*r, funcs))),
+        }, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global))),
 
         // Assignment
         AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
             span,
             _type: Type::Error
-        }, name, Box::new(convert_node(*val, funcs))),
+        }, name, Box::new(convert_node(*val, funcs, global))),
 
         // Assignment with types
         AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
             span,
             _type: types::convert_ast_to_type(*_type)
-        }, name, Box::new(convert_node(*val, funcs))),
+        }, name, Box::new(convert_node(*val, funcs, global))),
 
         // Assigning functions
         AST::AssignFunction(span, name, args, val) => {
@@ -357,37 +359,30 @@ fn convert_node(ast: AST, funcs: &mut Vec<IRFunction>) -> SExpr
             let func_id = SExpr::Function(SExprMetadata {
                 span: val.get_span(),
                 _type: Type::Error
-            }, funcs.len());
+            }, name.clone());
 
             // Create the function
             let func = IRFunction {
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
-                body: convert_node(*val, funcs)
+                body: convert_node(*val, funcs, false),
+                global
             };
-            funcs.push(func);
-            let func = funcs.last().unwrap();
-
-            // Get the function type
-            let mut type_acc = func.body.get_metadata()._type.clone();
-            for arg in func.args.iter().rev()
-            {
-                type_acc = Type::Func(Box::new(arg.1.clone()), Box::new(type_acc));
-            }
 
             // Return assigning to the function id
+            funcs.insert(name.clone(), func);
             SExpr::Assign(SExprMetadata {
                 span,
-                _type: type_acc
+                _type: Type::Error
             }, name, Box::new(func_id))
         }
 
         // With expressions
         AST::With(span, a, v) => {
-            let v = convert_node(*v, funcs);
+            let v = convert_node(*v, funcs, false);
             SExpr::With(SExprMetadata {
                 span,
                 _type: v.get_metadata()._type.clone()
-            }, a.into_iter().map(|a| convert_node(a, funcs)).collect(), Box::new(v))
+            }, a.into_iter().map(|a| convert_node(a, funcs, global)).collect(), Box::new(v))
         }
     }
 }
@@ -398,7 +393,7 @@ pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
     for ast in asts
     {
-        ir.sexprs.push(convert_node(ast, &mut ir.metadata.funcs));
+        ir.sexprs.push(convert_node(ast, &mut ir.funcs, true));
     }
 }
 

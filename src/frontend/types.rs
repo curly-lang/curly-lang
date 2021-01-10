@@ -6,6 +6,7 @@ pub enum Type
 {
     Error,
     ConversionError,
+    Unknown,
     Int,
     Float,
     Bool,

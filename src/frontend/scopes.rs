@@ -15,7 +15,6 @@ pub enum FunctionName
 pub struct Scope
 {
     variables: HashMap<String, Type>,
-    funcs: HashMap<FunctionName, usize>,
     func_ret_types: HashMap<FunctionName, Type>,
     pub parent: Option<Box<Scope>>
 }
@@ -28,7 +27,6 @@ impl Scope
     {
         Scope {
             variables: HashMap::with_capacity(0),
-            funcs: HashMap::with_capacity(0),
             func_ret_types: HashMap::with_capacity(0),
             parent: None
         }
@@ -109,6 +107,13 @@ impl Scope
         self
     }
 
+    // put_var_raw(&mut self, String, Type) -> ()
+    // Puts a variable in the current scope.
+    pub fn put_var_raw(&mut self, name: String, _type: Type)
+    {
+        self.variables.insert(name, _type);
+    }
+
     // put_var(&mut self, &str) -> ()
     // Puts a variable in the current scope.
     pub fn put_var(&mut self, name: &str, _type: &Type)
@@ -140,38 +145,6 @@ impl Scope
             }
         }
     }
-
-    // put_func(&mut self, FunctionName, &type) -> ()
-    // Puts a function and its return type in the current scope.
-    pub fn put_func(&mut self, name: FunctionName, func_id: usize)
-    {
-        self.funcs.insert(name, func_id);
-    }
-
-    // get_func(&self, FunctionName) -> Option<&Type>
-    // Gets a function from the stack of scopes.
-    pub fn get_func_(&self, name: FunctionName) -> Option<usize>
-    {
-        // Set up
-        let mut scope = self;
-
-        loop
-        {
-            // Return success if found
-            if let Some(v) = scope.funcs.get(&name)
-            {
-                return Some(*v);
-            }
-
-            // Get next scope
-            scope = match &scope.parent
-            {
-                Some(v) => &**v,
-                None => break None
-            }
-        }
-    }
-
 
     // put_func_ret(&mut self, FunctionName, &type) -> ()
     // Puts a function and its return type in the current scope.
