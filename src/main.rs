@@ -1,5 +1,7 @@
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
+use std::env;
+use std::fs;
 
 use curly_lang::frontend::correctness;
 use curly_lang::frontend::ir;
@@ -7,6 +9,42 @@ use curly_lang::frontend::ir::IR;
 use curly_lang::frontend::parser;
 
 fn main()
+{
+    let args = env::args();
+    println!("{:?}", &args);
+
+    if args.len() == 1
+    {
+        repl();
+    } else
+    {
+        let args: Vec<String> = args.into_iter().collect();
+        exec_file(&args[1]);
+    }
+}
+
+// exec_file(&str) -> ()
+// Executes a file.
+fn exec_file(file: &str)
+{
+    // Get file contents
+    let contents = match fs::read_to_string(file)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error reading file: {}", e);
+            return;
+        }
+    };
+
+    // Execute file
+    let mut ir = IR::new();
+    execute(&contents, &mut ir);
+}
+
+// repl() -> ()
+// Executes the REPL.
+fn repl()
 {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
@@ -19,21 +57,24 @@ fn main()
 
     loop
     {
+        // Get line
         let readline = rl.readline(">>> ");
         match readline
         {
             Ok(line) => {
-                rl.add_history_entry(line.as_str());
                 println!("Line: {}", line);
 
+                // Quitting
                 if line == ":q" || line == ":quit"
                 {
                     break;
                 }
 
+                rl.add_history_entry(line.as_str());
                 execute(&line, &mut ir);
             }
 
+            // Errors
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
                 break;
