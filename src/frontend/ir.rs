@@ -382,7 +382,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
             SExpr::With(SExprMetadata {
                 span,
                 _type: v.get_metadata()._type.clone()
-            }, a.into_iter().map(|a| convert_node(a, funcs, global)).collect(), Box::new(v))
+            }, a.into_iter().map(|a| convert_node(a, funcs, false)).collect(), Box::new(v))
         }
     }
 }

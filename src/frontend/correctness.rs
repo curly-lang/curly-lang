@@ -23,7 +23,7 @@ pub enum CorrectnessError
     InvalidApplication(Span, Type)
 }
 
-// check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
+// check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
 fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<CorrectnessError>)
 {
@@ -306,7 +306,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
     }
 }
 
-// convert_function_symbols(&mut SExpr, &mut IRMetadata, &mut Vec<HashSet<String>>) -> ()
+// convert_function_symbols(&mut SExpr, &mut HashSet<String>) -> ()
 // Converts function symbols in a sexpression into function references.
 fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
 {
@@ -375,7 +375,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
     }
 }
 
-// get_function_type<'a>(&'a SExpr, &'a IRMetadata, &mut Vec<HashMap<String, &'a Type>>) -> &Type
+// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<HashMap<String, Type>>, &mut Vec<CorrectnessError>) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
 fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, vars: &mut Vec<HashMap<String, Type>>, errors: &mut Vec<CorrectnessError>) -> Type
 {
@@ -558,7 +558,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
     }
 }
 
-// check_function_body(&str, &IRFunction, &mut Scope, &mut Vec<CorrectnessError>) -> ()
+// check_function_body(&str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> ()
 // Checks a function body and determines the return type of the function.
 fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
 {
@@ -572,7 +572,7 @@ fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: 
 
     // Get the type
     let _type = get_function_type(&func.body, scope, funcs, &mut vars, errors);
-    
+
     // Push an error if type is unknown
     if _type == Type::Unknown
     {
@@ -580,7 +580,6 @@ fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: 
             func.body.get_metadata().span.clone(),
             String::from(name)
         ));
-
     } else
     {
         // Construct the type
