@@ -886,11 +886,29 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     // Get arguments
     loop
     {
+        // Get comma
+        if args.len() != 0
+        {
+            match parser.peek()
+            {
+                Some((Token::Comma, _)) => {
+                    parser.next();
+                }
+
+                _ => break
+            }
+        }
+
         let arg = match declaration(parser)
         {
             Ok(v) => (v.1, v.2),
             Err(e) if e.fatal => return Err(e),
-            Err(_) => break
+            Err(_) => return Err(ParseError {
+                span: parser.span(),
+                msg: format!("Expected declaration, got {}", parser.slice()),
+                continuable: false,
+                fatal: true
+            })
         };
 
         args.push(arg);
@@ -921,15 +939,15 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
 // Parses an assignment.
 fn assignment(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    if let Ok(typed) = call_optional!(assignment_typed, parser)
+    if let Ok(typed) = call_optional!(assignment_raw, parser)
     {
         Ok(typed)
-    } else if let Ok(func) = call_optional!(assignment_func, parser)
+    } else if let Ok(func) = call_optional!(assignment_typed, parser)
     {
         Ok(func)
     } else
     {
-        assignment_raw(parser)
+        assignment_func(parser)
     }
 }
 
