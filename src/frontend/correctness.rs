@@ -606,7 +606,6 @@ fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: 
     {
         // Construct the type
         let mut acc = _type;
-
         for t in func.args.iter().rev()
         {
             acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
