@@ -18,7 +18,9 @@ pub enum CorrectnessError
     FunctionTypeNotFound(Span, String),
     Reassignment(Span, String),
     InvalidType(Span),
-    UnknownFunctionReturnType(Span, String)
+    UnknownFunctionReturnType(Span, String),
+    MismatchedFunctionArgType(Span, Type, Type),
+    InvalidApplication(Span, Type)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata) -> ()
@@ -183,6 +185,50 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             }
         }
 
+        SExpr::Application(m, func, arg) => {
+            // Check the function and arg types
+            check_sexpr(func, root, errors);
+            check_sexpr(arg, root, errors);
+
+            // Check if either the function or argument resulted in an error
+            if func.get_metadata()._type == Type::Error || arg.get_metadata()._type == Type::Error
+            {
+                return;
+            }
+
+            // Match the function
+            match &func.get_metadata()._type
+            {
+                // Strings concatenate to other strings
+                Type::String => {
+                    m._type = Type::String;
+                }
+
+                // Functions apply their arguments
+                Type::Func(l, r) => {
+                    if **l == arg.get_metadata()._type
+                    {
+                        m._type = *r.clone();
+                    } else
+                    {
+                        errors.push(CorrectnessError::MismatchedFunctionArgType(
+                            arg.get_metadata().span.clone(),
+                            *r.clone(),
+                            arg.get_metadata()._type.clone()
+                        ));
+                    }
+                }
+
+                // Everything else is invalid
+                _ => {
+                    errors.push(CorrectnessError::InvalidApplication(
+                        func.get_metadata().span.clone(),
+                        func.get_metadata()._type.clone()
+                    ));
+                }
+            }
+        }
+
         // Assignments
         SExpr::Assign(m, name, value) => {
             // Check if variable already exists
@@ -255,8 +301,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             // Pop scope
             root.pop_scope();
         }
-
-        _ => panic!("unsupported s expression!")
     }
 }
 
@@ -329,7 +373,6 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
     }
 }
 
-
 // get_function_type<'a>(&'a SExpr, &'a IRMetadata, &mut Vec<HashMap<String, &'a Type>>) -> &'a Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
 fn get_function_type<'a>(sexpr: &'a SExpr, root: &'a IRMetadata, vars: &mut Vec<HashMap<String, &'a Type>>) -> &'a Type
@@ -343,6 +386,18 @@ fn get_function_type<'a>(sexpr: &'a SExpr, root: &'a IRMetadata, vars: &mut Vec<
             | SExpr::True(m)
             | SExpr::False(m)
             => &m._type,
+
+        // Functions
+        SExpr::Function(_, f) => {
+            // Check scope
+            match root.scope.get_var(f)
+            {
+                Some(v) => v,
+
+                // TODO check child functions
+                None => &Type::Unknown
+            }
+        }
 
         // Symbols
         SExpr::Symbol(_, s) => {
@@ -425,6 +480,43 @@ fn get_function_type<'a>(sexpr: &'a SExpr, root: &'a IRMetadata, vars: &mut Vec<
             }
         }
 
+        SExpr::Application(_, f, a) => {
+            // Get function type
+            let ft = get_function_type(f, root, vars);
+            if let Type::Unknown = ft
+            {
+                return &ft;
+            }
+
+            // Get argument type
+            let at = get_function_type(a, root, vars);
+            if let Type::Unknown = at
+            {
+                return &at;
+            }
+
+            match ft
+            {
+                // Strings concatenate to other strings
+                Type::String => &ft,
+
+                // Functions apply their arguments
+                Type::Func(l, r) => {
+                    if **l == *at
+                    {
+                        &r
+                    } else
+                    {
+                        &Type::Unknown
+                    }
+                }
+
+                // Everything else is invalid
+                _ => &Type::Unknown
+            }
+        }
+
+        // Assignments
         SExpr::Assign(_, name, value) => {
             if let Some(_) = vars.last()
             {
@@ -437,6 +529,7 @@ fn get_function_type<'a>(sexpr: &'a SExpr, root: &'a IRMetadata, vars: &mut Vec<
             }
         }
 
+        // With expressions
         SExpr::With(_, assigns, body) => {
             // Push scope
             vars.push(HashMap::new());
@@ -490,6 +583,7 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         let func = func.1;
 
         // Push a new scope and put arguments into scope
+        ir.metadata.scope.put_var_raw(name.clone(), Type::Unknown);
         ir.metadata.push_scope();
         for arg in func.args.iter()
         {
@@ -499,7 +593,6 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         // Get the type
         let mut vars = vec![];
         let _type = get_function_type(&func.body, &ir.metadata, &mut vars);
-
         
         // Push an error if type is unknown
         if *_type == Type::Unknown
