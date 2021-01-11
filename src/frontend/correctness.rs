@@ -1,7 +1,8 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
+use std::mem::swap;
 
-use super::ir::{BinOp, IR, IRFunction, IRMetadata, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::Type;
 
@@ -25,7 +26,7 @@ pub enum CorrectnessError
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
-fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<CorrectnessError>)
+fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessError>)
 {
     if let Type::ConversionError = sexpr.get_metadata()._type
     {
@@ -46,7 +47,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
 
         // Functions
         SExpr::Function(m, f) => {
-            match root.scope.get_var(f)
+            match root.metadata.scope.get_var(f)
             {
                 Some(t) => m._type = t.clone(),
                 None => errors.push(CorrectnessError::FunctionTypeNotFound(
@@ -58,7 +59,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
 
         // Symbols
         SExpr::Symbol(m, s) => {
-            match root.scope.get_var(s)
+            match root.metadata.scope.get_var(s)
             {
                 Some(t) => m._type = t.clone(),
                 None => errors.push(CorrectnessError::SymbolNotFound(
@@ -84,7 +85,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
                     }
 
                     // Get type
-                    if let Some(t) = root.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
+                    if let Some(t) = root.metadata.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
                     {
                         m._type = t.clone();
                     } else
@@ -114,7 +115,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             }
 
             // Get type
-            if let Some(t) = root.scope.get_func_ret(FunctionName::Infix(
+            if let Some(t) = root.metadata.scope.get_func_ret(FunctionName::Infix(
                 *op,
                 left.get_metadata()._type.clone(),
                 right.get_metadata()._type.clone()
@@ -234,7 +235,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
         // Assignments
         SExpr::Assign(m, name, value) => {
             // Check if variable already exists
-            if let Some(_) = root.scope.get_var(name)
+            if let Some(_) = root.metadata.scope.get_var(name)
             {
                 // Only error if the value is not a sexpression
                 if let SExpr::Function(_, _) = **value {}
@@ -281,14 +282,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.scope.put_var(name, &m._type);
+                root.metadata.scope.put_var(name, &m._type);
             }
         }
 
         // With expressions
         SExpr::With(m, assigns, body) => {
             // Push a new scope
-            root.push_scope();
+            root.metadata.push_scope();
 
             // Check assignments
             for a in assigns
@@ -301,7 +302,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRMetadata, errors: &mut Vec<Correc
             m._type = body.get_metadata()._type.clone();
 
             // Pop scope
-            root.pop_scope();
+            root.metadata.pop_scope();
         }
     }
 }
@@ -316,8 +317,6 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
         SExpr::Symbol(m, s) => {
             if scopes.contains(s)
             {
-                use std::mem::swap;
-
                 let mut meta = SExprMetadata {
                     span: Span {
                         start: 0,
@@ -333,11 +332,12 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
             }
         }
 
-        // Check for symbols
+        // Prefix operators
         SExpr::Prefix(_, _, v) => {
             convert_function_symbols(v, scopes);
         }
 
+        // Infix operators
         SExpr::Infix(_, _, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
@@ -347,13 +347,14 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
             convert_function_symbols(r, scopes);
         }
 
+        // If expressions
         SExpr::If(_, c, b, e) => {
             convert_function_symbols(c, scopes);
             convert_function_symbols(b, scopes);
             convert_function_symbols(e, scopes);
         }
 
-        // Check assigns in confined scope
+        // Check scope
         SExpr::With(_, assigns, body) => {
             // Check assigns
             for a in assigns
@@ -485,6 +486,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             }
         }
 
+        // Applications
         SExpr::Application(_, f, a) => {
             // Get function type
             let ft = get_function_type(f, scope, funcs, vars, errors);
@@ -624,7 +626,9 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     }
 
     // Check all global function bodies
-    for func in ir.funcs.iter_mut().filter(|v| v.1.global)
+    let mut funcs = HashMap::with_capacity(0);
+    swap(&mut ir.funcs, &mut funcs);
+    for func in funcs.iter_mut().filter(|v| v.1.global)
     {
         // Push scope and add arguments
         ir.metadata.push_scope();
@@ -634,7 +638,7 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         }
 
         // Check body
-        check_sexpr(&mut func.1.body, &mut ir.metadata, errors);
+        check_sexpr(&mut func.1.body, ir, errors);
 
         // Pop scope
         ir.metadata.pop_scope();
@@ -651,10 +655,13 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     check_functions(ir, &mut errors);
 
     // Check sexpressions
-    for sexpr in &mut ir.sexprs
+    let mut sexprs = Vec::with_capacity(0);
+    swap(&mut ir.sexprs, &mut sexprs);
+    for sexpr in sexprs.iter_mut()
     {
-        check_sexpr(sexpr, &mut ir.metadata, &mut errors);
+        check_sexpr(sexpr, ir, &mut errors);
     }
+    swap(&mut ir.sexprs, &mut sexprs);
 
     // Return error if they exist, otherwise return success
     if errors.len() == 0
