@@ -220,6 +220,7 @@ impl IR
     pub fn clear(&mut self)
     {
         self.sexprs.clear();
+        self.funcs.clear();
     }
 }
 
