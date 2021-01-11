@@ -643,6 +643,7 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         // Pop scope
         ir.metadata.pop_scope();
     }
+    swap(&mut ir.funcs, &mut funcs);
 }
 
 // check_correctness(&mut IR) -> ()
