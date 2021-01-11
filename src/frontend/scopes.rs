@@ -66,36 +66,36 @@ impl Scope
          self.func_ret_types.insert(FunctionName::Infix(BinOp::BSL, Type::Int, Type::Int), Type::Int);
          self.func_ret_types.insert(FunctionName::Infix(BinOp::BSR, Type::Int, Type::Int), Type::Int);
 
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Int, Type::Int), Type::Int);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Float, Type::Int), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Int, Type::Float), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Float, Type::Float), Type::Float);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Int, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Float, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Int, Type::Float), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Float, Type::Float), Type::Bool);
 
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Int, Type::Int), Type::Int);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Float, Type::Int), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Int, Type::Float), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Float, Type::Float), Type::Float);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Int, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Float, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Int, Type::Float), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Float, Type::Float), Type::Bool);
 
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Int), Type::Int);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Int), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Float), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Float), Type::Float);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Float), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Float), Type::Bool);
 
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Int), Type::Int);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Int), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Float), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Float), Type::Float);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Float), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Float), Type::Bool);
 
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Int, Type::Int), Type::Int);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Float, Type::Int), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Int, Type::Float), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Float, Type::Float), Type::Float);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Int, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Float, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Int, Type::Float), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Float, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::String, Type::String), Type::Bool);
 
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Int), Type::Int);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Int), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Float), Type::Float);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Float), Type::Float);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Int), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Float), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::String, Type::String), Type::Bool);
 
          self.func_ret_types.insert(FunctionName::Infix(BinOp::And, Type::Int, Type::Int), Type::Int);
