@@ -291,6 +291,26 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Push a new scope
             root.metadata.push_scope();
 
+            // Function iterator
+            let iter = assigns.iter().filter_map(
+                |a| if let SExpr::Assign(_, _, a) = &a
+                {
+                    if let SExpr::Function(_, v) = &**a
+                    {
+                        Some(v.clone())
+                    } else
+                    {
+                        None
+                    }
+                } else
+                {
+                    None
+                }
+            );
+
+            // Deal with functions
+            check_function_group(iter, root, errors);
+
             // Check assignments
             for a in assigns
             {
@@ -597,6 +617,43 @@ fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: 
     }
 }
 
+// check_function_group(T, &HashMap<String, IRFunction>, &mut IR, &mut Vec<CorrectnessError>) -> ()
+// Checks the group of functions for return types.
+fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessError>)
+    where T: Iterator<Item = String> + Clone
+{
+    // Generate function types
+    for name in names.clone()
+    {
+        let func = ir.funcs.get(&name).unwrap();
+        check_function_body(&name, func, &mut ir.metadata.scope, &ir.funcs, errors);
+    }
+
+    // Check all function bodies
+    for name in names
+    {
+        // Remove function
+        let mut func = ir.funcs.remove(&name).unwrap();
+
+        // Push scope and add arguments
+        ir.metadata.push_scope();
+        for arg in &func.args
+        {
+            ir.metadata.scope.put_var(&arg.0, &arg.1);
+        }
+
+        // Check body
+        check_sexpr(&mut func.body, ir, errors);
+
+        // Pop scope
+        ir.metadata.pop_scope();
+
+        // Reinsert function
+        ir.funcs.insert(name, func);
+    }
+
+}
+
 // check_functions(&mut IR, &mut Vec<CorrectnessError>) -> ()
 // Checks function return types.
 fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
@@ -619,31 +676,15 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         convert_function_symbols(&mut func.1.body, &globals);
     }
 
-    // Check functions for type
-    for func in ir.funcs.iter().filter(|v| v.1.global)
-    {
-        check_function_body(&func.0, &func.1, &mut ir.metadata.scope, &ir.funcs, errors);
-    }
-
-    // Check all global function bodies
-    let mut funcs = HashMap::with_capacity(0);
-    swap(&mut ir.funcs, &mut funcs);
-    for func in funcs.iter_mut().filter(|v| v.1.global)
-    {
-        // Push scope and add arguments
-        ir.metadata.push_scope();
-        for arg in &func.1.args
+    // Check all global functions
+    let v: Vec<String> = ir.funcs.iter().filter_map(
+        |v| match v.1.global
         {
-            ir.metadata.scope.put_var(&arg.0, &arg.1);
+            true => Some(v.0.clone()),
+            false => None
         }
-
-        // Check body
-        check_sexpr(&mut func.1.body, ir, errors);
-
-        // Pop scope
-        ir.metadata.pop_scope();
-    }
-    swap(&mut ir.funcs, &mut funcs);
+    ).collect();
+    check_function_group(v.into_iter(), ir, errors);
 }
 
 // check_correctness(&mut IR) -> ()
