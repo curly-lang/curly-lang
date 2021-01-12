@@ -297,7 +297,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 {
                     if let SExpr::Function(_, v) = &**a
                     {
-                        println!("uwu: {}", v);
                         Some((v.clone(), s.clone()))
                     } else
                     {
