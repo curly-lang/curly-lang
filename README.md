@@ -15,8 +15,6 @@ git clone https://github.com/jenra-uwu/curly-lang && cargo build
 ```
 This project depends on `tcc` for the repl and jitting and either `clang` or `gcc` for compiling, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
 
-Note: On Fedora, you also need to install `llvm-devel`.
-
 Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
 ## Progress
