@@ -11,7 +11,6 @@ use curly_lang::frontend::parser;
 fn main()
 {
     let args = env::args();
-    println!("{:?}", &args);
 
     if args.len() == 1
     {
