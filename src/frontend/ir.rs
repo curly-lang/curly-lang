@@ -1,5 +1,6 @@
 use logos::Span;
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -220,13 +221,12 @@ impl IR
     pub fn clear(&mut self)
     {
         self.sexprs.clear();
-        self.funcs.clear();
     }
 }
 
 // convert_node(AST, &mut HashMap<String, IRFunction>, bool) -> SExpr
 // Converts an ast node into an sexpression.
-fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool) -> SExpr
+fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool, seen_funcs: &mut HashMap<String, usize>) -> SExpr
 {
     match ast
     {
@@ -278,7 +278,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
             SExpr::Prefix(SExprMetadata {
                 span,
                 _type: Type::Error
-            }, op, Box::new(convert_node(*v, funcs, global)))
+            }, op, Box::new(convert_node(*v, funcs, global, seen_funcs)))
         }
 
         // Infix
@@ -289,13 +289,13 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
                 SExpr::And(SExprMetadata {
                     span,
                     _type: Type::Bool
-                }, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global)))
+                }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             } else if op == "or"
             {
                  SExpr::Or(SExprMetadata {
                     span,
                     _type: Type::Bool
-                }, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global)))
+                }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
            } else
            {
                 // Get operator
@@ -326,7 +326,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
                 SExpr::Infix(SExprMetadata {
                     span,
                     _type: Type::Error
-                }, op, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global)))
+                }, op, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             }
         }
 
@@ -334,43 +334,54 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
             span,
             _type: Type::Error
-        }, Box::new(convert_node(*cond, funcs, global)), Box::new(convert_node(*then, funcs, global)), Box::new(convert_node(*elsy, funcs, global))),
+        }, Box::new(convert_node(*cond, funcs, global, seen_funcs)), Box::new(convert_node(*then, funcs, global, seen_funcs)), Box::new(convert_node(*elsy, funcs, global, seen_funcs))),
 
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
             span,
             _type: Type::Error
-        }, Box::new(convert_node(*l, funcs, global)), Box::new(convert_node(*r, funcs, global))),
+        }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs))),
 
         // Assignment
         AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
             span,
             _type: Type::Error
-        }, name, Box::new(convert_node(*val, funcs, global))),
+        }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assignment with types
         AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
             span,
             _type: types::convert_ast_to_type(*_type)
-        }, name, Box::new(convert_node(*val, funcs, global))),
+        }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assigning functions
         AST::AssignFunction(span, name, args, val) => {
             // Get function id
+            let func_name = if seen_funcs.contains_key(&name)
+            {
+                let seen = seen_funcs.get_mut(&name).unwrap();
+                *seen += 1;
+                format!("{}.{}", name, seen)
+            } else
+            {
+                seen_funcs.insert(name.clone(), 0);
+                name.clone()
+            };
+
             let func_id = SExpr::Function(SExprMetadata {
                 span: val.get_span(),
                 _type: Type::Error
-            }, name.clone());
+            }, func_name.clone());
 
             // Create the function
             let func = IRFunction {
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
-                body: convert_node(*val, funcs, false),
+                body: convert_node(*val, funcs, false, seen_funcs),
                 global
             };
 
             // Return assigning to the function id
-            funcs.insert(name.clone(), func);
+            funcs.insert(func_name, func);
             SExpr::Assign(SExprMetadata {
                 span,
                 _type: Type::Error
@@ -379,11 +390,11 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
 
         // With expressions
         AST::With(span, a, v) => {
-            let v = convert_node(*v, funcs, false);
+            let v = convert_node(*v, funcs, false, seen_funcs);
             SExpr::With(SExprMetadata {
                 span,
                 _type: v.get_metadata()._type.clone()
-            }, a.into_iter().map(|a| convert_node(a, funcs, false)).collect(), Box::new(v))
+            }, a.into_iter().map(|a| convert_node(a, funcs, false, seen_funcs)).collect(), Box::new(v))
         }
     }
 }
@@ -392,9 +403,11 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool)
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
+    let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
+    println!("{:?}", seen_funcs);
     for ast in asts
     {
-        ir.sexprs.push(convert_node(ast, &mut ir.funcs, true));
+        ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs));
     }
 }
 

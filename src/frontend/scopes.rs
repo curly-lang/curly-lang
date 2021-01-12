@@ -14,7 +14,7 @@ pub enum FunctionName
 #[derive(Debug)]
 pub struct Scope
 {
-    variables: HashMap<String, Type>,
+    pub variables: HashMap<String, Type>,
     func_ret_types: HashMap<FunctionName, Type>,
     pub parent: Option<Box<Scope>>
 }

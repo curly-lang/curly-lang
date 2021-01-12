@@ -902,13 +902,10 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
         let arg = match declaration(parser)
         {
             Ok(v) => (v.1, v.2),
-            Err(e) if e.fatal => return Err(e),
-            Err(_) => return Err(ParseError {
-                span: parser.span(),
-                msg: format!("Expected declaration, got {}", parser.slice()),
-                continuable: false,
-                fatal: true
-            })
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
         };
 
         args.push(arg);

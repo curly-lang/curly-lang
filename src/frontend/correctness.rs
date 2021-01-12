@@ -293,11 +293,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
             // Function iterator
             let iter = assigns.iter().filter_map(
-                |a| if let SExpr::Assign(_, _, a) = &a
+                |a| if let SExpr::Assign(_, s, a) = &a
                 {
                     if let SExpr::Function(_, v) = &**a
                     {
-                        Some(v.clone())
+                        println!("uwu: {}", v);
+                        Some((v.clone(), s.clone()))
                     } else
                     {
                         None
@@ -419,7 +420,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
                 // Check child function
                 None => {
-                    check_function_body(f, funcs.get(f).unwrap(), scope, funcs, errors);
+                    check_function_body(f, f, funcs.get(f).unwrap(), scope, funcs, errors);
                     scope.get_var(f).unwrap().clone()
                 }
             }
@@ -580,13 +581,19 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
     }
 }
 
-// check_function_body(&str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> ()
+// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> ()
 // Checks a function body and determines the return type of the function.
-fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
+fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
 {
-    // Put arguments into scope
+    // Put function in scope
     let mut vars = vec![HashMap::new()];
     scope.put_var_raw(String::from(name), Type::Unknown);
+    if name != refr
+    {
+        scope.put_var_raw(String::from(refr), Type::Unknown);
+    }
+
+    // Put arguments into scope
     for arg in func.args.iter()
     {
         vars.last_mut().unwrap().insert(arg.0.clone(), arg.1.clone());
@@ -612,6 +619,10 @@ fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: 
         }
 
         // Put function type in global scope
+        if name != refr
+        {
+            scope.put_var_raw(String::from(refr), acc.clone());
+        }
         scope.put_var_raw(String::from(name), acc);
     }
 }
@@ -619,20 +630,20 @@ fn check_function_body(name: &str, func: &IRFunction, scope: &mut Scope, funcs: 
 // check_function_group(T, &HashMap<String, IRFunction>, &mut IR, &mut Vec<CorrectnessError>) -> ()
 // Checks the group of functions for return types.
 fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessError>)
-    where T: Iterator<Item = String> + Clone
+    where T: Iterator<Item = (String, String)> + Clone
 {
     // Generate function types
     for name in names.clone()
     {
-        let func = ir.funcs.get(&name).unwrap();
-        check_function_body(&name, func, &mut ir.metadata.scope, &ir.funcs, errors);
+        let func = ir.funcs.get(&name.0).unwrap();
+        check_function_body(&name.0, &name.1, func, &mut ir.metadata.scope, &ir.funcs, errors);
     }
 
     // Check all function bodies
     for name in names
     {
         // Remove function
-        let mut func = ir.funcs.remove(&name).unwrap();
+        let mut func = ir.funcs.remove(&name.0).unwrap();
 
         // Push scope and add arguments
         ir.metadata.push_scope();
@@ -648,9 +659,8 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         ir.metadata.pop_scope();
 
         // Reinsert function
-        ir.funcs.insert(name, func);
+        ir.funcs.insert(name.0, func);
     }
-
 }
 
 // check_functions(&mut IR, &mut Vec<CorrectnessError>) -> ()
@@ -676,10 +686,10 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     }
 
     // Check all global functions
-    let v: Vec<String> = ir.funcs.iter().filter_map(
+    let v: Vec<(String, String)> = ir.funcs.iter().filter_map(
         |v| match v.1.global
         {
-            true => Some(v.0.clone()),
+            true => Some((v.0.clone(), v.0.clone())),
             false => None
         }
     ).collect();
