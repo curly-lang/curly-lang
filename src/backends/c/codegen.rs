@@ -1,4 +1,4 @@
-use crate::frontend::ir::{IR, SExpr};
+use crate::frontend::ir::{BinOp, IR, PrefixOp, SExpr};
 use crate::frontend::types::Type;
 
 // Represents a function in C.
@@ -7,6 +7,16 @@ struct CFunction
     // signature: Vec<CType>,
     code: String,
     last_reference: usize
+}
+
+fn get_c_type(_type: &Type) -> &str
+{
+    match _type
+    {
+        Type::Int => "int",
+        Type::Float => "double",
+        _ => panic!("unsupported type!")
+    }
 }
 
 // convert_sexpr(&SExpr, &mut CFunction) -> String
@@ -39,6 +49,66 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             func.code.push_str(&format!("{}", n));
             func.code.push_str("; ");
             func.last_reference += 1;
+
+            name
+        }
+
+        SExpr::Prefix(m, op, v) => {
+            let val = convert_sexpr(v, func);
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            func.code.push_str(get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(match op
+            {
+                PrefixOp::Neg => "-",
+                PrefixOp::Span => panic!("unsupported operator!")
+            });
+            func.code.push_str(&val);
+            func.code.push_str("; ");
+
+            name
+        }
+
+        SExpr::Infix(m, op, l, r) => {
+            let left = convert_sexpr(l, func);
+            let right = convert_sexpr(r, func);
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            func.code.push_str(get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&left);
+            func.code.push(' ');
+            func.code.push_str(match op
+            {
+                BinOp::Mul => "*",
+                BinOp::Div => "/",
+                BinOp::Mod => "%",
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::BSL => "<<",
+                BinOp::BSR => ">>",
+                BinOp::LT => "<",
+                BinOp::GT => ">",
+                BinOp::LEQ => "<=",
+                BinOp::GEQ => ">=",
+                BinOp::EQ => "==",
+                BinOp::NEQ => "!=",
+                BinOp::In => panic!("unsupported operator!"),
+                BinOp::And => "&",
+                BinOp::Or => "|",
+                BinOp::Xor => "^",
+                BinOp::BoolXor => "^"
+            });
+            func.code.push(' ');
+            func.code.push_str(&right);
+            func.code.push_str("; ");
 
             name
         }
