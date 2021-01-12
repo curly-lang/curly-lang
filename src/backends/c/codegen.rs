@@ -25,10 +25,13 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
 {
     match sexpr
     {
+        // Ints
         SExpr::Int(_, n) => {
+            // Get name
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
+            // Generate code
             func.code.push_str("int ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
@@ -39,10 +42,13 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             name
         }
 
+        // Floats
         SExpr::Float(_, n) => {
+            // Get name
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
+            // Generate code
             func.code.push_str("double ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
@@ -53,11 +59,14 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             name
         }
 
+        // Prefix
         SExpr::Prefix(m, op, v) => {
+            // Get name and value
             let val = convert_sexpr(v, func);
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
+            // Generate code
             func.code.push_str(get_c_type(&m._type));
             func.code.push(' ');
             func.code.push_str(&name);
@@ -73,12 +82,15 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             name
         }
 
+        // Infix
         SExpr::Infix(m, op, l, r) => {
+            // Get name and operands
             let left = convert_sexpr(l, func);
             let right = convert_sexpr(r, func);
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
+            // Generate code
             func.code.push_str(get_c_type(&m._type));
             func.code.push(' ');
             func.code.push_str(&name);
