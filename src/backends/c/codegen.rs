@@ -153,6 +153,40 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             name
         }
 
+        SExpr::If(m, c, b, e) => {
+            // Get name
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            // Declare variable
+            func.code.push_str(&get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str("; ");
+
+            // Get condition
+            let cond = convert_sexpr(c, func);
+            func.code.push_str("if (");
+            func.code.push_str(&cond);
+            func.code.push_str(") { ");
+
+            // Get body
+            let body = convert_sexpr(b, func);
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&body);
+            func.code.push_str("; } else { ");
+
+            // Get else clause
+            let elsy = convert_sexpr(e, func);
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&elsy);
+            func.code.push_str("; } ");
+
+            name
+        }
+
         _ => panic!("unimplemented s expression!")
     }
 }
