@@ -67,7 +67,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
 
     // Build the C code for main
     let mut code_string = String::new();
-    code_string.push_str("int main() { ");
+    code_string.push_str("void printf(char*, ...); int main() { ");
     code_string.push_str(&main_func.code);
 
     // Determine the type to print if in repl mode
@@ -84,7 +84,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
                     _ => panic!("unsupported type!")
                 }
             );
-            code_string.push_str("\", ");
+            code_string.push_str("\\n\", ");
             code_string.push_str(&last_reference);
             code_string.push_str("); ");
         }

@@ -2,6 +2,7 @@ use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use std::env;
 use std::fs;
+use std::process::{Command, Stdio};
 
 use curly_lang::backends::c::codegen;
 use curly_lang::frontend::correctness;
@@ -131,5 +132,22 @@ fn execute(code: &str, ir: &mut IR, repl_mode: bool)
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir, repl_mode);
     println!("{}", &c);
+
+    // Execute the C code
+    let echo = Command::new("echo")
+            .arg(&c)
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to execute echo")
+            .stdout
+            .expect("Failed to get stdout");
+    Command::new("tcc")
+            .arg("-run")
+            .arg("-")
+            .stdin(Stdio::from(echo))
+            .spawn()
+            .expect("Failed to execute tcc")
+            .wait()
+            .expect("Failed to wait for tcc");
 }
 
