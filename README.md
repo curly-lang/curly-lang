@@ -18,4 +18,4 @@ This project depends on `tcc` for the repl and jitting and either `clang` or `gc
 Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
 ## Progress
-The parser is done for the first iteration of the language; current work is on the type checker and other correctness stuff. Everything is highly experimental. Be cautious: code may be explosive.
+The parser and type checker are done for the first iteration of the language; current work is on the code generator for the C backend. Everything is highly experimental. Be cautious: code may be explosive.
