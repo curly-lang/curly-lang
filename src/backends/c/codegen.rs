@@ -236,6 +236,7 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
 
 // convert_ir_to_c(&IR, bool) -> String
 // Converts Curly IR to C code.
+#[allow(unused_variables)]
 pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
 {
     // Create the main function
@@ -246,10 +247,10 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     };
 
     // Populate the main function
-    let mut last_reference = String::with_capacity(0);
+    let mut printables = vec![];
     for s in ir.sexprs.iter()
     {
-        last_reference = convert_sexpr(s, &mut main_func);
+        printables.push(convert_sexpr(s, &mut main_func));
     }
 
     // Build the C code for main
@@ -257,14 +258,18 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     code_string.push_str("void printf(char*, ...); int main() { ");
     code_string.push_str(&main_func.code);
 
-    // Determine the type to print if in repl mode
+    // Print out the value of each statement
+    let mut iter = ir.sexprs.iter();
     if true // repl_mode
     {
-        if let Some(last) = ir.sexprs.last()
+        for p in printables
         {
             code_string.push_str("printf(\"");
+
+            // Determine the type
+            let _type = &iter.next().unwrap().get_metadata()._type;
             code_string.push_str(
-                match last.get_metadata()._type
+                match _type
                 {
                     Type::Int => "%i",
                     Type::Float => "%0.5f",
@@ -272,11 +277,12 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
                     _ => panic!("unsupported type!")
                 }
             );
+
             code_string.push_str("\\n\", ");
-            code_string.push_str(&last_reference);
+            code_string.push_str(&p);
 
             // Deal with booleans
-            if let Type::Bool = last.get_metadata()._type
+            if let Type::Bool = _type
             {
                 code_string.push_str(" ? \"true\" : \"false\"");
             }
