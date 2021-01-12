@@ -85,6 +85,10 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             name
         }
 
+        SExpr::Symbol(_, s) => {
+            s.clone()
+        }
+
         // Prefix
         SExpr::Prefix(m, op, v) => {
             // Get name and value
@@ -185,6 +189,18 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             func.code.push_str("; } ");
 
             name
+        }
+
+        SExpr::Assign(m, a, v) => {
+            // Get value and generate code
+            let val = convert_sexpr(v, func);
+            func.code.push_str(get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(a);
+            func.code.push_str(" = ");
+            func.code.push_str(&val);
+            func.code.push_str("; ");
+            a.clone()
         }
 
         _ => panic!("unimplemented s expression!")
