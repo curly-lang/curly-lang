@@ -1,4 +1,5 @@
 use crate::frontend::ir::{IR, SExpr};
+use crate::frontend::types::Type;
 
 // Represents a function in C.
 struct CFunction
@@ -46,9 +47,9 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
     }
 }
 
-// convert_ir_to_c(&IR) -> String
+// convert_ir_to_c(&IR, bool) -> String
 // Converts Curly IR to C code.
-pub fn convert_ir_to_c(ir: &IR) -> String
+pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
 {
     // Create the main function
     let mut main_func = CFunction {
@@ -58,16 +59,39 @@ pub fn convert_ir_to_c(ir: &IR) -> String
     };
 
     // Populate the main function
+    let mut last_reference = String::with_capacity(0);
     for s in ir.sexprs.iter()
     {
-        convert_sexpr(s, &mut main_func);
+        last_reference = convert_sexpr(s, &mut main_func);
     }
 
-    // Build the C code
+    // Build the C code for main
     let mut code_string = String::new();
     code_string.push_str("int main() { ");
     code_string.push_str(&main_func.code);
-    code_string.push_str(" return 0; }");
+
+    // Determine the type to print if in repl mode
+    if repl_mode
+    {
+        if let Some(last) = ir.sexprs.last()
+        {
+            code_string.push_str("printf(\"");
+            code_string.push_str(
+                match last.get_metadata()._type
+                {
+                    Type::Int => "%i",
+                    Type::Float => "%0.5f",
+                    _ => panic!("unsupported type!")
+                }
+            );
+            code_string.push_str("\", ");
+            code_string.push_str(&last_reference);
+            code_string.push_str("); ");
+        }
+    }
+
+    // End main function
+    code_string.push_str("return 0; }");
 
     code_string
 }

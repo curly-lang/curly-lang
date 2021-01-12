@@ -39,7 +39,7 @@ fn exec_file(file: &str)
 
     // Execute file
     let mut ir = IR::new();
-    execute(&contents, &mut ir);
+    execute(&contents, &mut ir, false);
 }
 
 // repl() -> ()
@@ -71,7 +71,7 @@ fn repl()
                 }
 
                 rl.add_history_entry(line.as_str());
-                execute(&line, &mut ir);
+                execute(&line, &mut ir, true);
             }
 
             // Errors
@@ -95,9 +95,9 @@ fn repl()
     rl.save_history("history.txt").unwrap();
 }
 
-// execute(&str, &mut IR) -> ()
+// execute(&str, &mut IRi, bool) -> ()
 // Executes Curly code.
-fn execute(code: &str, ir: &mut IR)
+fn execute(code: &str, ir: &mut IR, repl_mode: bool)
 {
     // Generate the ast
     let ast = match parser::parse(code)
@@ -129,7 +129,7 @@ fn execute(code: &str, ir: &mut IR)
     }
 
     // Generate C code
-    let c = codegen::convert_ir_to_c(&ir);
+    let c = codegen::convert_ir_to_c(&ir, repl_mode);
     println!("{}", &c);
 }
 
