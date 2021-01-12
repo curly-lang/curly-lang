@@ -36,6 +36,8 @@ pub enum BinOp
     And,
     Or,
     Xor,
+    BoolAnd,
+    BoolOr,
     BoolXor,
 }
 
@@ -76,12 +78,6 @@ pub enum SExpr
     // Infix expression
     Infix(SExprMetadata, BinOp, Box<SExpr>, Box<SExpr>),
 
-    // Boolean and
-    And(SExprMetadata, Box<SExpr>, Box<SExpr>),
-
-    // Boolean or
-    Or(SExprMetadata, Box<SExpr>, Box<SExpr>),
-
     // If expression
     If(SExprMetadata, Box<SExpr>, Box<SExpr>, Box<SExpr>),
 
@@ -112,8 +108,6 @@ impl SExpr
                 | Self::Function(m, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
-                | Self::And(m, _, _)
-                | Self::Or(m, _, _)
                 | Self::If(m, _, _, _)
                 | Self::Application(m, _, _)
                 | Self::Assign(m, _, _)
@@ -137,8 +131,6 @@ impl SExpr
                 | Self::Function(m, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
-                | Self::And(m, _, _)
-                | Self::Or(m, _, _)
                 | Self::If(m, _, _, _)
                 | Self::Application(m, _, _)
                 | Self::Assign(m, _, _)
@@ -283,51 +275,37 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
         // Infix
         AST::Infix(span, op, l, r) => {
-            // Separate sexpressions for and and or
-            if op == "and"
+            // Get operator
+            let op = match op.as_str()
             {
-                SExpr::And(SExprMetadata {
-                    span,
-                    _type: Type::Bool
-                }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
-            } else if op == "or"
-            {
-                 SExpr::Or(SExprMetadata {
-                    span,
-                    _type: Type::Bool
-                }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
-           } else
-           {
-                // Get operator
-                let op = match op.as_str()
-                {
-                    "*" => BinOp::Mul,
-                    "/" => BinOp::Div,
-                    "%" => BinOp::Mod,
-                    "+" => BinOp::Add,
-                    "-" => BinOp::Sub,
-                    "<<" => BinOp::BSL,
-                    ">>" => BinOp::BSR,
-                    "<" => BinOp::LT,
-                    ">" => BinOp::GT,
-                    "<=" => BinOp::LEQ,
-                    ">=" => BinOp::GEQ,
-                    "==" => BinOp::EQ,
-                    "!=" => BinOp::NEQ,
-                    "in" => BinOp::In,
-                    "&" => BinOp::And,
-                    "|" => BinOp::Or,
-                    "^" => BinOp::Xor,
-                    "xor" => BinOp::BoolXor,
-                    _ => panic!("Invalid operator"),
-                };
+                "*" => BinOp::Mul,
+                "/" => BinOp::Div,
+                "%" => BinOp::Mod,
+                "+" => BinOp::Add,
+                "-" => BinOp::Sub,
+                "<<" => BinOp::BSL,
+                ">>" => BinOp::BSR,
+                "<" => BinOp::LT,
+                ">" => BinOp::GT,
+                "<=" => BinOp::LEQ,
+                ">=" => BinOp::GEQ,
+                "==" => BinOp::EQ,
+                "!=" => BinOp::NEQ,
+                "in" => BinOp::In,
+                "&" => BinOp::And,
+                "|" => BinOp::Or,
+                "^" => BinOp::Xor,
+                "and" => BinOp::BoolAnd,
+                "or" => BinOp::BoolOr,
+                "xor" => BinOp::BoolXor,
+                _ => panic!("Invalid operator"),
+            };
 
-                // Return
-                SExpr::Infix(SExprMetadata {
-                    span,
-                    _type: Type::Error
-                }, op, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
-            }
+            // Return
+            SExpr::Infix(SExprMetadata {
+                span,
+                _type: Type::Error
+            }, op, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
         }
 
         // If expression

@@ -128,29 +128,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
         }
 
-        // Boolean and/or
-        SExpr::And(m, left, right) | SExpr::Or(m, left, right) => {
-            // Check child nodes
-            check_sexpr(left, root, errors);
-            check_sexpr(right, root, errors);
-
-            // Check for error
-            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
-            {
-                return;
-            }
-
-            // Check the types of the child nodes are Bool
-            if left.get_metadata()._type != Type::Bool || right.get_metadata()._type != Type::Bool
-            {
-                errors.push(CorrectnessError::NonboolInBoolExpr(
-                    m.span.clone(),
-                    left.get_metadata()._type.clone(),
-                    right.get_metadata()._type.clone()
-                ));
-            }
-        }
-
         // If expressions
         SExpr::If(m, cond, then, elsy) => {
             // Check child nodes
@@ -359,8 +336,6 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
 
         // Infix operators
         SExpr::Infix(_, _, l, r)
-            | SExpr::And(_, l, r)
-            | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
             => {
             convert_function_symbols(l, scopes);
@@ -574,9 +549,6 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             vars.pop();
             bt
         }
-
-        // Everything else is unknown
-        _ => Type::Unknown
     }
 }
 

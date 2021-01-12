@@ -102,6 +102,8 @@ impl Scope
          self.func_ret_types.insert(FunctionName::Infix(BinOp::Or, Type::Int, Type::Int), Type::Int);
          self.func_ret_types.insert(FunctionName::Infix(BinOp::Xor, Type::Int, Type::Int), Type::Int);
 
+         self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolAnd, Type::Bool, Type::Bool), Type::Bool);
+         self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolOr, Type::Bool, Type::Bool), Type::Bool);
          self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolXor, Type::Bool, Type::Bool), Type::Bool);
 
         self

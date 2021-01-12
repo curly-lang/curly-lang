@@ -134,17 +134,16 @@ fn execute(code: &str, ir: &mut IR, repl_mode: bool)
     println!("{}", &c);
 
     // Execute the C code
-    let echo = Command::new("echo")
+    let mut echo = Command::new("echo")
             .arg(&c)
             .stdout(Stdio::piped())
             .spawn()
-            .expect("Failed to execute echo")
-            .stdout
-            .expect("Failed to get stdout");
+            .expect("Failed to execute echo");
+    echo.wait().expect("Failed to wait for echo");
     Command::new("tcc")
             .arg("-run")
             .arg("-")
-            .stdin(Stdio::from(echo))
+            .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
             .spawn()
             .expect("Failed to execute tcc")
             .wait()

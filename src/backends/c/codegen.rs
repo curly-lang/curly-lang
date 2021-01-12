@@ -15,6 +15,7 @@ fn get_c_type(_type: &Type) -> &str
     {
         Type::Int => "int",
         Type::Float => "double",
+        Type::Bool => "char",
         _ => panic!("unsupported type!")
     }
 }
@@ -37,7 +38,6 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             func.code.push_str(" = ");
             func.code.push_str(&format!("{}", n));
             func.code.push_str("; ");
-            func.last_reference += 1;
 
             name
         }
@@ -54,7 +54,33 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             func.code.push_str(" = ");
             func.code.push_str(&format!("{}", n));
             func.code.push_str("; ");
+
+            name
+        }
+
+        // Booleans
+        SExpr::True(_) => {
+            // Get name
+            let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
+
+            // Generate code
+            func.code.push_str("char ");
+            func.code.push_str(&name);
+            func.code.push_str(" = 1; ");
+
+            name
+        }
+
+        SExpr::False(_) => {
+            // Get name
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            // Generate code
+            func.code.push_str("char ");
+            func.code.push_str(&name);
+            func.code.push_str(" = 0; ");
 
             name
         }
@@ -116,6 +142,8 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
                 BinOp::And => "&",
                 BinOp::Or => "|",
                 BinOp::Xor => "^",
+                BinOp::BoolAnd => "&&",
+                BinOp::BoolOr => "||",
                 BinOp::BoolXor => "^"
             });
             func.code.push(' ');
@@ -163,11 +191,19 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
                 {
                     Type::Int => "%i",
                     Type::Float => "%0.5f",
+                    Type::Bool => "%s",
                     _ => panic!("unsupported type!")
                 }
             );
             code_string.push_str("\\n\", ");
             code_string.push_str(&last_reference);
+
+            // Deal with booleans
+            if let Type::Bool = last.get_metadata()._type
+            {
+                code_string.push_str(" ? \"true\" : \"false\"");
+            }
+
             code_string.push_str("); ");
         }
     }
