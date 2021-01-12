@@ -3,6 +3,7 @@ use rustyline::error::ReadlineError;
 use std::env;
 use std::fs;
 
+use curly_lang::backends::c::codegen;
 use curly_lang::frontend::correctness;
 use curly_lang::frontend::ir;
 use curly_lang::frontend::ir::IR;
@@ -121,7 +122,14 @@ fn execute(code: &str, ir: &mut IR)
     match err
     {
         Ok(_) => println!("{:#?}", &ir),
-        Err(e) => println!("{:?}", e)
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
     }
+
+    // Generate C code
+    let c = codegen::convert_ir_to_c(&ir);
+    println!("{}", &c);
 }
 
