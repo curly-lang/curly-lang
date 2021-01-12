@@ -130,7 +130,7 @@ fn execute(code: &str, ir: &mut IR, repl_mode: bool)
     }
 
     // Generate C code
-    let c = codegen::convert_ir_to_c(&ir, true);
+    let c = codegen::convert_ir_to_c(&ir, repl_mode);
     println!("{}", &c);
 
     // Execute the C code

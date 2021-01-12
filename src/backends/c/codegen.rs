@@ -203,6 +203,33 @@ fn convert_sexpr(sexpr: &SExpr, func: &mut CFunction) -> String
             a.clone()
         }
 
+        SExpr::With(m, a, b) => {
+            // Get name
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            // Declare variable
+            func.code.push_str(&get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str("; { ");
+
+            // Assignments
+            for a in a
+            {
+                convert_sexpr(a, func);
+            }
+
+            // Body
+            let body = convert_sexpr(b, func);
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&body);
+            func.code.push_str("; } ");
+
+            name
+        }
+
         _ => panic!("unimplemented s expression!")
     }
 }
@@ -231,7 +258,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     code_string.push_str(&main_func.code);
 
     // Determine the type to print if in repl mode
-    if repl_mode
+    if true // repl_mode
     {
         if let Some(last) = ir.sexprs.last()
         {
