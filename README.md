@@ -13,7 +13,7 @@ Just type in the following:
 ```bash
 git clone https://github.com/jenra-uwu/curly-lang && cargo build
 ```
-This project will depend on `llvm`, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
+This project depends on `tcc` for the repl and jitting and on clang for compiling, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
 
 Note: On Fedora, you also need to install `llvm-devel`.
 
