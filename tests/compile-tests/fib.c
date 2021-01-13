@@ -1,6 +1,6 @@
 void printf(char*, ...);
 
-int fib(int n)
+long long fib(long long n)
 {
 	if (n < 2)
 		return n;
@@ -10,5 +10,5 @@ int fib(int n)
 
 int main()
 {
-	printf("%i\n", fib(40));
+	printf("%lli\n", fib(40));
 }
