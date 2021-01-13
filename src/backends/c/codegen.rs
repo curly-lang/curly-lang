@@ -171,13 +171,61 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 BinOp::And => "&",
                 BinOp::Or => "|",
                 BinOp::Xor => "^",
-                BinOp::BoolAnd => "&&",
-                BinOp::BoolOr => "||",
                 BinOp::BoolXor => "^"
             });
             func.code.push(' ');
             func.code.push_str(&right);
             func.code.push_str("; ");
+
+            name
+        }
+
+        // Boolean and
+        SExpr::And(m, l, r) => {
+            // Get name and left operand
+            let left = convert_sexpr(l, root, func);
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            // Generate code
+            func.code.push_str(get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&left);
+            func.code.push_str("; if (");
+            func.code.push_str(&name);
+            func.code.push_str(") { ");
+            let right = convert_sexpr(r, root, func);
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&right);
+            func.code.push_str("; } ");
+
+            name
+        }
+
+        // Boolean or
+        SExpr::Or(m, l, r) => {
+            // Get name and left operand
+            let left = convert_sexpr(l, root, func);
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            // Generate code
+            func.code.push_str(get_c_type(&m._type));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&left);
+            func.code.push_str("; if (!");
+            func.code.push_str(&name);
+            func.code.push_str(") { ");
+            let right = convert_sexpr(r, root, func);
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&right);
+            func.code.push_str("; } ");
 
             name
         }

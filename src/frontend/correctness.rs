@@ -124,7 +124,38 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 m._type = t.clone();
             } else
             {
-                errors.push(CorrectnessError::UndefinedInfixOp(m.span.clone(), *op, left.get_metadata()._type.clone(), right.get_metadata()._type.clone()));
+                errors.push(CorrectnessError::UndefinedInfixOp(
+                    m.span.clone(),
+                    *op,
+                    left.get_metadata()._type.clone(),
+                    right.get_metadata()._type.clone()
+                ));
+            }
+        }
+
+        // And and or
+        SExpr::And(m, left, right) | SExpr::Or(m, left, right) => {
+            // Check child nodes
+            check_sexpr(left, root, errors);
+            check_sexpr(right, root, errors);
+
+            // Check if an error occured
+            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
+            {
+                return;
+            }
+
+            // Assert the types are booleans.
+            if left.get_metadata()._type != Type::Bool || right.get_metadata()._type != Type::Bool
+            {
+                errors.push(CorrectnessError::NonboolInBoolExpr(
+                    m.span.clone(),
+                    left.get_metadata()._type.clone(),
+                    right.get_metadata()._type.clone()
+                ));
+            } else
+            {
+                m._type = Type::Bool;
             }
         }
 
@@ -336,6 +367,8 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
 
         // Infix operators
         SExpr::Infix(_, _, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
             => {
             convert_function_symbols(l, scopes);
@@ -467,6 +500,13 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
                 Some(v) => v.clone(),
                 None => Type::Unknown
             }
+        }
+
+        // Boolean and/or
+        SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
+            get_function_type(l, scope, funcs, vars, errors);
+            get_function_type(r, scope, funcs, vars, errors);
+            Type::Bool
         }
 
         // If expressions
