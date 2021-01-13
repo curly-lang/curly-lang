@@ -266,12 +266,99 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         }
 
         // Applications
-        SExpr::Application(_, l, r) => {
-            convert_sexpr(l, root, func);
-            convert_sexpr(r, root, func);
-            func.code.push_str("/* TODO APPLICATIONS */ ");
+        SExpr::Application(m, l, r) => {
+            // Get the list of arguments and the function
+            let mut args = vec![r];
+            let mut f = &**l;
+            while let SExpr::Application(_, l, r) = f
+            {
+                args.insert(0, r);
+                f = l;
+            }
 
-            String::from("TODO_APPLICATION")
+            match f.get_metadata()._type
+            {
+                // Functions
+                Type::Func(_, _) => {
+                    // Functions with known arity and fully applied
+                    if f.get_metadata().arity >= args.len()
+                    {
+                        // Get function and args
+                        let fstr = convert_sexpr(f, root, func);
+                        let mut astrs = vec![];
+                        for a in args.iter()
+                        {
+                            astrs.push(convert_sexpr(a, root, func));
+                        }
+
+                        // Get name
+                        let name = format!("_{}", func.last_reference);
+                        func.last_reference += 1;
+
+                        // Assignment
+                        func.code.push_str(get_c_type(&m._type));
+                        func.code.push(' ');
+                        func.code.push_str(&name);
+                        func.code.push_str(" = ((");
+
+                        // Create function pointer
+                        func.code.push_str(get_c_type(&m._type));
+                        func.code.push_str(" (*)(");
+                        let mut comma = false;
+                        for a in args
+                        {
+                            if comma
+                            {
+                                func.code.push_str(", ");
+                            } else
+                            {
+                                comma = true;
+                            }
+
+                            func.code.push_str(get_c_type(&a.get_metadata()._type));
+                        }
+
+                        func.code.push_str("))");
+                        func.code.push_str(&fstr);
+                        func.code.push_str(".func)(");
+
+                        // Print saved arguments
+                        for i in 0..f.get_metadata().saved_argc
+                        {
+                            if i != 0
+                            {
+                                func.code.push_str(", ");
+                            }
+
+                            func.code.push_str(&fstr);
+                            func.code.push_str(&format!("->args[{}]", i));
+                        }
+
+                        // Pass new arguments
+                        for i in f.get_metadata().saved_argc..f.get_metadata().arity
+                        {
+                            if i != 0
+                            {
+                                func.code.push_str(", ");
+                            }
+
+                            func.code.push_str(&astrs[i - f.get_metadata().saved_argc]);
+                        }
+
+                        // Close parentheses
+                        func.code.push_str("); ");
+                        name
+
+                    // Currying and unknown arity
+                    } else
+                    {
+                        panic!("currying and calling functions with unknown arity is not yet supported!");
+                    }
+                }
+
+                // String and list concatenation is unsupported at the moment
+                _ => panic!("unsupported application!")
+            }
         }
 
         // Assignments

@@ -49,7 +49,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         SExpr::Function(m, f) => {
             match root.metadata.scope.get_var(f)
             {
-                Some(t) => m._type = t.clone(),
+                Some(t) => {
+                    m._type = t.0.clone();
+                    m.arity = t.1;
+                    m.saved_argc = t.2;
+                }
+
                 None => errors.push(CorrectnessError::FunctionTypeNotFound(
                     m.span.clone(),
                     f.clone()
@@ -61,7 +66,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         SExpr::Symbol(m, s) => {
             match root.metadata.scope.get_var(s)
             {
-                Some(t) => m._type = t.clone(),
+                Some(t) => {
+                    m._type = t.0.clone();
+                    m.arity = t.1;
+                    m.saved_argc = t.2;
+                }
+
                 None => errors.push(CorrectnessError::SymbolNotFound(
                     m.span.clone(),
                     s.clone()
@@ -193,6 +203,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             } else
             {
                 m._type = then.get_metadata()._type.clone();
+                if then.get_metadata().saved_argc == elsy.get_metadata().saved_argc
+                {
+                    m.saved_argc = then.get_metadata().saved_argc;
+                }
+                if then.get_metadata().arity == elsy.get_metadata().arity
+                {
+                    m.arity = then.get_metadata().arity;
+                }
             }
         }
 
@@ -220,6 +238,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     if **l == arg.get_metadata()._type
                     {
                         m._type = *r.clone();
+                        m.arity = if func.get_metadata().arity > 0
+                        {
+                            func.get_metadata().arity - 1
+                        } else
+                        {
+                            0
+                        };
+                        m.saved_argc = func.get_metadata().saved_argc + 1;
                     } else
                     {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
@@ -290,7 +316,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.metadata.scope.put_var(name, &m._type);
+                root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc);
             }
         }
 
@@ -328,6 +354,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check body
             check_sexpr(body, root, errors);
             m._type = body.get_metadata()._type.clone();
+            m.arity = body.get_metadata().arity;
 
             // Pop scope
             root.metadata.pop_scope();
@@ -350,7 +377,9 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
                         start: 0,
                         end: 0
                     },
-                    _type: Type::Error
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: 0
                 };
 
                 swap(&mut meta, m);
@@ -423,12 +452,12 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             // Check scope
             match scope.get_var(f)
             {
-                Some(v) => v.clone(),
+                Some(v) => v.0.clone(),
 
                 // Check child function
                 None => {
                     check_function_body(f, f, funcs.get(f).unwrap(), scope, funcs, errors);
-                    scope.get_var(f).unwrap().clone()
+                    scope.get_var(f).unwrap().0.clone()
                 }
             }
         }
@@ -438,7 +467,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             // Check global scope
             match scope.get_var(s)
             {
-                Some(v) => v.clone(),
+                Some(v) => v.0.clone(),
 
                 // Check local scopes
                 None => {
@@ -598,10 +627,10 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
 {
     // Put function in scope
     let mut vars = vec![HashMap::new()];
-    scope.put_var_raw(String::from(name), Type::Unknown);
+    scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), 0);
     if name != refr
     {
-        scope.put_var_raw(String::from(refr), Type::Unknown);
+        scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), 0);
     }
 
     // Put arguments into scope
@@ -632,9 +661,9 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
         // Put function type in global scope
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), acc.clone());
+            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), 0);
         }
-        scope.put_var_raw(String::from(name), acc);
+        scope.put_var_raw(String::from(name), acc, func.args.len(), 0);
     }
 }
 
@@ -660,7 +689,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         ir.metadata.push_scope();
         for arg in &func.args
         {
-            ir.metadata.scope.put_var(&arg.0, &arg.1);
+            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, 0);
         }
 
         // Check body

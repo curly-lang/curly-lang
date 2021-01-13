@@ -44,7 +44,9 @@ pub enum BinOp
 pub struct SExprMetadata
 {
     pub span: Span,
-    pub _type: Type
+    pub _type: Type,
+    pub arity: usize,
+    pub saved_argc: usize
 }
 
 // Represents an s expression
@@ -231,37 +233,49 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // Int
         AST::Int(span, n) => SExpr::Int(SExprMetadata {
             span,
-            _type: Type::Int
+            _type: Type::Int,
+            arity: 0,
+            saved_argc: 0
         }, n),
 
         // Float
         AST::Float(span, n) => SExpr::Float(SExprMetadata {
             span,
-            _type: Type::Float
+            _type: Type::Float,
+            arity: 0,
+            saved_argc: 0
         }, n),
 
         // True
         AST::True(span) => SExpr::True(SExprMetadata {
             span,
-            _type: Type::Bool
+            _type: Type::Bool,
+            arity: 0,
+            saved_argc: 0
         }),
  
         // False
         AST::False(span) => SExpr::False(SExprMetadata {
             span,
-            _type: Type::Bool
+            _type: Type::Bool,
+            arity: 0,
+            saved_argc: 0
         }),
 
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
             span,
-            _type: Type::Error
+            _type: Type::Error,
+            arity: 0,
+            saved_argc: 0
         }, s),
 
         // String
         AST::String(span, s) => SExpr::String(SExprMetadata {
             span,
-            _type: Type::String
+            _type: Type::String,
+            arity: 0,
+            saved_argc: 0
         }, s),
 
         // Prefix
@@ -275,7 +289,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             SExpr::Prefix(SExprMetadata {
                 span,
-                _type: Type::Error
+                _type: Type::Error,
+                arity: 0,
+                saved_argc: 0
             }, op, Box::new(convert_node(*v, funcs, global, seen_funcs)))
         }
 
@@ -286,13 +302,17 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             {
                 SExpr::And(SExprMetadata {
                     span,
-                    _type: Type::Error
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: 0
                 }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             } else if op == "or"
             {
-                SExpr::And(SExprMetadata {
+                SExpr::Or(SExprMetadata {
                     span,
-                    _type: Type::Error
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: 0
                 }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             } else
             {
@@ -323,7 +343,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 // Return
                 SExpr::Infix(SExprMetadata {
                     span,
-                    _type: Type::Error
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: 0
                 }, op, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             }
         }
@@ -331,25 +353,33 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // If expression
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
             span,
-            _type: Type::Error
+            _type: Type::Error,
+            arity: 0,
+            saved_argc: 0
         }, Box::new(convert_node(*cond, funcs, global, seen_funcs)), Box::new(convert_node(*then, funcs, global, seen_funcs)), Box::new(convert_node(*elsy, funcs, global, seen_funcs))),
 
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
             span,
-            _type: Type::Error
+            _type: Type::Error,
+            arity: 0,
+            saved_argc: 0
         }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs))),
 
         // Assignment
         AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
             span,
-            _type: Type::Error
+            _type: Type::Error,
+            arity: 0,
+            saved_argc: 0
         }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assignment with types
         AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
             span,
-            _type: types::convert_ast_to_type(*_type)
+            _type: types::convert_ast_to_type(*_type),
+            arity: 0,
+            saved_argc: 0
         }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assigning functions
@@ -366,9 +396,12 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 name.clone()
             };
 
+            let arity = args.len();
             let func_id = SExpr::Function(SExprMetadata {
                 span: val.get_span(),
-                _type: Type::Error
+                _type: Type::Error,
+                arity,
+                saved_argc: 0
             }, func_name.clone());
 
             // Create the function
@@ -382,7 +415,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             funcs.insert(func_name, func);
             SExpr::Assign(SExprMetadata {
                 span,
-                _type: Type::Error
+                _type: Type::Error,
+                arity,
+                saved_argc: 0
             }, name, Box::new(func_id))
         }
 
@@ -391,7 +426,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let v = convert_node(*v, funcs, false, seen_funcs);
             SExpr::With(SExprMetadata {
                 span,
-                _type: v.get_metadata()._type.clone()
+                _type: v.get_metadata()._type.clone(),
+                arity: 0,
+                saved_argc: 0
             }, a.into_iter().map(|a| convert_node(a, funcs, false, seen_funcs)).collect(), Box::new(v))
         }
     }
