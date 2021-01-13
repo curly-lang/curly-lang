@@ -281,7 +281,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 // Functions
                 Type::Func(_, _) => {
                     // Functions with known arity and fully applied
-                    if f.get_metadata().arity >= args.len()
+                    if f.get_metadata().arity <= args.len() + f.get_metadata().saved_argc
                     {
                         // Get function and args
                         let fstr = convert_sexpr(f, root, func);
@@ -318,6 +318,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             func.code.push_str(get_c_type(&a.get_metadata()._type));
                         }
 
+                        // Call the function
                         func.code.push_str("))");
                         func.code.push_str(&fstr);
                         func.code.push_str(".func)(");
