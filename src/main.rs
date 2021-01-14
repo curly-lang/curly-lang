@@ -2,7 +2,7 @@ use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use std::env;
 use std::fs;
-use std::process::{Command, Stdio};
+use std::process::{Command, exit, Stdio};
 
 use curly_lang::backends::c::codegen;
 use curly_lang::frontend::correctness;
@@ -60,13 +60,13 @@ fn main() -> Result<(), ()>
                                     "clang" => options.compiler = CBackendCompiler::Clang,
                                     _ => {
                                         println!("Supported C compilers are gcc, tcc, and clang");
-                                        return Err(());
+                                        exit(1);
                                     }
                                 }
                             } else
                             {
                                 println!("Must specify a compiler to use");
-                                return Err(());
+                                exit(1);
                             }
                         }
 
@@ -77,7 +77,7 @@ fn main() -> Result<(), ()>
                             } else
                             {
                                 println!("Must specify an output file");
-                                return Err(());
+                                exit(1);
                             }
 
                         }
@@ -91,7 +91,7 @@ fn main() -> Result<(), ()>
                 if options.input == ""
                 {
                     println!("usage:\n{} build [options] [file]\noptions:\n--compiler - Sets the C compiler for the backend; supported compilers are gcc, tcc, and clang\n-o - Sets the output file", &name);
-                    return Err(());
+                    exit(1);
                 }
 
                 if options.output == ""
@@ -104,7 +104,7 @@ fn main() -> Result<(), ()>
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!("Error reading file: {}", e);
-                        return Err(());
+                        exit(1);
                     }
                 };
 
@@ -301,7 +301,7 @@ fn compile(code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
 
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir, repl_mode);
-    dbg!("{}", &c);
+    println!("{}", &c);
 
     Ok(c)
 }
