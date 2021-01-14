@@ -571,7 +571,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     }
 
     // Declare all functions
-    let mut code_string = String::from("typedef struct {\nunsigned int refc;\nvoid* func;\nvoid* wrapper;\nunsigned int arity;\nunsigned int argc;\nvoid** args;\n} func_t;\nint printf(char*, ...);\nvoid* calloc(size_t, size_t);\nvoid free(void*);\n");
+    let mut code_string = String::from("typedef struct {\nunsigned int refc;\nvoid* func;\nvoid* wrapper;\nunsigned int arity;\nunsigned int argc;\nvoid** args;\n} func_t;\nint printf(const char*, ...);\nvoid* calloc(long unsigned int, long unsigned int);\nvoid free(void*);\n");
     for f in funcs.iter()
     {
         put_fn_declaration(&mut code_string, f.0, &f.1);

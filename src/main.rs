@@ -10,17 +10,184 @@ use curly_lang::frontend::ir;
 use curly_lang::frontend::ir::IR;
 use curly_lang::frontend::parser;
 
-fn main()
+enum CBackendCompiler
+{
+    TCC,
+    GCC,
+    Clang
+}
+
+struct CommandlineBuildOptions
+{
+    compiler: CBackendCompiler,
+    output: String,
+    input: String
+}
+
+fn main() -> Result<(), ()>
 {
     let args = env::args();
 
     if args.len() == 1
     {
         repl();
+        Ok(())
     } else
     {
-        let args: Vec<String> = args.into_iter().collect();
-        exec_file(&args[1]);
+        let mut args = args.into_iter();
+        let name = args.next().unwrap();
+
+        match args.next().unwrap().as_str()
+        {
+            "build" => {
+                let mut options = CommandlineBuildOptions {
+                    compiler: CBackendCompiler::TCC,
+                    output: String::with_capacity(0),
+                    input: String::with_capacity(0)
+                };
+
+                while let Some(a) = args.next()
+                {
+                    match a.as_str()
+                    {
+                        "--compiler" => {
+                            if let Some(v) = args.next()
+                            {
+                                match v.as_str()
+                                {
+                                    "gcc" => options.compiler = CBackendCompiler::GCC,
+                                    "tcc" => options.compiler = CBackendCompiler::TCC,
+                                    "clang" => options.compiler = CBackendCompiler::Clang,
+                                    _ => {
+                                        println!("Supported C compilers are gcc, tcc, and clang");
+                                        return Err(());
+                                    }
+                                }
+                            } else
+                            {
+                                println!("Must specify a compiler to use");
+                                return Err(());
+                            }
+                        }
+
+                        "-o" => {
+                            if let Some(v) = args.next()
+                            {
+                                options.output = v;
+                            } else
+                            {
+                                println!("Must specify an output file");
+                                return Err(());
+                            }
+
+                        }
+
+                        _ => {
+                            options.input = a;
+                        }
+                    }
+                }
+
+                if options.input == ""
+                {
+                    println!("usage:\n{} build [options] [file]\noptions:\n--compiler - Sets the C compiler for the backend; supported compilers are gcc, tcc, and clang\n-o - Sets the output file", &name);
+                    return Err(());
+                }
+
+                if options.output == ""
+                {
+                    options.output = String::from(options.input.split(".").into_iter().next().unwrap());
+                }
+
+                let contents = match fs::read_to_string(&options.input)
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("Error reading file: {}", e);
+                        return Err(());
+                    }
+                };
+
+                let mut ir = IR::new();
+                let c = compile(&contents, &mut ir, true)?;
+
+                let mut echo = Command::new("echo")
+                        .arg(&c)
+                        .stdout(Stdio::piped())
+                        .spawn()
+                        .expect("Failed to execute echo");
+                echo.wait().expect("Failed to wait for echo");
+
+                match options.compiler
+                {
+                    CBackendCompiler::TCC => {
+                        Command::new("tcc")
+                                .arg("-o")
+                                .arg(&options.output)
+                                .arg("-")
+                                .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+                                .spawn()
+                                .expect("Failed to execute tcc")
+                                .wait()
+                                .expect("Failed to wait for tcc");
+
+                    }
+
+                    CBackendCompiler::GCC => {
+                        Command::new("gcc")
+                                .arg("-x")
+                                .arg("c")
+                                .arg("-o")
+                                .arg(&options.output)
+                                .arg("-")
+                                .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+                                .spawn()
+                                .expect("Failed to execute gcc")
+                                .wait()
+                                .expect("Failed to wait for gcc");
+
+                    }
+
+                    CBackendCompiler::Clang => {
+                        Command::new("clang")
+                                .arg("-x")
+                                .arg("c")
+                                .arg("-o")
+                                .arg(&options.output)
+                                .arg("-")
+                                .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+                                .spawn()
+                                .expect("Failed to execute clang")
+                                .wait()
+                                .expect("Failed to wait for clang");
+
+                    }
+                }
+
+            }
+
+            "run" => {
+                match args.next()
+                {
+                    Some(file) => {
+                        exec_file(&file);
+                    }
+
+                    None => {
+                        println!("usage:\n{} run [file]", &name);
+                    }
+                }
+            }
+
+            _ => {
+                println!("usage:
+{} run [file]
+{} build [options] [file]
+ ", &name, &name);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -96,17 +263,17 @@ fn repl()
     rl.save_history("history.txt").unwrap();
 }
 
-// execute(&str, &mut IRi, bool) -> ()
-// Executes Curly code.
-fn execute(code: &str, ir: &mut IR, repl_mode: bool)
+// compile(&str, &mut IR, bool) -> Result<String, ()>
+// Compiles curly into C code.
+fn compile(code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
 {
-    // Generate the ast
+   // Generate the ast
     let ast = match parser::parse(code)
     {
         Ok(v) => v,
         Err(e) => {
-            println!("{:?}", e);
-            return;
+            dbg!("{:?}", e);
+            return Err(());
         }
     };
 
@@ -114,7 +281,7 @@ fn execute(code: &str, ir: &mut IR, repl_mode: bool)
     println!("{:#?}", &ast);
     ir.clear();
     ir::convert_ast_to_ir(ast, ir);
-    println!("{:#?}", &ir);
+    dbg!("{:#?}", &ir);
 
     // Check correctness
     let err = correctness::check_correctness(ir);
@@ -122,16 +289,33 @@ fn execute(code: &str, ir: &mut IR, repl_mode: bool)
     // Print out the ir or the error
     match err
     {
-        Ok(_) => println!("{:#?}", &ir),
+        Ok(_) => {
+            dbg!("{:#?}", &ir);
+        }
+
         Err(e) => {
-            println!("{:?}", e);
-            return;
+            eprintln!("{:?}", e);
+            return Err(());
         }
     }
 
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir, repl_mode);
-    println!("{}", &c);
+    dbg!("{}", &c);
+
+    Ok(c)
+}
+
+// execute(&str, &mut IRi, bool) -> ()
+// Executes Curly code.
+fn execute(code: &str, ir: &mut IR, repl_mode: bool)
+{
+    // Compile code
+    let c = match compile(code, ir, repl_mode)
+    {
+        Ok(v) => v,
+        Err(_) => return
+    };
 
     // Execute the C code
     let mut echo = Command::new("echo")
