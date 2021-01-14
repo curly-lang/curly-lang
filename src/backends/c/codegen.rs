@@ -105,7 +105,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             // Generate code
             func.code.push_str("func_t ");
             func.code.push_str(&name);
-            func.code.push_str(" = { 1, (void*) ");
+            func.code.push_str(" = { 0, (void*) ");
             func.code.push_str(s);
             func.code.push_str(", (void*) 0, ");
             func.code.push_str(&format!("{}", root.funcs.get(s).unwrap().args.len()));
@@ -357,7 +357,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                         // Create new function structure
                         func.code.push_str("func_t ");
                         func.code.push_str(&name);
-                        func.code.push_str(" = { 1, ");
+                        func.code.push_str(" = { 0, ");
                         func.code.push_str(&fstr);
                         func.code.push_str(".func, ");
                         func.code.push_str(&fstr);
@@ -412,6 +412,18 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(" = ");
             func.code.push_str(&val);
             func.code.push_str(";\n");
+
+            // Increment reference counter
+            match m._type
+            {
+                Type::Func(_, _) => {
+                    func.code.push_str(&a);
+                    func.code.push_str(".refc++;\n");
+                }
+
+                _ => ()
+            }
+
             a.clone()
         }
 
@@ -428,9 +440,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(";\n{\n");
 
             // Assignments
+            let mut astrs = vec![];
             for a in a
             {
-                convert_sexpr(a, root, func);
+                astrs.push(convert_sexpr(a, root, func));
             }
 
             // Body
@@ -438,8 +451,49 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&body);
-            func.code.push_str(";\n}\n");
 
+            // Increment body reference count
+            match m._type
+            {
+                Type::Func(_, _) => {
+                    func.code.push_str(&name);
+                    func.code.push_str(".refc++;\n");
+                }
+
+                _ => ()
+            }
+
+            // Decrement assignment reference counts and free if necessary
+            for a in a.iter().enumerate()
+            {
+                match a.1.get_metadata()._type
+                {
+                    Type::Func(_, _) => {
+                        func.code.push_str(&astrs[a.0]);
+                        func.code.push_str(".refc--;\nif (");
+                        func.code.push_str(&astrs[a.0]);
+                        func.code.push_str(".refc == 0) {\nfree(");
+                        func.code.push_str(&astrs[a.0]);
+                        func.code.push_str(".args)\n}\n");
+                    }
+
+                    _ => ()
+                }
+            }
+
+            // Decrement body reference count
+            match m._type
+            {
+                Type::Func(_, _) => {
+                    func.code.push_str(&name);
+                    func.code.push_str(".refc--;\n");
+                }
+
+                _ => ()
+            }
+
+            // Exit block and return success
+            func.code.push_str(";\n}\n");
             name
         }
 
@@ -510,14 +564,14 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     };
 
     // Populate the main function
-    let mut printables = vec![];
+    let mut values = vec![];
     for s in ir.sexprs.iter()
     {
-        printables.push(convert_sexpr(s, ir, &mut main_func));
+        values.push(convert_sexpr(s, ir, &mut main_func));
     }
 
     // Declare all functions
-    let mut code_string = String::from("typedef struct {\nunsigned int refc;\nvoid* func;\nvoid* wrapper;\nunsigned int arity;\nunsigned int argc;\nvoid** args;\n} func_t;\nint printf(char*, ...);\nvoid* calloc(size_t, size_t);\n");
+    let mut code_string = String::from("typedef struct {\nunsigned int refc;\nvoid* func;\nvoid* wrapper;\nunsigned int arity;\nunsigned int argc;\nvoid** args;\n} func_t;\nint printf(char*, ...);\nvoid* calloc(size_t, size_t);\nvoid free(void*);\n");
     for f in funcs.iter()
     {
         put_fn_declaration(&mut code_string, f.0, &f.1);
@@ -540,7 +594,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     let mut iter = ir.sexprs.iter();
     if true // repl_mode
     {
-        for p in printables
+        for p in values.iter()
         {
             code_string.push_str("printf(\"");
 
@@ -571,6 +625,21 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
             );
 
             code_string.push_str(");\n");
+        }
+    }
+
+    // Deallocate everything
+    for v in ir.sexprs.iter().enumerate()
+    {
+        match v.1.get_metadata()._type
+        {
+            Type::Func(_, _) => {
+                code_string.push_str("free(");
+                code_string.push_str(&values[v.0]);
+                code_string.push_str(".args);\n");
+            }
+
+            _ => ()
         }
     }
 
