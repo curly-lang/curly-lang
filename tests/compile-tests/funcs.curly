@@ -3,3 +3,8 @@ sum x: Int, y: Int, z: Int = x + y + z
 sum_5 = sum 2 3
 
 sum_5 4
+
+foo x: Int =
+	with bar y: Int = y,
+		bar
+baz = foo 2
