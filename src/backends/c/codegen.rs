@@ -531,7 +531,6 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction)
 
 // convert_ir_to_c(&IR, bool) -> String
 // Converts Curly IR to C code.
-#[allow(unused_variables)]
 pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
 {
     // Create and populate functions
@@ -564,10 +563,59 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     };
 
     // Populate the main function
-    let mut values = vec![];
+    let mut cleanup = vec![];
     for s in ir.sexprs.iter()
     {
-        values.push(convert_sexpr(s, ir, &mut main_func));
+        let v = convert_sexpr(s, ir, &mut main_func);
+
+        // Debug print
+        if repl_mode
+        {
+            main_func.code.push_str("printf(\"");
+
+            // Determine the type
+            main_func.code.push_str(
+                match s.get_metadata()._type
+                {
+                    Type::Int => "%lli",
+                    Type::Float => "%0.5f",
+                    Type::Bool => "%s",
+                    Type::Func(_, _) => "<func %p>",
+                    _ => panic!("unsupported type!")
+                }
+            );
+
+            main_func.code.push_str("\\n\", ");
+            main_func.code.push_str(&v);
+
+            // Deal with booleans and functions
+            main_func.code.push_str(
+                match s.get_metadata()._type
+                {
+                    Type::Bool => " ? \"true\" : \"false\"",
+                    Type::Func(_, _) => ".func",
+                    _ => ""
+                }
+            );
+
+            main_func.code.push_str(");\n");
+        }
+
+        // Deallocation
+        match s.get_metadata()._type
+        {
+            Type::Func(_, _) => {
+                main_func.code.push_str("if (");
+                main_func.code.push_str(&v);
+                main_func.code.push_str(".refc == 0)\nfree(");
+                main_func.code.push_str(&v);
+                main_func.code.push_str(".args);\n");
+                cleanup.push(v);
+            }
+
+            _ => ()
+        }
+
     }
 
     // Declare all functions
@@ -590,53 +638,17 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     code_string.push_str("int main() {\n");
     code_string.push_str(&main_func.code);
 
-    // Print out the value of each statement
-    let mut iter = ir.sexprs.iter();
-    if true // repl_mode
-    {
-        for p in values.iter()
-        {
-            code_string.push_str("printf(\"");
-
-            // Determine the type
-            let _type = &iter.next().unwrap().get_metadata()._type;
-            code_string.push_str(
-                match _type
-                {
-                    Type::Int => "%lli",
-                    Type::Float => "%0.5f",
-                    Type::Bool => "%s",
-                    Type::Func(_, _) => "<func %p>",
-                    _ => panic!("unsupported type!")
-                }
-            );
-
-            code_string.push_str("\\n\", ");
-            code_string.push_str(&p);
-
-            // Deal with booleans and functions
-            code_string.push_str(
-                match _type
-                {
-                    Type::Bool => " ? \"true\" : \"false\"",
-                    Type::Func(_, _) => ".func",
-                    _ => ""
-                }
-            );
-
-            code_string.push_str(");\n");
-        }
-    }
-
     // Deallocate everything
     for v in ir.sexprs.iter().enumerate()
     {
         match v.1.get_metadata()._type
         {
             Type::Func(_, _) => {
-                code_string.push_str("free(");
-                code_string.push_str(&values[v.0]);
-                code_string.push_str(".args);\n");
+                main_func.code.push_str("if (");
+                main_func.code.push_str(&cleanup[v.0]);
+                main_func.code.push_str(".refc != 0)\nfree(");
+                main_func.code.push_str(&cleanup[v.0]);
+                main_func.code.push_str(".args);\n");
             }
 
             _ => ()
