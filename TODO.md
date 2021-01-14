@@ -40,4 +40,5 @@ These things are features and fixes I'd like to get completed in some point in t
 These things are goals that will take months, if not years, to even start due to either their complexity or dependencies.
 - Package manager (written in Curly)
 - Bootstraped compiler
+- Optimisations
 
