@@ -46,7 +46,7 @@ pub struct SExprMetadata
     pub span: Span,
     pub _type: Type,
     pub arity: usize,
-    pub saved_argc: usize
+    pub saved_argc: Option<usize>
 }
 
 // Represents an s expression
@@ -235,7 +235,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Int,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, n),
 
         // Float
@@ -243,7 +243,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Float,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, n),
 
         // True
@@ -251,7 +251,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Bool,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }),
  
         // False
@@ -259,7 +259,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Bool,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }),
 
         // Symbol
@@ -267,7 +267,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Error,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, s),
 
         // String
@@ -275,7 +275,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::String,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, s),
 
         // Prefix
@@ -291,7 +291,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 span,
                 _type: Type::Error,
                 arity: 0,
-                saved_argc: 0
+                saved_argc: None
             }, op, Box::new(convert_node(*v, funcs, global, seen_funcs)))
         }
 
@@ -304,7 +304,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     span,
                     _type: Type::Error,
                     arity: 0,
-                    saved_argc: 0
+                    saved_argc: None
                 }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             } else if op == "or"
             {
@@ -312,7 +312,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     span,
                     _type: Type::Error,
                     arity: 0,
-                    saved_argc: 0
+                    saved_argc: None
                 }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             } else
             {
@@ -345,7 +345,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     span,
                     _type: Type::Error,
                     arity: 0,
-                    saved_argc: 0
+                    saved_argc: None
                 }, op, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
             }
         }
@@ -355,7 +355,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Error,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, Box::new(convert_node(*cond, funcs, global, seen_funcs)), Box::new(convert_node(*then, funcs, global, seen_funcs)), Box::new(convert_node(*elsy, funcs, global, seen_funcs))),
 
         // Application
@@ -363,7 +363,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Error,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs))),
 
         // Assignment
@@ -371,7 +371,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: Type::Error,
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assignment with types
@@ -379,7 +379,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             span,
             _type: types::convert_ast_to_type(*_type),
             arity: 0,
-            saved_argc: 0
+            saved_argc: None
         }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assigning functions
@@ -401,7 +401,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 span: val.get_span(),
                 _type: Type::Error,
                 arity,
-                saved_argc: 0
+                saved_argc: None
             }, func_name.clone());
 
             // Create the function
@@ -417,7 +417,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 span,
                 _type: Type::Error,
                 arity,
-                saved_argc: 0
+                saved_argc: None
             }, name, Box::new(func_id))
         }
 
@@ -428,7 +428,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 span,
                 _type: v.get_metadata()._type.clone(),
                 arity: 0,
-                saved_argc: 0
+                saved_argc: None
             }, a.into_iter().map(|a| convert_node(a, funcs, false, seen_funcs)).collect(), Box::new(v))
         }
     }

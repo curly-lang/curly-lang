@@ -245,7 +245,11 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         {
                             0
                         };
-                        m.saved_argc = func.get_metadata().saved_argc + 1;
+
+                        if let Some(v) = func.get_metadata().saved_argc
+                        {
+                            m.saved_argc = Some(v + 1);
+                        }
                     } else
                     {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
@@ -379,7 +383,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
                     },
                     _type: Type::Error,
                     arity: 0,
-                    saved_argc: 0
+                    saved_argc: None
                 };
 
                 swap(&mut meta, m);
@@ -627,10 +631,10 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
 {
     // Put function in scope
     let mut vars = vec![HashMap::new()];
-    scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), 0);
+    scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None);
     if name != refr
     {
-        scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), 0);
+        scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None);
     }
 
     // Put arguments into scope
@@ -661,9 +665,9 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
         // Put function type in global scope
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), 0);
+            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(0));
         }
-        scope.put_var_raw(String::from(name), acc, func.args.len(), 0);
+        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(0));
     }
 }
 
@@ -689,7 +693,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         ir.metadata.push_scope();
         for arg in &func.args
         {
-            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, 0);
+            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, None);
         }
 
         // Check body
