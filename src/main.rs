@@ -1,14 +1,20 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFiles;
+use codespan_reporting::term;
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use std::env;
 use std::fs;
-use std::process::{Command, exit, Stdio};
+use std::process::{Command, Stdio};
 
 use curly_lang::backends::c::codegen;
 use curly_lang::frontend::correctness;
+use curly_lang::frontend::correctness::CorrectnessError;
 use curly_lang::frontend::ir;
 use curly_lang::frontend::ir::IR;
 use curly_lang::frontend::parser;
+use curly_lang::frontend::types::Type;
 
 enum CBackendCompiler
 {
@@ -60,13 +66,13 @@ fn main() -> Result<(), ()>
                                     "clang" => options.compiler = CBackendCompiler::Clang,
                                     _ => {
                                         println!("Supported C compilers are gcc, tcc, and clang");
-                                        exit(1);
+                                        return Err(());
                                     }
                                 }
                             } else
                             {
                                 println!("Must specify a compiler to use");
-                                exit(1);
+                                return Err(());
                             }
                         }
 
@@ -77,7 +83,7 @@ fn main() -> Result<(), ()>
                             } else
                             {
                                 println!("Must specify an output file");
-                                exit(1);
+                                return Err(());
                             }
 
                         }
@@ -91,7 +97,7 @@ fn main() -> Result<(), ()>
                 if options.input == ""
                 {
                     println!("usage:\n{} build [options] [file]\noptions:\n--compiler - Sets the C compiler for the backend; supported compilers are gcc, tcc, and clang\n-o - Sets the output file", &name);
-                    exit(1);
+                    return Err(());
                 }
 
                 if options.output == ""
@@ -104,12 +110,12 @@ fn main() -> Result<(), ()>
                     Ok(v) => v,
                     Err(e) => {
                         eprintln!("Error reading file: {}", e);
-                        exit(1);
+                        return Err(());
                     }
                 };
 
                 let mut ir = IR::new();
-                let c = compile(&contents, &mut ir, true)?;
+                let c = compile(&options.input, &contents, &mut ir, true)?;
 
                 let mut echo = Command::new("echo")
                         .arg(&c)
@@ -170,7 +176,19 @@ fn main() -> Result<(), ()>
                 match args.next()
                 {
                     Some(file) => {
-                        exec_file(&file);
+                        // Get file contents
+                        let contents = match fs::read_to_string(&file)
+                        {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Error reading file: {}", e);
+                                return Err(());
+                            }
+                        };
+
+                        // Execute file
+                        let mut ir = IR::new();
+                        execute(&file, &contents, &mut ir, false);
                     }
 
                     None => {
@@ -189,25 +207,6 @@ fn main() -> Result<(), ()>
 
         Ok(())
     }
-}
-
-// exec_file(&str) -> ()
-// Executes a file.
-fn exec_file(file: &str)
-{
-    // Get file contents
-    let contents = match fs::read_to_string(file)
-    {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("Error reading file: {}", e);
-            return;
-        }
-    };
-
-    // Execute file
-    let mut ir = IR::new();
-    execute(&contents, &mut ir, false);
 }
 
 // repl() -> ()
@@ -230,8 +229,6 @@ fn repl()
         match readline
         {
             Ok(line) => {
-                println!("Line: {}", line);
-
                 // Quitting
                 if line == ":q" || line == ":quit"
                 {
@@ -239,7 +236,7 @@ fn repl()
                 }
 
                 rl.add_history_entry(line.as_str());
-                execute(&line, &mut ir, true);
+                execute("<stdin>", &line, &mut ir, true);
             }
 
             // Errors
@@ -263,16 +260,27 @@ fn repl()
     rl.save_history("history.txt").unwrap();
 }
 
-// compile(&str, &mut IR, bool) -> Result<String, ()>
+// compile(&str, &str, &mut IR, bool) -> Result<String, ()>
 // Compiles curly into C code.
-fn compile(code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
+fn compile(filename: &str, code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
 {
-   // Generate the ast
+    // Set up codespan
+    let mut files = SimpleFiles::new();
+    let file_id = files.add(filename, code);
+    let writer = StandardStream::stderr(ColorChoice::Auto);
+    let config = term::Config::default();
+
+    // Generate the ast
     let ast = match parser::parse(code)
     {
         Ok(v) => v,
         Err(e) => {
-            dbg!("{:?}", e);
+            let diagnostic = Diagnostic::error()
+                                .with_message(&e.msg)
+                                .with_labels(vec![
+                                    Label::primary(file_id, e.span)
+                                ]);
+            term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             return Err(());
         }
     };
@@ -294,7 +302,122 @@ fn compile(code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
         }
 
         Err(e) => {
-            eprintln!("{:?}", e);
+            for e in e
+            {
+                let mut diagnostic = Diagnostic::error();
+                match e
+                {
+                    CorrectnessError::UndefinedPrefixOp(s, _, t) =>
+                        diagnostic = diagnostic
+                            .with_message("Undefined prefix operator")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("`-` is undefined on `{:?}`", t))
+                            ]),
+
+                    CorrectnessError::UndefinedInfixOp(s, op, l, r) =>
+                        diagnostic = diagnostic
+                            .with_message("Undefined infix operator")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("`{:?}` is undefined on `{:?}` and `{:?}`", op, l, r))
+                            ]),
+
+                    CorrectnessError::NonboolInBoolExpr(s, t) =>
+                        diagnostic = diagnostic
+                            .with_message("Nonboolean in boolean expression")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("Expected `Bool`, got `{:?}`", t))
+                            ]),
+
+                    CorrectnessError::NonboolInIfCond(s, t) =>
+                        diagnostic = diagnostic
+                            .with_message("Nonboolean in if condition")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("Expected `Bool`, got `{:?}`", t))
+                            ]),
+
+                    CorrectnessError::NonmatchingIfBodies(s1, t1, s2, t2) =>
+                        diagnostic = diagnostic
+                            .with_message("Nonmatching if expression clauses")
+                            .with_labels(vec![
+                                Label::secondary(file_id, s1)
+                                .with_message(format!("Then clause has type `{:?}`", t1)),
+                                Label::primary(file_id, s2)
+                                .with_message(format!("Expected `{:?}`, got `{:?}`", t1, t2))
+                            ]),
+
+                    CorrectnessError::NonmatchingAssignTypes(s1, t1, s2, t2) =>
+                        diagnostic = diagnostic
+                            .with_message("Nonmatching types in assignment")
+                            .with_labels(vec![
+                                Label::secondary(file_id, s1)
+                                .with_message(format!("Assignment is declared with type `{:?}`", t1)),
+                                Label::primary(file_id, s2)
+                                .with_message(format!("Expected `{:?}`, got `{:?}`", t1, t2))
+                            ]),
+
+                    CorrectnessError::SymbolNotFound(s, v) =>
+                        diagnostic = diagnostic
+                            .with_message("Symbol not found")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("Could not find symbol `{}`", v))
+                            ]),
+
+                    CorrectnessError::Reassignment(s1, s2, v) =>
+                        diagnostic = diagnostic
+                            .with_message("Redefinition of previously declared variable")
+                            .with_labels(vec![
+                                Label::primary(file_id, s1)
+                                .with_message(format!("`{}` is already defined and not declared as mutable", v)),
+                                Label::secondary(file_id, s2)
+                                .with_message(format!("`{}` previously defined here", v))
+                            ]),
+
+                    CorrectnessError::InvalidType(s) =>
+                        diagnostic = diagnostic
+                            .with_message("Invalid type used")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message("Undeclared type")
+                            ]),
+
+                    CorrectnessError::UnknownFunctionReturnType(s, v) =>
+                        diagnostic = diagnostic
+                            .with_message("Could not determine the return type of the function")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("Could not determine return type for `{}`", v))
+                            ]),
+
+                    CorrectnessError::MismatchedFunctionArgType(s, t1, t2) =>
+                        diagnostic = diagnostic
+                            .with_message("Wrong type passed as an argument")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("Expected `{:?}`, got `{:?}`", t1, t2))
+                            ]),
+
+                    CorrectnessError::InvalidApplication(s, t) => {
+                        diagnostic = diagnostic
+                            .with_message("Invalid application")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("Expected function, got `{:?}`", t))
+                            ]);
+
+                        if t == Type::String
+                        {
+                            diagnostic = diagnostic
+                                .with_notes(vec![String::from("String concatenation is not yet implemented")]);
+                        }
+                    }
+                }
+                term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+            }
             return Err(());
         }
     }
@@ -306,12 +429,12 @@ fn compile(code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
     Ok(c)
 }
 
-// execute(&str, &mut IRi, bool) -> ()
+// execute(&str, &str, &mut IRi, bool) -> ()
 // Executes Curly code.
-fn execute(code: &str, ir: &mut IR, repl_mode: bool)
+fn execute(filename: &str, code: &str, ir: &mut IR, repl_mode: bool)
 {
     // Compile code
-    let c = match compile(code, ir, repl_mode)
+    let c = match compile(filename, code, ir, repl_mode)
     {
         Ok(v) => v,
         Err(_) => return

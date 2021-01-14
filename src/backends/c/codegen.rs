@@ -270,12 +270,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         SExpr::Application(m, l, r) => {
             // Get the list of arguments and the function
             let mut args = vec![r];
-            let mut funcs = vec![l];
+            let mut funcs = vec![];
             let mut f = &**l;
             while let SExpr::Application(_, l, r) = f
             {
                 args.insert(0, r);
-                funcs.insert(0, l);
+                funcs.insert(0, f);
                 f = l;
             }
 
@@ -311,11 +311,17 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             func.code.push_str(".v;\n");
                         }
 
-
                         // Functions with unknown arity
+                        #[allow(unreachable_code)]
                         if f.get_metadata().arity == 0 || f.get_metadata().saved_argc.is_none()
                         {
-                            panic!("calling functions with unknown arity is not yet supported!");
+                            panic!("calling unknown arity functions not yet implemented!");
+                            func.code.push_str("");
+
+                            if n < funcs.len()
+                            {
+                                f = funcs[n];
+                            }
 
                         // Functions with known arity and fully applied
                         } else if f.get_metadata().arity <= astrs.len() + f.get_metadata().saved_argc.unwrap()
@@ -373,7 +379,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
 
                             // Close parentheses
                             func.code.push_str(");\n");
-                            f = funcs[n];
+                            
+                            if n < funcs.len()
+                            {
+                                f = funcs[n];
+                            }
+
                             astrs.clear();
                         } else
                         {

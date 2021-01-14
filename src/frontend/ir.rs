@@ -44,6 +44,7 @@ pub enum BinOp
 pub struct SExprMetadata
 {
     pub span: Span,
+    pub span2: Span,
     pub _type: Type,
     pub arity: usize,
     pub saved_argc: Option<usize>
@@ -153,7 +154,8 @@ pub struct IRFunction
 {
     pub args: Vec<(String, Type)>,
     pub body: SExpr,
-    pub global: bool
+    pub global: bool,
+    pub span: Span
 }
 
 #[derive(Debug)]
@@ -233,6 +235,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // Int
         AST::Int(span, n) => SExpr::Int(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Int,
             arity: 0,
             saved_argc: None
@@ -241,6 +244,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // Float
         AST::Float(span, n) => SExpr::Float(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Float,
             arity: 0,
             saved_argc: None
@@ -249,6 +253,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // True
         AST::True(span) => SExpr::True(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Bool,
             arity: 0,
             saved_argc: None
@@ -257,6 +262,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // False
         AST::False(span) => SExpr::False(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Bool,
             arity: 0,
             saved_argc: None
@@ -265,6 +271,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Error,
             arity: 0,
             saved_argc: None
@@ -273,6 +280,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // String
         AST::String(span, s) => SExpr::String(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::String,
             arity: 0,
             saved_argc: None
@@ -289,6 +297,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             SExpr::Prefix(SExprMetadata {
                 span,
+                span2: Span { start: 0, end: 0 },
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None
@@ -302,6 +311,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             {
                 SExpr::And(SExprMetadata {
                     span,
+                    span2: Span { start: 0, end: 0 },
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None
@@ -310,6 +320,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             {
                 SExpr::Or(SExprMetadata {
                     span,
+                    span2: Span { start: 0, end: 0 },
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None
@@ -343,6 +354,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 // Return
                 SExpr::Infix(SExprMetadata {
                     span,
+                    span2: Span { start: 0, end: 0 },
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None
@@ -353,6 +365,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // If expression
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Error,
             arity: 0,
             saved_argc: None
@@ -361,6 +374,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Error,
             arity: 0,
             saved_argc: None
@@ -369,18 +383,22 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         // Assignment
         AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
             span,
+            span2: Span { start: 0, end: 0 },
             _type: Type::Error,
             arity: 0,
             saved_argc: None
         }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
 
         // Assignment with types
-        AST::AssignTyped(span, name, _type, val) => SExpr::Assign(SExprMetadata {
-            span,
-            _type: types::convert_ast_to_type(*_type),
-            arity: 0,
-            saved_argc: None
-        }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
+        AST::AssignTyped(span, name, _type, val) => {
+            SExpr::Assign(SExprMetadata {
+                span,
+                span2: _type.get_span().clone(),
+                _type: types::convert_ast_to_type(*_type),
+                arity: 0,
+                saved_argc: None
+            }, name, Box::new(convert_node(*val, funcs, global, seen_funcs)))
+        }
 
         // Assigning functions
         AST::AssignFunction(span, name, args, val) => {
@@ -399,6 +417,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let arity = args.len();
             let func_id = SExpr::Function(SExprMetadata {
                 span: val.get_span(),
+                span2: Span { start: 0, end: 0 },
                 _type: Type::Error,
                 arity,
                 saved_argc: None
@@ -408,13 +427,18 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let func = IRFunction {
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
                 body: convert_node(*val, funcs, false, seen_funcs),
-                global
+                global,
+                span: Span {
+                    start: span.start,
+                    end: func_id.get_metadata().span.start - 1
+                }
             };
 
             // Return assigning to the function id
             funcs.insert(func_name, func);
             SExpr::Assign(SExprMetadata {
                 span,
+                span2: Span { start: 0, end: 0 },
                 _type: Type::Error,
                 arity,
                 saved_argc: None
@@ -426,6 +450,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let v = convert_node(*v, funcs, false, seen_funcs);
             SExpr::With(SExprMetadata {
                 span,
+                span2: Span { start: 0, end: 0 },
                 _type: v.get_metadata()._type.clone(),
                 arity: 0,
                 saved_argc: None

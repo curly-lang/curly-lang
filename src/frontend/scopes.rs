@@ -1,3 +1,4 @@
+use logos::Span;
 use std::collections::HashMap;
 
 use super::types::Type;
@@ -13,7 +14,7 @@ pub enum FunctionName
 #[derive(Debug)]
 pub struct Scope
 {
-    pub variables: HashMap<String, (Type, usize, Option<usize>)>,
+    pub variables: HashMap<String, (Type, usize, Option<usize>, Span)>,
     func_ret_types: HashMap<FunctionName, Type>,
     pub parent: Option<Box<Scope>>
 }
@@ -106,23 +107,23 @@ impl Scope
         self
     }
 
-    // put_var_raw(&mut self, String, Type, usize, Option<usize>) -> ()
+    // put_var_raw(&mut self, String, Type, usize, Option<usize>, Span) -> ()
     // Puts a variable in the current scope.
-    pub fn put_var_raw(&mut self, name: String, _type: Type, arity: usize, saved_argc: Option<usize>)
+    pub fn put_var_raw(&mut self, name: String, _type: Type, arity: usize, saved_argc: Option<usize>, span: Span)
     {
-        self.variables.insert(name, (_type, arity, saved_argc));
+        self.variables.insert(name, (_type, arity, saved_argc, span));
     }
 
-    // put_var(&mut self, &str, usize, Option<usize>) -> ()
+    // put_var(&mut self, &str, usize, Option<usize>, Span) -> ()
     // Puts a variable in the current scope.
-    pub fn put_var(&mut self, name: &str, _type: &Type, arity: usize, saved_argc: Option<usize>)
+    pub fn put_var(&mut self, name: &str, _type: &Type, arity: usize, saved_argc: Option<usize>, span: Span)
     {
-        self.variables.insert(String::from(name), (_type.clone(), arity, saved_argc));
+        self.variables.insert(String::from(name), (_type.clone(), arity, saved_argc, span));
     }
 
-    // get_var(&self, &str) -> Option<&(Type, usize, Option<usize>)>
+    // get_var(&self, &str) -> Option<&(Type, usize, Option<usize>, Span)>
     // Gets a variable from the stack of scopes.
-    pub fn get_var(&self, name: &str) -> Option<&(Type, usize, Option<usize>)>
+    pub fn get_var(&self, name: &str) -> Option<&(Type, usize, Option<usize>, Span)>
     {
         // Set up
         let name = String::from(name);

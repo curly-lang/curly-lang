@@ -11,13 +11,12 @@ pub enum CorrectnessError
 {
     UndefinedPrefixOp(Span, PrefixOp, Type),
     UndefinedInfixOp(Span, BinOp, Type, Type),
-    NonboolInBoolExpr(Span, Type, Type),
+    NonboolInBoolExpr(Span, Type),
     NonboolInIfCond(Span, Type),
     NonmatchingIfBodies(Span, Type, Span, Type),
-    NonmatchingAssignTypes(Span, Type, Type),
+    NonmatchingAssignTypes(Span, Type, Span, Type),
     SymbolNotFound(Span, String),
-    FunctionTypeNotFound(Span, String),
-    Reassignment(Span, String),
+    Reassignment(Span, Span, String),
     InvalidType(Span),
     UnknownFunctionReturnType(Span, String),
     MismatchedFunctionArgType(Span, Type, Type),
@@ -31,7 +30,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
     if let Type::ConversionError = sexpr.get_metadata()._type
     {
         errors.push(CorrectnessError::InvalidType(
-            sexpr.get_metadata().span.clone()
+            sexpr.get_metadata().span2.clone()
         ));
         return;
     }
@@ -55,7 +54,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     m.saved_argc = t.2;
                 }
 
-                None => errors.push(CorrectnessError::FunctionTypeNotFound(
+                None => errors.push(CorrectnessError::SymbolNotFound(
                     m.span.clone(),
                     f.clone()
                 ))
@@ -156,14 +155,21 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             // Assert the types are booleans.
-            if left.get_metadata()._type != Type::Bool || right.get_metadata()._type != Type::Bool
+            if left.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
-                    m.span.clone(),
+                    left.get_metadata().span.clone(),
                     left.get_metadata()._type.clone(),
-                    right.get_metadata()._type.clone()
                 ));
-            } else
+            }
+            if right.get_metadata()._type != Type::Bool
+            {
+                errors.push(CorrectnessError::NonboolInBoolExpr(
+                    right.get_metadata().span.clone(),
+                    right.get_metadata()._type.clone(),
+                ));
+            }
+            if left.get_metadata()._type == Type::Bool && right.get_metadata()._type == Type::Bool
             {
                 m._type = Type::Bool;
             }
@@ -229,9 +235,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             match &func.get_metadata()._type
             {
                 // Strings concatenate to other strings
-                Type::String => {
-                    m._type = Type::String;
-                }
+                // Type::String => {
+                //    m._type = Type::String;
+                // }
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
@@ -273,18 +279,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         // Assignments
         SExpr::Assign(m, name, value) => {
             // Check if variable already exists
-            if let Some(_) = root.metadata.scope.get_var(name)
+            if let Some(v) = root.metadata.scope.variables.get(name)
             {
-                // Only error if the value is not a sexpression
-                if let SExpr::Function(_, _) = **value {}
-                else
-                {
-                    errors.push(CorrectnessError::Reassignment(
-                            m.span.clone(),
-                            name.clone()
-                    ));
-                    return;
-                }
+                errors.push(CorrectnessError::Reassignment(
+                    m.span.clone(),
+                    v.3.clone(),
+                    name.clone()
+                ));
+                return;
             }
 
             // Check child node
@@ -308,8 +310,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     if m._type != value.get_metadata()._type
                     {
                         errors.push(CorrectnessError::NonmatchingAssignTypes(
-                            m.span.clone(),
+                            m.span2.clone(),
                             m._type.clone(),
+                            value.get_metadata().span.clone(),
                             value.get_metadata()._type.clone()
                         ));
                         m._type = Type::Error;
@@ -320,7 +323,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc);
+                root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start });
             }
         }
 
@@ -378,6 +381,10 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
             {
                 let mut meta = SExprMetadata {
                     span: Span {
+                        start: 0,
+                        end: 0
+                    },
+                    span2: Span {
                         start: 0,
                         end: 0
                     },
@@ -631,10 +638,10 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
 {
     // Put function in scope
     let mut vars = vec![HashMap::new()];
-    scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None);
+    scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 });
     if name != refr
     {
-        scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None);
+        scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 });
     }
 
     // Put arguments into scope
@@ -665,9 +672,9 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
         // Put function type in global scope
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(0));
+            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(0), func.span.clone());
         }
-        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(0));
+        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(0), func.span.clone());
     }
 }
 
@@ -693,7 +700,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         ir.metadata.push_scope();
         for arg in &func.args
         {
-            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, None);
+            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 });
         }
 
         // Check body
