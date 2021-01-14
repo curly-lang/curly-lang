@@ -41,4 +41,5 @@ These things are goals that will take months, if not years, to even start due to
 - Package manager (written in Curly)
 - Bootstraped compiler
 - Optimisations
+- Debugger
 
