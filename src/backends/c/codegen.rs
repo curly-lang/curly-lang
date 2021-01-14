@@ -279,6 +279,24 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 f = l;
             }
 
+            // Quick hack for debug function
+            // TODO: Make this not a hack
+            if let SExpr::Symbol(_, v) = f
+            {
+                if v == "debug"
+                {
+                    let arg = convert_sexpr(&args[0], root, func);
+                    put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type);
+                    if args.len() == 1
+                    {
+                        return arg;
+                    } else
+                    {
+                        panic!("Using debug on multiple arguments is not supported");
+                    }
+                }
+            }
+
             match f.get_metadata()._type
             {
                 // Functions
@@ -324,7 +342,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             }
 
                         // Functions with known arity and fully applied
-                        } else if f.get_metadata().arity <= astrs.len() + f.get_metadata().saved_argc.unwrap()
+                        } else if f.get_metadata().arity <= astrs.len() + f.get_metadata().saved_argc.unwrap() + 1
                         {
                             // Get name
                             astrs.push(v);
@@ -617,6 +635,40 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction)
     s.push(')');
 }
 
+// put_debug_fn(&mut String, &str, &Type) -> ()
+// Puts a debug function in the built string.
+fn put_debug_fn(code: &mut String, v: &str, _type: &Type)
+{
+    code.push_str("printf(\"");
+
+    // Determine the type
+    code.push_str(
+        match _type
+        {
+            Type::Int => "%lli",
+            Type::Float => "%0.5f",
+            Type::Bool => "%s",
+            Type::Func(_, _) => "<func %p>",
+            _ => panic!("unsupported type!")
+        }
+    );
+
+    code.push_str("\\n\", ");
+    code.push_str(v);
+
+    // Deal with booleans and functions
+    code.push_str(
+        match _type
+        {
+            Type::Bool => " ? \"true\" : \"false\"",
+            Type::Func(_, _) => ".func",
+            _ => ""
+        }
+    );
+
+    code.push_str(");\n");
+}
+
 // convert_ir_to_c(&IR, bool) -> String
 // Converts Curly IR to C code.
 #[allow(unused_variables)]
@@ -682,36 +734,9 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
         let v = convert_sexpr(s, ir, &mut main_func);
 
         // Debug print
-        if true// repl_mode
+        if repl_mode
         {
-            main_func.code.push_str("printf(\"");
-
-            // Determine the type
-            main_func.code.push_str(
-                match s.get_metadata()._type
-                {
-                    Type::Int => "%lli",
-                    Type::Float => "%0.5f",
-                    Type::Bool => "%s",
-                    Type::Func(_, _) => "<func %p>",
-                    _ => panic!("unsupported type!")
-                }
-            );
-
-            main_func.code.push_str("\\n\", ");
-            main_func.code.push_str(&v);
-
-            // Deal with booleans and functions
-            main_func.code.push_str(
-                match s.get_metadata()._type
-                {
-                    Type::Bool => " ? \"true\" : \"false\"",
-                    Type::Func(_, _) => ".func",
-                    _ => ""
-                }
-            );
-
-            main_func.code.push_str(");\n");
+            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type);
         }
 
         // Deallocation

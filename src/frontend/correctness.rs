@@ -231,6 +231,17 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 return;
             }
 
+            // Quick hack for debug functions
+            // TODO: Generic types so this isn't implemented as a hack
+            if let SExpr::Symbol(_, v) = &**func
+            {
+                if v == "debug"
+                {
+                    m._type = arg.get_metadata()._type.clone();
+                    return;
+                }
+            }
+
             // Match the function
             match &func.get_metadata()._type
             {
@@ -281,12 +292,17 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check if variable already exists
             if let Some(v) = root.metadata.scope.variables.get(name)
             {
-                errors.push(CorrectnessError::Reassignment(
-                    m.span.clone(),
-                    v.3.clone(),
-                    name.clone()
-                ));
-                return;
+                if let SExpr::Function(_, _) = **value {}
+                else
+                {
+                    errors.push(CorrectnessError::Reassignment(
+                        m.span.clone(),
+                        v.3.clone(),
+                        name.clone()
+                    ));
+                    return;
+                }
+                
             }
 
             // Check child node

@@ -104,7 +104,10 @@ impl Scope
 
          self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolXor, Type::Bool, Type::Bool), Type::Bool);
 
-        self
+         // Functions
+         self.put_var_raw(String::from("debug"), Type::Unknown, 1, None, Span { start: 0, end: 0 });
+
+         self
     }
 
     // put_var_raw(&mut self, String, Type, usize, Option<usize>, Span) -> ()
