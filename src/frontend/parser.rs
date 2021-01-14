@@ -30,6 +30,9 @@ enum Token
     #[regex(r"([ \t\f]|\\\n)+", logos::skip)]
     Whitespace,
 
+    #[regex(r"#[^\n]*\n", logos::skip)]
+    Comment,
+
     // Error
     #[error]
     Error,

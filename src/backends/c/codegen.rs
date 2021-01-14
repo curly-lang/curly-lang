@@ -311,7 +311,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             func.code.push_str(".v;\n");
                         }
 
-                        astrs.push(v);
 
                         // Functions with unknown arity
                         if f.get_metadata().arity == 0 || f.get_metadata().saved_argc.is_none()
@@ -322,6 +321,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                         } else if f.get_metadata().arity <= astrs.len() + f.get_metadata().saved_argc.unwrap()
                         {
                             // Get name
+                            astrs.push(v);
                             name = format!("_{}", func.last_reference);
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
@@ -375,6 +375,9 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             func.code.push_str(");\n");
                             f = funcs[n];
                             astrs.clear();
+                        } else
+                        {
+                            astrs.push(v);
                         }
                     }
 

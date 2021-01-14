@@ -8,3 +8,4 @@ foo x: Int =
 	with bar y: Int = y,
 		bar
 baz = foo 2
+# baz 4
