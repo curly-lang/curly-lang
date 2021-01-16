@@ -2,7 +2,11 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use rustyline::Editor;
+use rustyline::{Editor, Helper};
+use rustyline::completion::Completer;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::validate::Validator;
 use rustyline::error::ReadlineError;
 use std::collections::HashMap;
 use std::env;
@@ -18,6 +22,8 @@ use curlyc::frontend::ir;
 use curlyc::frontend::ir::{IR, SExpr};
 use curlyc::frontend::parser;
 use curlyc::frontend::types::Type;
+
+static DEBUG: bool = false;
 
 enum CBackendCompiler
 {
@@ -170,7 +176,6 @@ fn main() -> Result<(), ()>
                                 .expect("Failed to wait for clang");
                     }
                 }
-
             }
 
             "run" => {
@@ -205,7 +210,7 @@ fn main() -> Result<(), ()>
                 println!("usage:
 {} run [file]
 {} build [options] [file]
- ", &name, &name);
+", &name, &name);
             }
         }
 
@@ -235,12 +240,38 @@ enum REPLValue
     Func(REPLFunc)
 }
 
+struct CurlyREPLHelper {}
+
+impl Completer for CurlyREPLHelper
+{
+    type Candidate = String;
+}
+
+impl Hinter for CurlyREPLHelper
+{
+    type Hint = String;
+}
+
+impl Highlighter for CurlyREPLHelper
+{
+}
+
+impl Validator for CurlyREPLHelper
+{
+}
+
+impl Helper for CurlyREPLHelper
+{
+}
+
 // repl() -> ()
 // Executes the REPL.
 fn repl()
 {
     // `()` can be used when no completer is required
-    let mut rl = Editor::<()>::new();
+    let mut rl = Editor::new();
+    let helper = CurlyREPLHelper {};
+    rl.set_helper(Some(helper));
     if rl.load_history("history.txt").is_err()
     {
         println!("No previous history.");
@@ -317,10 +348,10 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
     };
 
     // Print out the ast
-    println!("{:#?}", &ast);
+    if DEBUG { println!("{:#?}", &ast); }
     ir.clear();
     ir::convert_ast_to_ir(ast, ir);
-    dbg!(&ir);
+    if DEBUG { dbg!(&ir); }
 
     // Check correctness
     let err = correctness::check_correctness(ir);
@@ -328,9 +359,11 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
     // Print out the ir or the error
     match err
     {
-        Ok(_) => {
+        Ok(_) if DEBUG => {
             dbg!(&ir);
         }
+
+        Ok(_) => (),
 
         Err(e) => {
             for e in e
@@ -455,7 +488,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
 
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir, repl_vars);
-    println!("{}", &c);
+    if DEBUG { println!("{}", &c); }
 
     Ok(c)
 }

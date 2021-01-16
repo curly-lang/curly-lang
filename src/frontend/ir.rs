@@ -464,7 +464,6 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
     let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
-    println!("{:?}", seen_funcs);
     for ast in asts
     {
         ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs));

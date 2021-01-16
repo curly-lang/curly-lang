@@ -338,7 +338,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                println!("uwu!!!");
                 root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start }, true);
             }
         }
