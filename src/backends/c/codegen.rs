@@ -267,10 +267,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         }
 
         // Applications
-        SExpr::Application(m, l, r) => {
+        SExpr::Application(_, l, r) => {
             // Get the list of arguments and the function
             let mut args = vec![r];
-            let mut funcs = vec![];
+            let mut funcs = vec![sexpr];
             let mut f = &**l;
             while let SExpr::Application(_, l, r) = f
             {
@@ -297,6 +297,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 }
             }
 
+            let mut unknown_arity = false;
             match f.get_metadata()._type
             {
                 // Functions
@@ -330,11 +331,53 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                         }
 
                         // Functions with unknown arity
-                        #[allow(unreachable_code)]
                         if f.get_metadata().arity == 0 || f.get_metadata().saved_argc.is_none()
                         {
-                            panic!("calling unknown arity functions not yet implemented!");
-                            func.code.push_str("");
+                            // Check for function list if just got into this state of unknown arity
+                            if !unknown_arity
+                            {
+                                unknown_arity = true;
+
+                                // Init list
+                                func.code.push_str("if (");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".args == (void*) 0)\n");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".args = calloc(");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".arity, sizeof(void*));\n");
+                            }
+
+                            // Save argument
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".args[");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".argc++] = (void*) ");
+                            func.code.push_str(&v);
+                            func.code.push_str(";\n");
+
+                            // Call the function
+                            let _type = &funcs[n].get_metadata()._type;
+                            name = format!("_{}", func.last_reference);
+                            func.last_reference += 1;
+                            func.code.push_str(get_c_type(_type));
+                            func.code.push(' ');
+                            func.code.push_str(&name);
+                            func.code.push_str(";\nif (");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".arity == ");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".argc) {\n");
+                            func.code.push_str(&name);
+                            func.code.push_str(" = ((");
+                            func.code.push_str(get_c_type(_type));
+                            func.code.push_str(" (*)(func_t*))");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".wrapper)(&");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(");\n");
+
+                            func.code.push_str("}\n");
 
                             if n < funcs.len()
                             {
@@ -349,13 +392,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             name = format!("_{}", func.last_reference);
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
-                            func.code.push_str(get_c_type(&m._type));
+                            let _type = &funcs[n].get_metadata()._type;
+                            func.code.push_str(get_c_type(_type));
                             func.code.push(' ');
                             func.code.push_str(&name);
                             func.code.push_str(" = ((");
 
                             // Create function pointer
-                            func.code.push_str(get_c_type(&m._type));
+                            func.code.push_str(get_c_type(_type));
                             func.code.push_str(" (*)(");
                             for i in 0..saved_argc + f.get_metadata().arity
                             {

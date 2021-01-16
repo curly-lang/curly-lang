@@ -1,11 +1,11 @@
 sum x: Int, y: Int, z: Int = x + y + z
-
+debug sum
 sum_5 = sum 2 3
-
-sum_5 4
+debug sum_5
+debug (sum_5 4)
 
 foo x: Int =
 	with bar y: Int = y,
 		bar
 baz = foo 2
-# baz 4
+debug (baz 4)

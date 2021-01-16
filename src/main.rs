@@ -8,13 +8,13 @@ use std::env;
 use std::fs;
 use std::process::{Command, Stdio};
 
-use curly_lang::backends::c::codegen;
-use curly_lang::frontend::correctness;
-use curly_lang::frontend::correctness::CorrectnessError;
-use curly_lang::frontend::ir;
-use curly_lang::frontend::ir::IR;
-use curly_lang::frontend::parser;
-use curly_lang::frontend::types::Type;
+use curlyc::backends::c::codegen;
+use curlyc::frontend::correctness;
+use curlyc::frontend::correctness::CorrectnessError;
+use curlyc::frontend::ir;
+use curlyc::frontend::ir::IR;
+use curlyc::frontend::parser;
+use curlyc::frontend::types::Type;
 
 enum CBackendCompiler
 {

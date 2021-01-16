@@ -1,5 +1,5 @@
 [package]
-name = "curly-lang"
+name = "curlyc"
 version = "0.1.0"
 authors = ["jenra"]
 edition = "2018"
