@@ -5,7 +5,7 @@ debug sum_5
 debug (sum_5 4)
 
 foo x: Int =
-	with bar y: Int = y,
+	with bar x: Int, y: Int, z: Int = x+y+z,
 		bar
 baz = foo 2
-debug (baz 4)
+debug (baz 4 5 6)

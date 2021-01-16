@@ -3,7 +3,6 @@
 These things must be completed before the first official release of Curly (v0.1.0).
 - Allow applications after function is fully applied
 - Add function types in type declarations
-- Let the code generator generate code for functions whose arity is unknown
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
 
 ## Second official release:
