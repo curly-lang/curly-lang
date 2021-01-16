@@ -305,9 +305,7 @@ impl CurlyREPLHelper
                 Colon
                     | Comma
                     | Backslash
-                    | Dot
-                    | Range
-                    | Assign =>
+                    | Dot =>
                     new_line.push_str(&line[t.1]),
 
                 Mul
@@ -318,7 +316,9 @@ impl CurlyREPLHelper
                     | Compare
                     | Ampersand
                     | Bar
-                    | Caret =>
+                    | Caret
+                    | Range
+                    | Assign =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().bright_yellow())),
 
                 Int(_)
