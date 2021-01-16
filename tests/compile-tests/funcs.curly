@@ -9,3 +9,5 @@ foo x: Int =
 		bar
 baz = foo 2
 debug (baz 4 5 6)
+
+debug (foo 1 2 3 4)

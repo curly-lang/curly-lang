@@ -115,7 +115,7 @@ fn main() -> Result<(), ()>
                 };
 
                 let mut ir = IR::new();
-                let c = compile(&options.input, &contents, &mut ir, true)?;
+                let c = compile(&options.input, &contents, &mut ir, false)?;
 
                 let mut echo = Command::new("echo")
                         .arg(&c)

@@ -1,9 +1,9 @@
 # List of things to do
 ## First official release:
 These things must be completed before the first official release of Curly (v0.1.0).
-- Allow applications after function is fully applied
 - Add function types in type declarations
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
+- Fix bug where functions can be redefined
 
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
@@ -24,11 +24,11 @@ These things are features and fixes I'd like to get completed for the fourth maj
 - Generics
 - Mutability
 - Laziness
+- `?`/`!` operators
 
 ## Future releases
 These things are features and fixes I'd like to get completed in some point in the far future. Although these features are desired, they are not a priority due to either their complexity or dependencies. These are not in any particular order, and will be moved into an appropriate release when decided upon. These features, however, will be necessary to implement before an official v1.0.0.
 - Standard library
-- `?` and `!` operators
 - Overridable operators
 - Iterators
 - For loops
