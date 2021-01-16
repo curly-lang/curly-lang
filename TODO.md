@@ -7,7 +7,6 @@ These things must be completed before the first official release of Curly (v0.1.
 
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
-- A functional REPL (this may or may not get procrastinated on really hard)
 - Closures (named and anonymous)
 - Lambdas
 - Lists

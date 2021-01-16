@@ -15,7 +15,7 @@ use curlyc::backends::c::codegen;
 use curlyc::frontend::correctness;
 use curlyc::frontend::correctness::CorrectnessError;
 use curlyc::frontend::ir;
-use curlyc::frontend::ir::IR;
+use curlyc::frontend::ir::{IR, SExpr};
 use curlyc::frontend::parser;
 use curlyc::frontend::types::Type;
 
@@ -117,7 +117,7 @@ fn main() -> Result<(), ()>
                 };
 
                 let mut ir = IR::new();
-                let c = compile(&options.input, &contents, &mut ir, false)?;
+                let c = compile(&options.input, &contents, &mut ir, None)?;
 
                 let mut echo = Command::new("echo")
                         .arg(&c)
@@ -226,11 +226,12 @@ struct REPLFunc
 }
 
 #[derive(Debug)]
+#[repr(C)]
 enum REPLValue
 {
     Int(i64),
     Float(f64),
-    Bool(bool),
+    Bool(u8),
     Func(REPLFunc)
 }
 
@@ -249,7 +250,8 @@ fn repl()
     let mut guard = Guard::new()
         .expect("unable to initialise tcc guard");
     let mut ir = IR::new();
-    let mut vars: HashMap<String, REPLValue> = HashMap::new();
+    let mut var_names = vec![];
+    let mut vars = HashMap::new();
 
     loop
     {
@@ -265,7 +267,7 @@ fn repl()
                 }
 
                 rl.add_history_entry(line.as_str());
-                execute("<stdin>", &line, &mut ir, Some(&mut vars), &mut guard);
+                execute("<stdin>", &line, &mut ir, Some((&mut var_names, &mut vars)), &mut guard);
             }
 
             // Errors
@@ -289,9 +291,9 @@ fn repl()
     rl.save_history("history.txt").unwrap();
 }
 
-// compile(&str, &str, &mut IR, bool) -> Result<String, ()>
+// compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
 // Compiles curly into C code.
-fn compile(filename: &str, code: &str, ir: &mut IR, repl_mode: bool) -> Result<String, ()>
+fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
 {
     // Set up codespan
     let mut files = SimpleFiles::new();
@@ -452,20 +454,20 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_mode: bool) -> Result<S
     }
 
     // Generate C code
-    let c = codegen::convert_ir_to_c(&ir, repl_mode);
+    let c = codegen::convert_ir_to_c(&ir, repl_vars);
     println!("{}", &c);
 
     Ok(c)
 }
 
-// execute(&str, &str, &mut IR, Option<&mut HashMap<String, REPLType>>, &mut Guard) -> ()
+// execute(&str, &str, &mut IR, Option<(&mut Vec<String>, &mut HashMap<String, REPLType>)>, &mut Guard) -> ()
 // Executes Curly code.
-fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&mut HashMap<String, REPLValue>>, guard: &mut Guard)
+fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<String>, &mut HashMap<String, REPLValue>)>, guard: &mut Guard)
 {
     use std::mem::transmute;
 
     // Compile code
-    let c = match compile(filename, code, ir, if let Some(_) = repl_vars { true } else { false })
+    let c = match compile(filename, code, ir, if let Some((v, _)) = &repl_vars { Some(v) } else { None })
     {
         Ok(v) => v,
         Err(_) => return
@@ -484,39 +486,43 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&mut HashM
         relocated.get_symbol(&CString::new("main").unwrap()).expect("unable to get symbol `main`")
     };
 
-    if let Some(map) = repl_vars
+    if let Some((names, map)) = repl_vars
     {
         if let Some(sexpr) = ir.sexprs.last()
         {
+            let v;
+            let values: Vec<&REPLValue> = names.iter().map(|v| map.get(v).unwrap()).collect();
             match sexpr.get_metadata()._type
             {
                 Type::Int => {
-                    let main: fn() -> i64 = unsafe { transmute(addr) };
-                    let v = REPLValue::Int(main());
-                    dbg!(v);
+                    let main: fn(*const &REPLValue) -> i64 = unsafe { transmute(addr) };
+                    v = REPLValue::Int(main(values.as_ptr()));
                 }
 
                 Type::Float => {
-                    let main: fn() -> f64 = unsafe { transmute(addr) };
-                    let v = REPLValue::Float(main());
-                    dbg!(v);
+                    let main: fn(*const &REPLValue) -> f64 = unsafe { transmute(addr) };
+                    v = REPLValue::Float(main(values.as_ptr()));
                 }
 
                 Type::Bool => {
-                    let main: fn() -> u8 = unsafe { transmute(addr) };
-                    let v = REPLValue::Bool(main() != 0);
-                    dbg!(v);
+                    let main: fn(*const &REPLValue) -> u8 = unsafe { transmute(addr) };
+                    v = REPLValue::Bool(main(values.as_ptr()));
                 }
 
                 Type::Func(_, _) => {
-                    let main: fn() -> REPLFunc = unsafe { transmute(addr) };
-                    let v = REPLValue::Func(main());
-                    dbg!(v);
+                    let main: fn(*const &REPLValue) -> REPLFunc = unsafe { transmute(addr) };
+                    v = REPLValue::Func(main(values.as_ptr()));
                 }
 
                 _ => {
                     panic!("unsupported type!");
                 }
+            }
+
+            if let Some(SExpr::Assign(_, a, _)) = ir.sexprs.last()
+            {
+                names.push(a.clone());
+                map.insert(a.clone(), v);
             }
         }
     } else

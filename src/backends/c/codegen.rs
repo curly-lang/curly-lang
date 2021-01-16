@@ -698,10 +698,9 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type)
     code.push_str(");\n");
 }
 
-// convert_ir_to_c(&IR, bool) -> String
+// convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
 // Converts Curly IR to C code.
-#[allow(unused_variables)]
-pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
+pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 {
     // Create and populate functions
     let mut funcs = HashMap::new();
@@ -769,7 +768,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
         let v = convert_sexpr(s, ir, &mut main_func);
 
         // Debug print
-        if repl_mode
+        if let Some(_) = repl_vars
         {
             put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type);
         }
@@ -791,8 +790,16 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
         cleanup.push(v);
     }
 
-    // Declare all functions
+    // Define structures and helper functions
     let mut code_string = String::from("typedef struct {\nunsigned int refc;\nvoid* func;\nvoid* wrapper;\nunsigned int arity;\nunsigned int argc;\nvoid** args;\n} func_t;\ntypedef union {\ndouble d;\nvoid* v;\n} double_wrapper_t;\nint printf(const char*, ...);\nvoid* calloc(long unsigned int, long unsigned int);\nvoid free(void*);\n");
+
+    // Define repl value struct
+    if let Some(_) = repl_vars
+    {
+        code_string.push_str("typedef struct {\nunsigned int tag;\nunion{\nlong long i;\ndouble d;\nchar b;\nfunc_t f;\n} vals;\n} repl_value_t;\n");
+    }
+
+    // Declare all functions
     for f in funcs.iter()
     {
         put_fn_declaration(&mut code_string, f.0, &f.1);
@@ -810,7 +817,40 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     }
 
     code_string.push_str(get_c_type(main_func.ret_type));
-    code_string.push_str(" main() {\n");
+    code_string.push_str(" main(");
+
+    // Retrieve previous arguments
+    if let Some(vec) = &repl_vars
+    {
+        code_string.push_str("repl_value_t** vars) {\n");
+        for v in vec.iter().enumerate()
+        {
+            code_string.push_str(get_c_type(&ir.metadata.scope.get_var(v.1).unwrap().0));
+            code_string.push(' ');
+            code_string.push_str(&v.1);
+            code_string.push_str(" = vars[");
+            code_string.push_str(&format!("{}", v.0));
+            code_string.push_str("]->vals.");
+            
+            code_string.push_str(
+                match &ir.metadata.scope.get_var(v.1).unwrap().0
+                {
+                    Type::Int => "i",
+                    Type::Float => "d",
+                    Type::Bool => "b",
+                    Type::Func(_, _) => "f",
+                    _ => panic!("unsupported type!")
+                }
+            );
+
+            code_string.push_str(";\n");
+        }
+    } else
+    {
+        code_string.push_str(") {\n");
+    }
+
+    // Main function code
     code_string.push_str(&main_func.code);
 
     // Deallocate everything
@@ -831,7 +871,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_mode: bool) -> String
     }
 
     // End main function
-    if repl_mode
+    if let Some(_) = repl_vars
     {
         code_string.push_str("return ");
         match cleanup.last()
