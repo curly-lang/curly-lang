@@ -7,7 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-logos = "0.11.4"
-rustyline = "7.1.0"
 codespan-reporting = "0.11.0"
 libtcc = "0.1.1"
+logos = "0.11.4"
+owo-colors = "1"
+regex = "1"
+rustyline = "7.1.0"

@@ -2,25 +2,28 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use owo_colors::OwoColorize;
 use rustyline::{Editor, Helper};
 use rustyline::completion::Completer;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::validate::Validator;
 use rustyline::error::ReadlineError;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::CString;
 use std::fs;
 use std::process::{Command, Stdio};
 use libtcc::{Context, Guard, OutputType};
+use logos::{Lexer, Span};
 
 use curlyc::backends::c::codegen;
 use curlyc::frontend::correctness;
 use curlyc::frontend::correctness::CorrectnessError;
 use curlyc::frontend::ir;
 use curlyc::frontend::ir::{IR, SExpr};
-use curlyc::frontend::parser;
+use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
 static DEBUG: bool = false;
@@ -240,7 +243,131 @@ enum REPLValue
     Func(REPLFunc)
 }
 
-struct CurlyREPLHelper {}
+struct CurlyREPLHelper
+{
+    guard: Guard,
+    ir: IR,
+    var_names: Vec<String>,
+    vars: HashMap<String, REPLValue>,
+}
+
+impl CurlyREPLHelper
+{
+    fn new() -> CurlyREPLHelper
+    {
+        CurlyREPLHelper {
+            guard: Guard::new()
+                .expect("unable to initialise tcc guard"),
+            ir: IR::new(),
+            var_names: vec![],
+            vars: HashMap::new()
+        }
+    }
+
+    fn _highlight(line: &str) -> String
+    {
+        use curlyc::frontend::parser::Token::*;
+
+        let lexer = Lexer::<Token>::new(line);
+        let mut new_line = std::string::String::new();
+        let mut last = Span { start: 0, end: 0 };
+
+        for t in lexer.spanned()
+        {
+            if t.1.start != last.end
+            {
+                new_line.push_str(&line[last.end..t.1.start]);
+            }
+
+            last = t.1.clone();
+
+            match t.0
+            {
+                LParen
+                    | RParen
+                    | LBrack
+                    | RBrack
+                    | LBrace
+                    | RBrace =>
+                    new_line.push_str(&line[t.1]),
+
+                Newline
+                    | Whitespace =>
+                    new_line.push_str(&line[t.1]),
+
+                Comment =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().bright_black())),
+
+                Error
+                    | Unreachable =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().red())),
+
+                Colon
+                    | Comma
+                    | Backslash
+                    | Dot
+                    | Range
+                    | Assign =>
+                    new_line.push_str(&line[t.1]),
+
+                Mul
+                    | DivMod
+                    | Add
+                    | Sub
+                    | BitShift
+                    | Compare
+                    | Ampersand
+                    | Bar
+                    | Caret =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().bright_yellow())),
+
+                Int(_)
+                    | Float(_)
+                    | String
+                    | True
+                    | False =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().purple())),
+
+                Symbol if &line[t.1.start..t.1.end] == "uwu" =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().magenta())),
+
+                Symbol if line[t.1.start..].chars().next().unwrap().is_uppercase() =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().green())),
+
+                Symbol =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().cyan())),
+
+                RightArrow
+                    | ThiccArrow =>
+                    new_line.push_str(&line[t.1]),
+
+                With
+                    | For
+                    | Some
+                    | All
+                    | If
+                    | Then
+                    | Else
+                    | Where
+                    | Pass
+                    | Stop
+                    | Type
+                    | Enum
+                    | Class
+                    | Match
+                    | To
+                    | And
+                    | Or
+                    | Xor
+                    | In =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().yellow().bold())),
+
+            }
+        }
+
+        new_line
+    }
+}
 
 impl Completer for CurlyREPLHelper
 {
@@ -254,6 +381,15 @@ impl Hinter for CurlyREPLHelper
 
 impl Highlighter for CurlyREPLHelper
 {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str>
+    {
+        Cow::Owned(CurlyREPLHelper::_highlight(line))
+    }
+
+    fn highlight_char(&self, _: &str, _: usize) -> bool
+    {
+        true
+    }
 }
 
 impl Validator for CurlyREPLHelper
@@ -270,19 +406,12 @@ fn repl()
 {
     // `()` can be used when no completer is required
     let mut rl = Editor::new();
-    let helper = CurlyREPLHelper {};
+    let helper = CurlyREPLHelper::new();
     rl.set_helper(Some(helper));
     if rl.load_history("history.txt").is_err()
     {
         println!("No previous history.");
     }
-
-    // Set up tcc jit
-    let mut guard = Guard::new()
-        .expect("unable to initialise tcc guard");
-    let mut ir = IR::new();
-    let mut var_names = vec![];
-    let mut vars = HashMap::new();
 
     loop
     {
@@ -298,7 +427,8 @@ fn repl()
                 }
 
                 rl.add_history_entry(line.as_str());
-                execute("<stdin>", &line, &mut ir, Some((&mut var_names, &mut vars)), &mut guard);
+                let helper = rl.helper_mut().unwrap();
+                execute("<stdin>", &line, &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), &mut helper.guard);
             }
 
             // Errors

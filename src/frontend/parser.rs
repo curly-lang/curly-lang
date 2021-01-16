@@ -2,35 +2,35 @@ use logos::{Logos, Lexer, Span};
 
 // The tokens parsed by the lexer.
 #[derive(Logos, PartialEq, Debug, Copy, Clone)]
-enum Token
+pub enum Token
 {
     // Brackets
     #[token("(")]
     LParen,
-   
+
     #[token(")")]
     RParen,
-   
+
     #[token("[")]
     LBrack,
-   
+
     #[token("]")]
     RBrack,
-   
+
     #[token("{")]
     LBrace,
 
     #[token("}")]
     RBrace,
-  
+
     // Whitespace
     #[token("\n")]
     Newline,
-   
+
     #[regex(r"([ \t\f]|\\\n)+", logos::skip)]
     Whitespace,
 
-    #[regex(r"#[^\n]*\n", logos::skip)]
+    #[regex(r"#[^\n]*\n?", logos::skip)]
     Comment,
 
     // Error
