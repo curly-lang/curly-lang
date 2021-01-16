@@ -14,7 +14,7 @@ pub enum FunctionName
 #[derive(Debug)]
 pub struct Scope
 {
-    pub variables: HashMap<String, (Type, usize, Option<usize>, Span)>,
+    pub variables: HashMap<String, (Type, usize, Option<usize>, Span, bool)>,
     func_ret_types: HashMap<FunctionName, Type>,
     pub parent: Option<Box<Scope>>
 }
@@ -105,28 +105,28 @@ impl Scope
          self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolXor, Type::Bool, Type::Bool), Type::Bool);
 
          // Functions
-         self.put_var_raw(String::from("debug"), Type::Unknown, 1, None, Span { start: 0, end: 0 });
+         self.put_var_raw(String::from("debug"), Type::Unknown, 1, None, Span { start: 0, end: 0 }, true);
 
          self
     }
 
-    // put_var_raw(&mut self, String, Type, usize, Option<usize>, Span) -> ()
+    // put_var_raw(&mut self, String, Type, usize, Option<usize>, Span, bool) -> ()
     // Puts a variable in the current scope.
-    pub fn put_var_raw(&mut self, name: String, _type: Type, arity: usize, saved_argc: Option<usize>, span: Span)
+    pub fn put_var_raw(&mut self, name: String, _type: Type, arity: usize, saved_argc: Option<usize>, span: Span, assigned: bool)
     {
-        self.variables.insert(name, (_type, arity, saved_argc, span));
+        self.variables.insert(name, (_type, arity, saved_argc, span, assigned));
     }
 
-    // put_var(&mut self, &str, usize, Option<usize>, Span) -> ()
+    // put_var(&mut self, &str, usize, Option<usize>, Span, bool) -> ()
     // Puts a variable in the current scope.
-    pub fn put_var(&mut self, name: &str, _type: &Type, arity: usize, saved_argc: Option<usize>, span: Span)
+    pub fn put_var(&mut self, name: &str, _type: &Type, arity: usize, saved_argc: Option<usize>, span: Span, assigned: bool)
     {
-        self.variables.insert(String::from(name), (_type.clone(), arity, saved_argc, span));
+        self.variables.insert(String::from(name), (_type.clone(), arity, saved_argc, span, assigned));
     }
 
     // get_var(&self, &str) -> Option<&(Type, usize, Option<usize>, Span)>
     // Gets a variable from the stack of scopes.
-    pub fn get_var(&self, name: &str) -> Option<&(Type, usize, Option<usize>, Span)>
+    pub fn get_var(&self, name: &str) -> Option<&(Type, usize, Option<usize>, Span, bool)>
     {
         // Set up
         let name = String::from(name);

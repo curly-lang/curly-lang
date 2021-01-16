@@ -1,12 +1,11 @@
 # List of things to do
 ## First official release:
 These things must be completed before the first official release of Curly (v0.1.0).
-- Add function types in type declarations
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
-- Fix bug where functions can be redefined
 
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
+- Add function types in type declarations
 - Closures (named and anonymous)
 - Lambdas
 - Lists

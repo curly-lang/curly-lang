@@ -292,8 +292,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check if variable already exists
             if let Some(v) = root.metadata.scope.variables.get(name)
             {
-                if let SExpr::Function(_, _) = **value {}
-                else
+                if v.4
                 {
                     errors.push(CorrectnessError::Reassignment(
                         m.span.clone(),
@@ -339,7 +338,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start });
+                println!("uwu!!!");
+                root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start }, true);
             }
         }
 
@@ -652,45 +652,48 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 // Checks a function body and determines the return type of the function.
 fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
 {
-    // Put function in scope
-    let mut vars = vec![HashMap::new()];
-    scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 });
-    if name != refr
+    if let None = scope.variables.get(name)
     {
-        scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 });
-    }
-
-    // Put arguments into scope
-    for arg in func.args.iter()
-    {
-        vars.last_mut().unwrap().insert(arg.0.clone(), arg.1.clone());
-    }
-
-    // Get the type
-    let _type = get_function_type(&func.body, scope, funcs, &mut vars, errors);
-
-    // Push an error if type is unknown
-    if _type == Type::Unknown
-    {
-        errors.push(CorrectnessError::UnknownFunctionReturnType(
-            func.body.get_metadata().span.clone(),
-            String::from(name)
-        ));
-    } else
-    {
-        // Construct the type
-        let mut acc = _type;
-        for t in func.args.iter().rev()
-        {
-            acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
-        }
-
-        // Put function type in global scope
+        // Put function in scope
+        let mut vars = vec![HashMap::new()];
+        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(0), func.span.clone());
+            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
         }
-        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(0), func.span.clone());
+
+        // Put arguments into scope
+        for arg in func.args.iter()
+        {
+            vars.last_mut().unwrap().insert(arg.0.clone(), arg.1.clone());
+        }
+
+        // Get the type
+        let _type = get_function_type(&func.body, scope, funcs, &mut vars, errors);
+
+        // Push an error if type is unknown
+        if _type == Type::Unknown
+        {
+            errors.push(CorrectnessError::UnknownFunctionReturnType(
+                func.body.get_metadata().span.clone(),
+                String::from(name)
+            ));
+        } else
+        {
+            // Construct the type
+            let mut acc = _type;
+            for t in func.args.iter().rev()
+            {
+                acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
+            }
+
+            // Put function type in global scope
+            if name != refr
+            {
+                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(0), func.span.clone(), false);
+            }
+            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(0), func.span.clone(), false);
+        }
     }
 }
 
@@ -716,7 +719,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         ir.metadata.push_scope();
         for arg in &func.args
         {
-            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 });
+            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
         }
 
         // Check body
