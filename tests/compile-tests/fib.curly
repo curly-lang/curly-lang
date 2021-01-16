@@ -4,4 +4,4 @@ fib n: Int =
 	else
 		fib (n - 1) + fib (n - 2)
 
-debug (fib 30)
+debug (fib 40)

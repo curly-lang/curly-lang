@@ -4,9 +4,12 @@ use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
+use std::collections::HashMap;
 use std::env;
+use std::ffi::CString;
 use std::fs;
 use std::process::{Command, Stdio};
+use libtcc::{Context, Guard, OutputType};
 
 use curlyc::backends::c::codegen;
 use curlyc::frontend::correctness;
@@ -85,7 +88,6 @@ fn main() -> Result<(), ()>
                                 println!("Must specify an output file");
                                 return Err(());
                             }
-
                         }
 
                         _ => {
@@ -166,7 +168,6 @@ fn main() -> Result<(), ()>
                                 .expect("Failed to execute clang")
                                 .wait()
                                 .expect("Failed to wait for clang");
-
                     }
                 }
 
@@ -188,7 +189,10 @@ fn main() -> Result<(), ()>
 
                         // Execute file
                         let mut ir = IR::new();
-                        execute(&file, &contents, &mut ir, false);
+                        let mut guard = Guard::new()
+                            .expect("unable to initialise tcc guard");
+
+                        execute(&file, &contents, &mut ir, None, &mut guard);
                     }
 
                     None => {
@@ -209,6 +213,27 @@ fn main() -> Result<(), ()>
     }
 }
 
+#[derive(Debug)]
+#[repr(C)]
+struct REPLFunc
+{
+    refc: u32,
+    func: fn(),
+    wrapper: fn(),
+    arity: u32,
+    argc: u32,
+    args: fn()
+}
+
+#[derive(Debug)]
+enum REPLValue
+{
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Func(REPLFunc)
+}
+
 // repl() -> ()
 // Executes the REPL.
 fn repl()
@@ -220,7 +245,11 @@ fn repl()
         println!("No previous history.");
     }
 
+    // Set up tcc jit
+    let mut guard = Guard::new()
+        .expect("unable to initialise tcc guard");
     let mut ir = IR::new();
+    let mut vars: HashMap<String, REPLValue> = HashMap::new();
 
     loop
     {
@@ -236,7 +265,7 @@ fn repl()
                 }
 
                 rl.add_history_entry(line.as_str());
-                execute("<stdin>", &line, &mut ir, true);
+                execute("<stdin>", &line, &mut ir, Some(&mut vars), &mut guard);
             }
 
             // Errors
@@ -289,7 +318,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_mode: bool) -> Result<S
     println!("{:#?}", &ast);
     ir.clear();
     ir::convert_ast_to_ir(ast, ir);
-    dbg!("{:#?}", &ir);
+    dbg!(&ir);
 
     // Check correctness
     let err = correctness::check_correctness(ir);
@@ -298,7 +327,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_mode: bool) -> Result<S
     match err
     {
         Ok(_) => {
-            dbg!("{:#?}", &ir);
+            dbg!(&ir);
         }
 
         Err(e) => {
@@ -429,31 +458,71 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_mode: bool) -> Result<S
     Ok(c)
 }
 
-// execute(&str, &str, &mut IRi, bool) -> ()
+// execute(&str, &str, &mut IR, Option<&mut HashMap<String, REPLType>>, &mut Guard) -> ()
 // Executes Curly code.
-fn execute(filename: &str, code: &str, ir: &mut IR, repl_mode: bool)
+fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&mut HashMap<String, REPLValue>>, guard: &mut Guard)
 {
+    use std::mem::transmute;
+
     // Compile code
-    let c = match compile(filename, code, ir, repl_mode)
+    let c = match compile(filename, code, ir, if let Some(_) = repl_vars { true } else { false })
     {
         Ok(v) => v,
         Err(_) => return
     };
 
     // Execute the C code
-    let mut echo = Command::new("echo")
-            .arg(&c)
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to execute echo");
-    echo.wait().expect("Failed to wait for echo");
-    Command::new("tcc")
-            .arg("-run")
-            .arg("-")
-            .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
-            .spawn()
-            .expect("Failed to execute tcc")
-            .wait()
-            .expect("Failed to wait for tcc");
+    let mut context = Context::new(guard).expect("unable to initialise context for tcc");
+    context.set_output_type(OutputType::Memory)
+        .compile_string(&CString::new(c.as_str()).unwrap())
+        .expect("unable to compile the code");
+    let mut relocated = context.relocate()
+        .expect("unable to relocate context");
+
+    let addr = unsafe
+    {
+        relocated.get_symbol(&CString::new("main").unwrap()).expect("unable to get symbol `main`")
+    };
+
+    if let Some(map) = repl_vars
+    {
+        if let Some(sexpr) = ir.sexprs.last()
+        {
+            match sexpr.get_metadata()._type
+            {
+                Type::Int => {
+                    let main: fn() -> i64 = unsafe { transmute(addr) };
+                    let v = REPLValue::Int(main());
+                    dbg!(v);
+                }
+
+                Type::Float => {
+                    let main: fn() -> f64 = unsafe { transmute(addr) };
+                    let v = REPLValue::Float(main());
+                    dbg!(v);
+                }
+
+                Type::Bool => {
+                    let main: fn() -> u8 = unsafe { transmute(addr) };
+                    let v = REPLValue::Bool(main() != 0);
+                    dbg!(v);
+                }
+
+                Type::Func(_, _) => {
+                    let main: fn() -> REPLFunc = unsafe { transmute(addr) };
+                    let v = REPLValue::Func(main());
+                    dbg!(v);
+                }
+
+                _ => {
+                    panic!("unsupported type!");
+                }
+            }
+        }
+    } else
+    {
+        let main: fn() = unsafe { transmute(addr) };
+        main();
+    }
 }
 
