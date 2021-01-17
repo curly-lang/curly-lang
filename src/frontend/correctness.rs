@@ -298,7 +298,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check if variable already exists
             if let Some(v) = root.metadata.scope.variables.get(name)
             {
-
                 if value.get_metadata()._type == Type::Unknown
                 {
                     root.metadata.scope.variables.remove(name);
@@ -326,6 +325,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
             // Check child node
             check_sexpr(value, root, errors);
+
+            // Check if variable value is unknown type
+            if value.get_metadata()._type == Type::Unknown
+            {
+                root.metadata.scope.variables.remove(name);
+                return;
+            }
+
 
             // Check if an error occured or the type is unknown
             if value.get_metadata()._type == Type::Error
