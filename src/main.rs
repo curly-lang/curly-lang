@@ -371,6 +371,36 @@ impl CurlyREPLHelper
 impl Completer for CurlyREPLHelper
 {
     type Candidate = String;
+
+    fn complete(&self, line: &str, pos: usize, _ctx: &rustyline::Context<'_>) -> rustyline::Result<(usize, Vec<Self::Candidate>)>
+    {
+        let mut token = (Token::Unreachable, Span { start: 0, end: 0 });
+        let lexer = Lexer::new(line);
+
+        for t in lexer.spanned()
+        {
+            if t.1.start <= pos && pos <= t.1.end
+            {
+                token = t;
+                break;
+            }
+        }
+
+        let mut choices = vec![];
+        if token.0 == Token::Symbol || token.1.start == token.1.end
+        {
+            let typed = &line[token.1.clone()];
+            for choice in self.var_names.iter()
+            {
+                if choice.starts_with(&typed)
+                {
+                    choices.push(String::from(choice));
+                }
+            }
+        }
+
+        Ok((token.1.start, choices))
+    }
 }
 
 impl Hinter for CurlyREPLHelper
@@ -395,9 +425,7 @@ impl Validator for CurlyREPLHelper
 {
 }
 
-impl Helper for CurlyREPLHelper
-{
-}
+impl Helper for CurlyREPLHelper {}
 
 // repl() -> ()
 // Executes the REPL.
