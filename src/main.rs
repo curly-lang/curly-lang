@@ -411,7 +411,7 @@ impl Helper for CurlyREPLHelper {}
 // Executes the REPL.
 fn repl()
 {
-    // `()` can be used when no completer is required
+    // Set up
     let mut rl = Editor::new();
     let helper = CurlyREPLHelper::new();
     let mut n = 0;
