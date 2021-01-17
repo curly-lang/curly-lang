@@ -816,13 +816,12 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         code_string.push_str("}\n");
     }
 
-    code_string.push_str(get_c_type(main_func.ret_type));
-    code_string.push_str(" main(");
-
     // Retrieve previous arguments
     if let Some(vec) = &repl_vars
     {
-        code_string.push_str("repl_value_t** vars) {\n");
+        code_string.push_str(get_c_type(main_func.ret_type));
+
+        code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
         for v in vec.iter().enumerate()
         {
             code_string.push_str(get_c_type(&ir.metadata.scope.get_var(v.1).unwrap().0));
@@ -847,7 +846,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         }
     } else
     {
-        code_string.push_str(") {\n");
+        code_string.push_str("int main() {\n");
     }
 
     // Main function code

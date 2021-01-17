@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 codespan-reporting = "0.11.0"
-libtcc = "0.1.1"
+libloading = "0.6"
 logos = "0.11.4"
 owo-colors = "1"
 regex = "1"

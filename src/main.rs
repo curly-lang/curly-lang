@@ -12,10 +12,9 @@ use rustyline::error::ReadlineError;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
-use std::ffi::CString;
 use std::fs;
 use std::process::{Command, Stdio};
-use libtcc::{Context, Guard, OutputType};
+use libloading::{Library, Symbol};
 use logos::{Lexer, Span};
 
 use curlyc::backends::c::codegen;
@@ -30,7 +29,6 @@ static DEBUG: bool = true;
 
 enum CBackendCompiler
 {
-    TCC,
     GCC,
     Clang
 }
@@ -59,7 +57,7 @@ fn main() -> Result<(), ()>
         {
             "build" => {
                 let mut options = CommandlineBuildOptions {
-                    compiler: CBackendCompiler::TCC,
+                    compiler: CBackendCompiler::Clang,
                     output: String::with_capacity(0),
                     input: String::with_capacity(0)
                 };
@@ -74,7 +72,6 @@ fn main() -> Result<(), ()>
                                 match v.as_str()
                                 {
                                     "gcc" => options.compiler = CBackendCompiler::GCC,
-                                    "tcc" => options.compiler = CBackendCompiler::TCC,
                                     "clang" => options.compiler = CBackendCompiler::Clang,
                                     _ => {
                                         println!("Supported C compilers are gcc, tcc, and clang");
@@ -137,19 +134,6 @@ fn main() -> Result<(), ()>
 
                 match options.compiler
                 {
-                    CBackendCompiler::TCC => {
-                        Command::new("tcc")
-                                .arg("-o")
-                                .arg(&options.output)
-                                .arg("-")
-                                .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
-                                .spawn()
-                                .expect("Failed to execute tcc")
-                                .wait()
-                                .expect("Failed to wait for tcc");
-
-                    }
-
                     CBackendCompiler::GCC => {
                         Command::new("gcc")
                                 .arg("-x")
@@ -197,10 +181,7 @@ fn main() -> Result<(), ()>
 
                         // Execute file
                         let mut ir = IR::new();
-                        let mut guard = Guard::new()
-                            .expect("unable to initialise tcc guard");
-
-                        execute(&file, &contents, &mut ir, None, &mut guard);
+                        execute(&file, &contents, &mut ir, None, 0);
                     }
 
                     None => {
@@ -245,7 +226,7 @@ enum REPLValue
 
 struct CurlyREPLHelper
 {
-    guard: Guard,
+    libs: Vec<Library>,
     ir: IR,
     var_names: Vec<String>,
     vars: HashMap<String, REPLValue>,
@@ -256,8 +237,7 @@ impl CurlyREPLHelper
     fn new() -> CurlyREPLHelper
     {
         CurlyREPLHelper {
-            guard: Guard::new()
-                .expect("unable to initialise tcc guard"),
+            libs: vec![],
             ir: IR::new(),
             var_names: vec![],
             vars: HashMap::new()
@@ -434,6 +414,7 @@ fn repl()
     // `()` can be used when no completer is required
     let mut rl = Editor::new();
     let helper = CurlyREPLHelper::new();
+    let mut n = 0;
     rl.set_helper(Some(helper));
     if rl.load_history("history.txt").is_err()
     {
@@ -455,7 +436,8 @@ fn repl()
 
                 rl.add_history_entry(line.as_str());
                 let helper = rl.helper_mut().unwrap();
-                execute("<stdin>", &line, &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), &mut helper.guard);
+                helper.libs.push(execute("<stdin>", &line, &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), n).unwrap());
+                n += 1;
             }
 
             // Errors
@@ -650,32 +632,42 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
     Ok(c)
 }
 
-// execute(&str, &str, &mut IR, Option<(&mut Vec<String>, &mut HashMap<String, REPLType>)>, &mut Guard) -> ()
+// execute(&str, &str, &mut IR, Option<(&mut Vec<String>, &mut HashMap<String, REPLType>)>, &mut Guard) -> Option<Library>
 // Executes Curly code.
-fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<String>, &mut HashMap<String, REPLValue>)>, guard: &mut Guard)
+fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<String>, &mut HashMap<String, REPLValue>)>, n: usize) -> Option<Library>
 {
-    use std::mem::transmute;
-
     // Compile code
     let c = match compile(filename, code, ir, if let Some((v, _)) = &repl_vars { Some(v) } else { None })
     {
         Ok(v) => v,
-        Err(_) => return
+        Err(_) => return None
     };
+
+    // Compile the C code
+    let mut echo = Command::new("echo")
+                    .arg(&c)
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .expect("Failed to execute echo");
+    echo.wait().expect("Failed to wait for echo");
+
+    let so_file = format!("./.curly_temp_{}.so", n);
+    Command::new("clang")
+        .arg("-shared")
+        .arg("-fPIC")
+        .arg("-o")
+        .arg(&so_file)
+        .arg("-x")
+        .arg("c")
+        .arg("-")
+        .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+        .spawn()
+        .expect("Failed to execute clang")
+        .wait()
+        .expect("Failed to wait for clang");
 
     // Execute the C code
-    let mut context = Context::new(guard).expect("unable to initialise context for tcc");
-    context.set_output_type(OutputType::Memory)
-        .compile_string(&CString::new(c.as_str()).unwrap())
-        .expect("unable to compile the code");
-    let mut relocated = context.relocate()
-        .expect("unable to relocate context");
-
-    let addr = unsafe
-    {
-        relocated.get_symbol(&CString::new("main").unwrap()).expect("unable to get symbol `main`")
-    };
-
+    let lib = Library::new(&so_file).unwrap();
     if let Some((names, map)) = repl_vars
     {
         if let Some(sexpr) = ir.sexprs.last()
@@ -683,44 +675,54 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
             let v;
             let values: Vec<&REPLValue> = names.iter().map(|v| map.get(v).unwrap()).collect();
 
-            match sexpr.get_metadata()._type
+            unsafe 
             {
-                Type::Int => {
-                    let main: fn(*const &REPLValue) -> i64 = unsafe { transmute(addr) };
-                    v = REPLValue::Int(main(values.as_ptr()));
-                }
+                match sexpr.get_metadata()._type
+                {
+                    Type::Int => {
+                        let main: Symbol<fn(*const &REPLValue) -> i64> = lib.get("__repl_line".as_bytes()).unwrap();
+                        v = REPLValue::Int(main(values.as_ptr()));
+                    }
 
-                Type::Float => {
-                    let main: fn(*const &REPLValue) -> f64 = unsafe { transmute(addr) };
-                    v = REPLValue::Float(main(values.as_ptr()));
-                }
+                    Type::Float => {
+                        let main: Symbol<fn(*const &REPLValue) -> f64> = lib.get("__repl_line".as_bytes()).unwrap();
+                        v = REPLValue::Float(main(values.as_ptr()));
+                    }
 
-                Type::Bool => {
-                    let main: fn(*const &REPLValue) -> u8 = unsafe { transmute(addr) };
-                    v = REPLValue::Bool(main(values.as_ptr()));
-                }
+                    Type::Bool => {
+                        let main: Symbol<fn(*const &REPLValue) -> u8> = lib.get("__repl_line".as_bytes()).unwrap();
+                        v = REPLValue::Bool(main(values.as_ptr()));
+                    }
 
-                Type::Func(_, _) => {
-                    let main: fn(*const &REPLValue) -> REPLFunc = unsafe { transmute(addr) };
-                    v = REPLValue::Func(main(values.as_ptr()));
-                }
+                    Type::Func(_, _) => {
+                        let main: Symbol<fn(*const &REPLValue) -> REPLFunc> = lib.get("__repl_line".as_bytes()).unwrap();
+                        v = REPLValue::Func(main(values.as_ptr()));
+                    }
 
-                _ => {
-                    panic!("unsupported type!");
+                    _ => {
+                        panic!("unsupported type!");
+                    }
                 }
             }
 
             if let Some(SExpr::Assign(_, a, _)) = ir.sexprs.last()
             {
-                println!("owo");
                 names.push(a.clone());
                 map.insert(a.clone(), v);
             }
         }
     } else
     {
-        let main: fn() = unsafe { transmute(addr) };
-        main();
+        unsafe
+        {
+            let main: Symbol<fn()> = lib.get("main".as_bytes()).unwrap();
+            main();
+        }
     }
+
+    // Remove .curly_repl_temp.so
+    std::fs::remove_file(&so_file).expect("unable to remove temporary file");
+
+    Some(lib)
 }
 
