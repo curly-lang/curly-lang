@@ -222,7 +222,12 @@ impl IR
     // Clears the root of any sexpressions.
     pub fn clear(&mut self)
     {
+        use std::mem::swap;
+
         self.sexprs.clear();
+        let mut vars = HashMap::with_capacity(0);
+        swap(&mut vars, &mut self.metadata.scope.variables);
+        self.metadata.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
     }
 }
 

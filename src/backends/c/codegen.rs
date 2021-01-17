@@ -831,7 +831,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             code_string.push_str(" = vars[");
             code_string.push_str(&format!("{}", v.0));
             code_string.push_str("]->vals.");
-            
+
             code_string.push_str(
                 match &ir.metadata.scope.get_var(v.1).unwrap().0
                 {

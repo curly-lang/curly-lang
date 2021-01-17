@@ -52,6 +52,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     m._type = t.0.clone();
                     m.arity = t.1;
                     m.saved_argc = t.2;
+
+                    if m._type == Type::Unknown
+                    {
+                        println!("uwu");
+                        root.funcs.remove(f);
+                    }
                 }
 
                 None => errors.push(CorrectnessError::SymbolNotFound(
@@ -304,8 +310,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         if v != name
                         {
                             root.metadata.scope.variables.remove(v);
-                            root.funcs.remove(v);
                         }
+                        root.funcs.remove(v);
                     }
                     return;
                 }
@@ -314,8 +320,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check child node
             check_sexpr(value, root, errors);
 
-            // Check if an error occured
-            if value.get_metadata()._type == Type::Error
+            // Check if an error occured or the type is unknown
+            if value.get_metadata()._type == Type::Error || value.get_metadata()._type == Type::Unknown
             {
                 return;
             }
@@ -654,7 +660,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
     }
 }
 
-// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> ()
+// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> bool
 // Checks a function body and determines the return type of the function.
 fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
 {

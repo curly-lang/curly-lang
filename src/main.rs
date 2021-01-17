@@ -26,7 +26,7 @@ use curlyc::frontend::ir::{IR, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 enum CBackendCompiler
 {
@@ -360,8 +360,7 @@ impl CurlyREPLHelper
                     | Or
                     | Xor
                     | In =>
-                    new_line.push_str(&format!("{}", line[t.1].to_owned().yellow().bold())),
-
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().yellow().bold()))
             }
         }
 
