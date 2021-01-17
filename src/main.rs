@@ -25,7 +25,7 @@ use curlyc::frontend::ir::{IR, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = true;
+static DEBUG: bool = false;
 
 enum CBackendCompiler
 {
@@ -436,7 +436,10 @@ fn repl()
 
                 rl.add_history_entry(line.as_str());
                 let helper = rl.helper_mut().unwrap();
-                helper.libs.push(execute("<stdin>", &line, &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), n).unwrap());
+                if let Some(lib) = execute("<stdin>", &line, &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), n)
+                {
+                    helper.libs.push(lib);
+                }
                 n += 1;
             }
 
