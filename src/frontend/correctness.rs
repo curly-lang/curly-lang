@@ -299,9 +299,16 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         v.3.clone(),
                         name.clone()
                     ));
+                    if let SExpr::Function(_, v) = &**value
+                    {
+                        if v != name
+                        {
+                            root.metadata.scope.variables.remove(v);
+                            root.funcs.remove(v);
+                        }
+                    }
                     return;
                 }
-                
             }
 
             // Check child node

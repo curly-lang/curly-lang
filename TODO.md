@@ -2,6 +2,7 @@
 ## First official release:
 These things must be completed before the first official release of Curly (v0.1.0).
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
+- Fix bug where `fib` doesn't work in the repl for some reason :/
 
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.

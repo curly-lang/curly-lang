@@ -655,6 +655,7 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
         {
             let v;
             let values: Vec<&REPLValue> = names.iter().map(|v| map.get(v).unwrap()).collect();
+
             match sexpr.get_metadata()._type
             {
                 Type::Int => {
@@ -684,6 +685,7 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
 
             if let Some(SExpr::Assign(_, a, _)) = ir.sexprs.last()
             {
+                println!("owo");
                 names.push(a.clone());
                 map.insert(a.clone(), v);
             }
