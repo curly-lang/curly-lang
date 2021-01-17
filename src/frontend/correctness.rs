@@ -298,6 +298,13 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check if variable already exists
             if let Some(v) = root.metadata.scope.variables.get(name)
             {
+
+                if value.get_metadata()._type == Type::Unknown
+                {
+                    root.metadata.scope.variables.remove(name);
+                    return;
+                }
+
                 if v.4
                 {
                     errors.push(CorrectnessError::Reassignment(
@@ -321,7 +328,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             check_sexpr(value, root, errors);
 
             // Check if an error occured or the type is unknown
-            if value.get_metadata()._type == Type::Error || value.get_metadata()._type == Type::Unknown
+            if value.get_metadata()._type == Type::Error
             {
                 return;
             }
