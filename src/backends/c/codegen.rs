@@ -103,14 +103,28 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.last_reference += 1;
 
             // Generate code
+            let f = root.funcs.get(s).unwrap();
             func.code.push_str("func_t ");
             func.code.push_str(&name);
             func.code.push_str(" = { 0, (void*) ");
             func.code.push_str(s);
             func.code.push_str(", (void*) __func_wrapper_");
             func.code.push_str(s);
-            func.code.push_str(&format!(", {}", root.funcs.get(s).unwrap().args.len()));
-            func.code.push_str(", 0, (void*) 0 };\n");
+            func.code.push_str(&format!(", {}", f.args.len() + f.captured.len()));
+            func.code.push_str(", 0, calloc(");
+            func.code.push_str(&format!("{}", f.args.len() + f.captured.len()));
+            func.code.push_str(", sizeof(void*)) };\n");
+
+            // Save captured variables
+            for c in f.captured_names.iter()
+            {
+                func.code.push_str(&name);
+                func.code.push_str(".args[");
+                func.code.push_str(&name);
+                func.code.push_str(".argc++] = (void*) ");
+                func.code.push_str(c);
+                func.code.push_str(";\n");
+            }
 
             name
         }
@@ -267,10 +281,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         }
 
         // Applications
-        SExpr::Application(m, l, r) => {
+        SExpr::Application(_, l, r) => {
             // Get the list of arguments and the function
             let mut args = vec![r];
-            let mut funcs = vec![];
+            let mut funcs = vec![sexpr];
             let mut f = &**l;
             while let SExpr::Application(_, l, r) = f
             {
@@ -303,7 +317,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 // Functions
                 Type::Func(_, _) => {
                     // Get function and args
-                    let fstr = convert_sexpr(f, root, func);
+                    let mut fstr = convert_sexpr(f, root, func);
                     let mut astrs = vec![];
                     let mut name = String::with_capacity(0);
                     for a in args.iter().enumerate()
@@ -352,23 +366,52 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             func.code.push_str(&fstr);
                             func.code.push_str(".args[");
                             func.code.push_str(&fstr);
-                            func.code.push_str(".argc++] = ");
+                            func.code.push_str(".argc++] = (void*) ");
                             func.code.push_str(&v);
                             func.code.push_str(";\n");
 
                             // Call the function
-                            func.code.push_str("if (");
+                            let _type = &funcs[n].get_metadata()._type;
+                            name = format!("_{}", func.last_reference);
+                            func.last_reference += 1;
+                            func.code.push_str(get_c_type(_type));
+                            func.code.push(' ');
+                            func.code.push_str(&name);
+                            func.code.push_str(";\nif (");
                             func.code.push_str(&fstr);
                             func.code.push_str(".arity == ");
                             func.code.push_str(&fstr);
                             func.code.push_str(".argc) {\n");
+                            func.code.push_str(&name);
+                            func.code.push_str(" = ((");
+                            func.code.push_str(get_c_type(_type));
+                            func.code.push_str(" (*)(func_t*))");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".wrapper)(&");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(");\nif (");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".refc == 0)\nfree(");
+                            func.code.push_str(&fstr);
+                            func.code.push_str(".args);\n");
+
+                            // Reset the list of arguments
+                            if n != args.len() - 1
+                            {
+                                fstr = name.clone();
+                                func.code.push_str(";\n");
+                                func.code.push_str("if (");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".args == (void*) 0)\n");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".args = calloc(");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".arity, sizeof(void*));\n");
+                            }
 
                             func.code.push_str("}\n");
 
-                            if n < funcs.len()
-                            {
-                                f = funcs[n];
-                            }
+                            f = funcs[n];
 
                         // Functions with known arity and fully applied
                         } else if f.get_metadata().arity <= astrs.len() + f.get_metadata().saved_argc.unwrap() + 1
@@ -378,13 +421,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             name = format!("_{}", func.last_reference);
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
-                            func.code.push_str(get_c_type(&m._type));
+                            let _type = &funcs[n].get_metadata()._type;
+                            func.code.push_str(get_c_type(_type));
                             func.code.push(' ');
                             func.code.push_str(&name);
                             func.code.push_str(" = ((");
 
                             // Create function pointer
-                            func.code.push_str(get_c_type(&m._type));
+                            func.code.push_str(get_c_type(_type));
                             func.code.push_str(" (*)(");
                             for i in 0..saved_argc + f.get_metadata().arity
                             {
@@ -426,13 +470,18 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
 
                             // Close parentheses
                             func.code.push_str(");\n");
-                            
+
                             if n < funcs.len()
                             {
                                 f = funcs[n];
                             }
 
                             astrs.clear();
+
+                            if n < args.len() - 1
+                            {
+                                fstr = name.clone();
+                            }
                         } else
                         {
                             astrs.push(v);
@@ -540,8 +589,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
 
             // Body
             let body = convert_sexpr(b, root, func);
-            func.code.push_str(&name);
-            func.code.push_str(" = ");
+            let ptr = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+            func.code.push_str(&get_c_type(&m._type));
+            func.code.push_str("* ");
+            func.code.push_str(&ptr);
+            func.code.push_str(" = &");
             func.code.push_str(&body);
             func.code.push_str(";\n");
 
@@ -549,8 +602,8 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             match m._type
             {
                 Type::Func(_, _) => {
-                    func.code.push_str(&name);
-                    func.code.push_str(".refc++;\n");
+                    func.code.push_str(&ptr);
+                    func.code.push_str("->refc++;\n");
                 }
 
                 _ => ()
@@ -578,12 +631,17 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             match m._type
             {
                 Type::Func(_, _) => {
-                    func.code.push_str(&name);
-                    func.code.push_str(".refc--;\n");
+                    func.code.push_str(&ptr);
+                    func.code.push_str("->refc--;\n");
                 }
 
                 _ => ()
             }
+
+            // Copy data from ptr
+            func.code.push_str(&name);
+            func.code.push_str(" = *");
+            func.code.push_str(&ptr);
 
             // Exit block and return success
             func.code.push_str(";\n}\n");
@@ -707,7 +765,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     for f in ir.funcs.iter()
     {
         let mut cf = CFunction {
-            args: f.1.args.iter().map(|v| (&v.0, &v.1)).collect(),
+            args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
             ret_type: &f.1.body.get_metadata()._type,
             code: String::new(),
             last_reference: 0
