@@ -46,7 +46,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
         // Functions
         SExpr::Function(m, f) => {
-            match root.metadata.scope.get_var(f)
+            match root.scope.get_var(f)
             {
                 Some(t) => {
                     m._type = t.0.clone();
@@ -55,7 +55,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                     if m._type == Type::Unknown
                     {
-                        println!("uwu");
                         root.funcs.remove(f);
                     }
                 }
@@ -69,7 +68,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
         // Symbols
         SExpr::Symbol(m, s) => {
-            match root.metadata.scope.get_var(s)
+            match root.scope.get_var(s)
             {
                 Some(t) => {
                     m._type = t.0.clone();
@@ -100,7 +99,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     }
 
                     // Get type
-                    if let Some(t) = root.metadata.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
+                    if let Some(t) = root.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
                     {
                         m._type = t.clone();
                     } else
@@ -130,7 +129,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             // Get type
-            if let Some(t) = root.metadata.scope.get_func_ret(FunctionName::Infix(
+            if let Some(t) = root.scope.get_func_ret(FunctionName::Infix(
                 *op,
                 left.get_metadata()._type.clone(),
                 right.get_metadata()._type.clone()
@@ -296,11 +295,11 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         // Assignments
         SExpr::Assign(m, name, value) => {
             // Check if variable already exists
-            if let Some(v) = root.metadata.scope.variables.get(name)
+            if let Some(v) = root.scope.variables.get(name)
             {
                 if value.get_metadata()._type == Type::Unknown
                 {
-                    root.metadata.scope.variables.remove(name);
+                    root.scope.variables.remove(name);
                     return;
                 }
 
@@ -315,7 +314,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     {
                         if v != name
                         {
-                            root.metadata.scope.variables.remove(v);
+                            root.scope.variables.remove(v);
                         }
                         root.funcs.remove(v);
                     }
@@ -329,7 +328,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check if variable value is unknown type
             if value.get_metadata()._type == Type::Unknown
             {
-                root.metadata.scope.variables.remove(name);
+                root.scope.variables.remove(name);
                 return;
             }
 
@@ -365,14 +364,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.metadata.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start }, true);
+                root.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start }, true);
             }
         }
 
         // With expressions
         SExpr::With(m, assigns, body) => {
             // Push a new scope
-            root.metadata.push_scope();
+            root.scope.push_scope();
 
             // Function iterator
             let iter = assigns.iter().filter_map(
@@ -406,7 +405,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             m.arity = body.get_metadata().arity;
 
             // Pop scope
-            root.metadata.pop_scope();
+            root.scope.pop_scope();
         }
     }
 }
@@ -486,9 +485,9 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
     }
 }
 
-// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<HashMap<String, Type>>, &mut Vec<CorrectnessError>) -> Type
+// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
-fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, vars: &mut Vec<HashMap<String, Type>>, errors: &mut Vec<CorrectnessError>) -> Type
+fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>) -> Type
 {
     match sexpr
     {
@@ -523,34 +522,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
                 Some(v) => v.0.clone(),
 
                 // Check local scopes
-                None => {
-                    // Get the last scope
-                    let mut iter = vars.iter();
-                    let mut v = match iter.next()
-                    {
-                        Some(v) => v,
-                        None => return Type::Unknown
-                    };
-
-                    // Iterate over each scope
-                    loop
-                    {
-                        match v.get(s)
-                        {
-                            // Break if variable is found
-                            Some(v) => break v.clone(),
-
-                            // Get next scope
-                            None => {
-                                v = match iter.next()
-                                {
-                                    Some(v) => v,
-                                    None => break Type::Unknown
-                                }
-                            }
-                        }
-                    }
-                }
+                None => Type::Unknown
             }
         }
 
@@ -559,7 +531,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             match op
             {
                 PrefixOp::Neg => {
-                    let vt = get_function_type(v, scope, funcs, vars, errors).clone();
+                    let vt = get_function_type(v, scope, funcs, errors).clone();
 
                     match scope.get_func_ret(FunctionName::Prefix(vt))
                     {
@@ -574,8 +546,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
         // Infix operators
         SExpr::Infix(_, op, l, r) => {
-            let lt = get_function_type(l, scope, funcs, vars, errors).clone();
-            let rt = get_function_type(r, scope, funcs, vars, errors).clone();
+            let lt = get_function_type(l, scope, funcs, errors).clone();
+            let rt = get_function_type(r, scope, funcs, errors).clone();
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt))
             {
@@ -586,34 +558,34 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
-            get_function_type(l, scope, funcs, vars, errors);
-            get_function_type(r, scope, funcs, vars, errors);
+            get_function_type(l, scope, funcs, errors);
+            get_function_type(r, scope, funcs, errors);
             Type::Bool
         }
 
         // If expressions
         SExpr::If(_, _, body, elsy) => {
-            let bt = get_function_type(body, scope, funcs, vars, errors);
+            let bt = get_function_type(body, scope, funcs, errors);
             if bt != Type::Unknown
             {
                 bt
             } else
             {
-                get_function_type(elsy, scope, funcs, vars, errors)
+                get_function_type(elsy, scope, funcs, errors)
             }
         }
 
         // Applications
         SExpr::Application(_, f, a) => {
             // Get function type
-            let ft = get_function_type(f, scope, funcs, vars, errors);
+            let ft = get_function_type(f, scope, funcs, errors);
             if let Type::Unknown = ft
             {
                 return Type::Unknown;
             }
 
             // Get argument type
-            let at = get_function_type(a, scope, funcs, vars, errors);
+            let at = get_function_type(a, scope, funcs, errors);
             if let Type::Unknown = at
             {
                 return Type::Unknown;
@@ -642,33 +614,27 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
         // Assignments
         SExpr::Assign(_, name, value) => {
-            if let Some(_) = vars.last()
-            {
-                let t = get_function_type(value, scope, funcs, vars, errors);
-                vars.last_mut().unwrap().insert(name.clone(), t.clone());
-                t
-            } else
-            {
-                Type::Unknown
-            }
+            let t = get_function_type(value, scope, funcs, errors);
+            scope.put_var(&name, &t, 0, None, Span { start: 0, end: 0 }, true);
+            t
         }
 
         // With expressions
         SExpr::With(_, assigns, body) => {
             // Push scope
-            vars.push(HashMap::new());
+            scope.push_scope();
 
             // Populate scope with variable types
             for a in assigns
             {
-                get_function_type(a, scope, funcs, vars, errors);
+                get_function_type(a, scope, funcs, errors);
             }
 
             // Get the function type
-            let bt = get_function_type(body, scope, funcs, vars, errors);
+            let bt = get_function_type(body, scope, funcs, errors);
 
             // Pop the scope and return type
-            vars.pop();
+            scope.pop_scope();
             bt
         }
     }
@@ -681,7 +647,6 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
     if let None = scope.variables.get(name)
     {
         // Put function in scope
-        let mut vars = vec![HashMap::new()];
         scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
         if name != refr
         {
@@ -689,13 +654,15 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
         }
 
         // Put arguments into scope
+        scope.push_scope();
         for arg in func.args.iter()
         {
-            vars.last_mut().unwrap().insert(arg.0.clone(), arg.1.clone());
+            scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
         }
 
         // Get the type
-        let _type = get_function_type(&func.body, scope, funcs, &mut vars, errors);
+        let _type = get_function_type(&func.body, scope, funcs, errors);
+        scope.pop_scope();
 
         // Push an error if type is unknown
         if _type == Type::Unknown
@@ -732,7 +699,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     for name in names.clone()
     {
         let func = ir.funcs.get(&name.0).unwrap();
-        check_function_body(&name.0, &name.1, func, &mut ir.metadata.scope, &ir.funcs, errors);
+        check_function_body(&name.0, &name.1, func, &mut ir.scope, &ir.funcs, errors);
     }
 
     // Check all function bodies
@@ -742,17 +709,17 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         let mut func = ir.funcs.remove(&name.0).unwrap();
 
         // Push scope and add arguments
-        ir.metadata.push_scope();
+        ir.scope.push_scope();
         for arg in &func.args
         {
-            ir.metadata.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+            ir.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
         }
 
         // Check body
         check_sexpr(&mut func.body, ir, errors);
 
         // Pop scope
-        ir.metadata.pop_scope();
+        ir.scope.pop_scope();
 
         // Reinsert function
         ir.funcs.insert(name.0, func);

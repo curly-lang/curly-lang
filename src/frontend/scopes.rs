@@ -179,5 +179,33 @@ impl Scope
             }
         }
     }
+
+    // push_scope(&mut self) -> ()
+    // Pushes a new scope to the top of the scope stack.
+    pub fn push_scope(&mut self)
+    {
+        use std::mem::swap;
+
+        let mut scope = Scope::new();
+
+        swap(&mut scope, self);
+        self.parent = Some(Box::new(scope));
+    }
+
+    // pop_scop(&mut self) -> ()
+    // Pops a scope from the stack if a parent scope exists.
+    pub fn pop_scope(&mut self)
+    {
+        use std::mem::swap;
+
+        if let Some(v) = &mut self.parent
+        {
+            let mut scope = Scope::new();
+
+            swap(&mut scope, v);
+            swap(self, &mut scope);
+        }
+    }
+
 }
 

@@ -824,7 +824,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
         for v in vec.iter().enumerate()
         {
-            code_string.push_str(get_c_type(&ir.metadata.scope.get_var(v.1).unwrap().0));
+            code_string.push_str(get_c_type(&ir.scope.get_var(v.1).unwrap().0));
             code_string.push(' ');
             code_string.push_str(&v.1);
             code_string.push_str(" = vars[");
@@ -832,7 +832,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             code_string.push_str("]->vals.");
 
             code_string.push_str(
-                match &ir.metadata.scope.get_var(v.1).unwrap().0
+                match &ir.scope.get_var(v.1).unwrap().0
                 {
                     Type::Int => "i",
                     Type::Float => "d",

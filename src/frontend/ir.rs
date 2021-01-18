@@ -158,47 +158,11 @@ pub struct IRFunction
     pub span: Span
 }
 
-#[derive(Debug)]
-pub struct IRMetadata
-{
-    pub scope: Scope,
-}
-
-impl IRMetadata
-{
-    // push_scope(&mut self) -> ()
-    // Pushes a new scope to the top of the scope stack.
-    pub fn push_scope(&mut self)
-    {
-        use std::mem::swap;
-
-        let mut scope = Scope::new();
-
-        swap(&mut scope, &mut self.scope);
-        self.scope.parent = Some(Box::new(scope));
-    }
-
-    // pop_scop(&mut self) -> ()
-    // Pops a scope from the stack if a parent scope exists.
-    pub fn pop_scope(&mut self)
-    {
-        use std::mem::swap;
-
-        if let Some(v) = &mut self.scope.parent
-        {
-            let mut scope = Scope::new();
-
-            swap(&mut scope, v);
-            swap(&mut self.scope, &mut scope);
-        }
-    }
-}
-
 // Represents the ir.
 #[derive(Debug)]
 pub struct IR
 {
-    pub metadata: IRMetadata,
+    pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub sexprs: Vec<SExpr>
 }
@@ -210,9 +174,7 @@ impl IR
     pub fn new() -> IR
     {
         IR {
-            metadata: IRMetadata {
-                scope: Scope::new().init_builtins()
-            },
+            scope: Scope::new().init_builtins(),
             funcs: HashMap::with_capacity(0),
             sexprs: vec![]
         }
@@ -227,8 +189,8 @@ impl IR
         self.sexprs.clear();
         self.funcs.clear();
         let mut vars = HashMap::with_capacity(0);
-        swap(&mut vars, &mut self.metadata.scope.variables);
-        self.metadata.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
+        swap(&mut vars, &mut self.scope.variables);
+        self.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
     }
 }
 
