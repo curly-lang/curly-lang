@@ -1,3 +1,5 @@
+use logos::Span;
+
 use super::parser::AST;
 
 // Represents a type.
@@ -5,7 +7,7 @@ use super::parser::AST;
 pub enum Type
 {
     Error,
-    ConversionError,
+    ConversionError(Span),
     Unknown,
     Int,
     Float,
@@ -20,16 +22,16 @@ pub fn convert_ast_to_type(ast: AST) -> Type
 {
     match ast
     {
-        AST::Symbol(_, s) => {
-            match s.as_str()
+        AST::Symbol(s, v) => {
+            match v.as_str()
             {
                 "Int" => Type::Int,
                 "Float" => Type::Float,
                 "Bool" => Type::Bool,
-                _ => Type::ConversionError
+                _ => Type::ConversionError(s)
             }
         }
 
-        _ => Type::ConversionError
+        _ => Type::ConversionError(ast.get_span())
     }
 }

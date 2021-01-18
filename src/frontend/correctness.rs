@@ -27,10 +27,10 @@ pub enum CorrectnessError
 // Checks an s expression for type correctness and correct symbol usage.
 fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessError>)
 {
-    if let Type::ConversionError = sexpr.get_metadata()._type
+    if let Type::ConversionError(s) = &sexpr.get_metadata()._type
     {
         errors.push(CorrectnessError::InvalidType(
-            sexpr.get_metadata().span.clone()
+            s.clone()
         ));
         return;
     }

@@ -409,9 +409,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let mut _type = Type::Error;
             for a in func.args.iter()
             {
-                if a.1 == Type::ConversionError
+                if let Type::ConversionError(_) = a.1
                 {
-                    _type = Type::ConversionError;
+                    _type = a.1.clone();
                     break;
                 }
             }
