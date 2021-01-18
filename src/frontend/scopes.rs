@@ -16,7 +16,8 @@ pub struct Scope
 {
     pub variables: HashMap<String, (Type, usize, Option<usize>, Span, bool)>,
     func_ret_types: HashMap<FunctionName, Type>,
-    pub parent: Option<Box<Scope>>
+    pub parent: Option<Box<Scope>>,
+    new_func: bool
 }
 
 impl Scope
@@ -28,7 +29,8 @@ impl Scope
         Scope {
             variables: HashMap::with_capacity(0),
             func_ret_types: HashMap::with_capacity(0),
-            parent: None
+            parent: None,
+            new_func: false
         }
     }
 
@@ -180,13 +182,14 @@ impl Scope
         }
     }
 
-    // push_scope(&mut self) -> ()
+    // push_scope(&mut self, bool) -> ()
     // Pushes a new scope to the top of the scope stack.
-    pub fn push_scope(&mut self)
+    pub fn push_scope(&mut self, new_func: bool)
     {
         use std::mem::swap;
 
         let mut scope = Scope::new();
+        scope.new_func = new_func;
 
         swap(&mut scope, self);
         self.parent = Some(Box::new(scope));
@@ -207,5 +210,38 @@ impl Scope
         }
     }
 
+    // is_captured(&self, &str) -> bool
+    // Returns true if captured from a new function
+    pub fn is_captured(&self, name: &str) -> bool
+    {
+        // Set up
+        let mut scope = self;
+        let mut last_new_func = false;
+        let mut new_func;
+
+        loop
+        {
+            // Update new_func if in a new function
+            new_func = last_new_func;
+            if scope.new_func
+            {
+                last_new_func = true;
+            }
+
+            // Return success if found
+            if let Some(_) = scope.variables.get(name)
+            {
+                return new_func;
+            }
+
+            // Get next scope
+            scope = match &scope.parent
+            {
+                Some(v) => &**v,
+                None => break false
+            }
+        }
+
+    }
 }
 

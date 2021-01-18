@@ -371,7 +371,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         // With expressions
         SExpr::With(m, assigns, body) => {
             // Push a new scope
-            root.scope.push_scope();
+            root.scope.push_scope(false);
 
             // Function iterator
             let iter = assigns.iter().filter_map(
@@ -485,9 +485,9 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
     }
 }
 
-// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Type
+// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>, &mut Vec<(String, Type)>) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
-fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>) -> Type
+fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>) -> Type
 {
     match sexpr
     {
@@ -508,7 +508,9 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
                 // Check child function
                 None => {
-                    check_function_body(f, f, funcs.get(f).unwrap(), scope, funcs, errors);
+                    let mut func = funcs.remove(f).unwrap();
+                    check_function_body(f, f, &mut func, scope, funcs, errors);
+                    funcs.insert(f.clone(), func);
                     scope.get_var(f).unwrap().0.clone()
                 }
             }
@@ -519,7 +521,15 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             // Check global scope
             match scope.get_var(s)
             {
-                Some(v) => v.0.clone(),
+                Some(v) => {
+                    // Check if captured
+                    if scope.is_captured(s) && !captured.contains_key(s)
+                    {
+                        captured.insert(s.clone(), v.0.clone());
+                        captured_names.push(s.clone());
+                    }
+                    v.0.clone()
+                }
 
                 // Check local scopes
                 None => Type::Unknown
@@ -531,7 +541,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
             match op
             {
                 PrefixOp::Neg => {
-                    let vt = get_function_type(v, scope, funcs, errors).clone();
+                    let vt = get_function_type(v, scope, funcs, errors, captured, captured_names).clone();
 
                     match scope.get_func_ret(FunctionName::Prefix(vt))
                     {
@@ -546,8 +556,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
         // Infix operators
         SExpr::Infix(_, op, l, r) => {
-            let lt = get_function_type(l, scope, funcs, errors).clone();
-            let rt = get_function_type(r, scope, funcs, errors).clone();
+            let lt = get_function_type(l, scope, funcs, errors, captured, captured_names).clone();
+            let rt = get_function_type(r, scope, funcs, errors, captured, captured_names).clone();
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt))
             {
@@ -558,34 +568,34 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
-            get_function_type(l, scope, funcs, errors);
-            get_function_type(r, scope, funcs, errors);
+            get_function_type(l, scope, funcs, errors, captured, captured_names);
+            get_function_type(r, scope, funcs, errors, captured, captured_names);
             Type::Bool
         }
 
         // If expressions
         SExpr::If(_, _, body, elsy) => {
-            let bt = get_function_type(body, scope, funcs, errors);
+            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names);
             if bt != Type::Unknown
             {
                 bt
             } else
             {
-                get_function_type(elsy, scope, funcs, errors)
+                get_function_type(elsy, scope, funcs, errors, captured, captured_names)
             }
         }
 
         // Applications
         SExpr::Application(_, f, a) => {
             // Get function type
-            let ft = get_function_type(f, scope, funcs, errors);
+            let ft = get_function_type(f, scope, funcs, errors, captured, captured_names);
             if let Type::Unknown = ft
             {
                 return Type::Unknown;
             }
 
             // Get argument type
-            let at = get_function_type(a, scope, funcs, errors);
+            let at = get_function_type(a, scope, funcs, errors, captured, captured_names);
             if let Type::Unknown = at
             {
                 return Type::Unknown;
@@ -614,7 +624,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
 
         // Assignments
         SExpr::Assign(_, name, value) => {
-            let t = get_function_type(value, scope, funcs, errors);
+            let t = get_function_type(value, scope, funcs, errors, captured, captured_names);
             scope.put_var(&name, &t, 0, None, Span { start: 0, end: 0 }, true);
             t
         }
@@ -622,16 +632,16 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
         // With expressions
         SExpr::With(_, assigns, body) => {
             // Push scope
-            scope.push_scope();
+            scope.push_scope(false);
 
             // Populate scope with variable types
             for a in assigns
             {
-                get_function_type(a, scope, funcs, errors);
+                get_function_type(a, scope, funcs, errors, captured, captured_names);
             }
 
             // Get the function type
-            let bt = get_function_type(body, scope, funcs, errors);
+            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names);
 
             // Pop the scope and return type
             scope.pop_scope();
@@ -640,9 +650,9 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &HashMap<String, I
     }
 }
 
-// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> bool
+// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
 // Checks a function body and determines the return type of the function.
-fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Scope, funcs: &HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
+fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
 {
     if let None = scope.variables.get(name)
     {
@@ -654,14 +664,18 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
         }
 
         // Put arguments into scope
-        scope.push_scope();
+        scope.push_scope(true);
         for arg in func.args.iter()
         {
             scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
         }
 
         // Get the type
-        let _type = get_function_type(&func.body, scope, funcs, errors);
+        let mut captured = HashMap::with_capacity(0);
+        let mut captured_names = Vec::with_capacity(0);
+        let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names);
+        func.captured = captured;
+        func.captured_names = captured_names;
         scope.pop_scope();
 
         // Push an error if type is unknown
@@ -683,9 +697,9 @@ fn check_function_body(name: &str, refr: &str, func: &IRFunction, scope: &mut Sc
             // Put function type in global scope
             if name != refr
             {
-                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(0), func.span.clone(), false);
+                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.span.clone(), false);
             }
-            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(0), func.span.clone(), false);
+            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.span.clone(), false);
         }
     }
 }
@@ -698,8 +712,9 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     // Generate function types
     for name in names.clone()
     {
-        let func = ir.funcs.get(&name.0).unwrap();
-        check_function_body(&name.0, &name.1, func, &mut ir.scope, &ir.funcs, errors);
+        let mut func = ir.funcs.remove(&name.0).unwrap();
+        check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors);
+        ir.funcs.insert(name.0, func);
     }
 
     // Check all function bodies
@@ -709,7 +724,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
         let mut func = ir.funcs.remove(&name.0).unwrap();
 
         // Push scope and add arguments
-        ir.scope.push_scope();
+        ir.scope.push_scope(false);
         for arg in &func.args
         {
             ir.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);

@@ -153,6 +153,8 @@ impl SExpr
 pub struct IRFunction
 {
     pub args: Vec<(String, Type)>,
+    pub captured: HashMap<String, Type>,
+    pub captured_names: Vec<String>,
     pub body: SExpr,
     pub global: bool,
     pub span: Span
@@ -394,6 +396,8 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             // Create the function
             let func = IRFunction {
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
+                captured: HashMap::with_capacity(0),
+                captured_names: Vec::with_capacity(0),
                 body: convert_node(*val, funcs, false, seen_funcs),
                 global,
                 span: Span {
