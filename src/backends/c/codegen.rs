@@ -414,7 +414,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             f = funcs[n];
 
                         // Functions with known arity and fully applied
-                        } else if f.get_metadata().arity <= astrs.len() + f.get_metadata().saved_argc.unwrap() + 1
+                        } else if f.get_metadata().arity <= astrs.len() + 1
                         {
                             // Get name
                             astrs.push(v);
