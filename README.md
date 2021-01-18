@@ -13,7 +13,7 @@ Just type in the following:
 ```bash
 git clone https://github.com/jenra-uwu/curly-lang && cd curly-lang && cargo build
 ```
-This project depends on `tcc` for the repl and jitting and either `clang` or `gcc` for compiling, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS). If `tcc` is not availabe via your package manager, you can clone it from https://github.com/TinyCC/TinyCC.
+This project depends on either `clang` or `gcc` for compiling, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
 
 Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
