@@ -30,7 +30,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
     if let Type::ConversionError = sexpr.get_metadata()._type
     {
         errors.push(CorrectnessError::InvalidType(
-            sexpr.get_metadata().span2.clone()
+            sexpr.get_metadata().span.clone()
         ));
         return;
     }

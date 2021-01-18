@@ -320,7 +320,7 @@ pub enum AST
     AssignFunction(Span, String, Vec<(String, AST)>, Box<AST>),
 
     // Scoping
-    With(Span, Vec<AST>, Box<AST>),
+    With(Span, Vec<AST>, Box<AST>)
 }
 
 impl AST
@@ -829,14 +829,89 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
     }, name, Box::new(value)))
 }
 
-// type_expr(&mut Parser) -> Result<AST, ParseError>
-// Parses a type (currently just a symbol).
-fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
+// type_symbol(&mut Parser) -> Result<AST, ParseError>
+// Parses a type symbol.
+fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Symbol
     let state = parser.save_state();
     let (s, span) = consume_save!(parser, Symbol, state, false, false, "");
     Ok(AST::Symbol(span, s))
+}
+
+// type_expr(&mut Parser) -> Result<AST, ParseError>
+// Parses a type (currently just a symbol).
+fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Set up
+    use std::mem::swap;
+    let state = parser.save_state();
+    let mut top = call_func!(type_symbol, parser, state);
+    let mut acc = &mut top;
+
+    loop
+    {
+        // Save current state
+        let state2 = parser.save_state();
+
+        // Check for operator
+        if let Some(op) = parser.peek()
+        {
+            // Get operator
+            match op.0
+            {
+                Token::RightArrow => (),
+
+                _ => {
+                    parser.return_state(state2);
+                    break;
+                }
+            }
+            parser.next();
+
+            // Get right hand side
+            let mut right = Some(call_func_fatal!(type_symbol, parser, false, "Expected value after infix operator"));
+
+            // Build ast
+            match &mut acc
+            {
+                AST::Infix(_, op, _, r) if op.as_str() == "->" => {
+                    let mut left = Box::new(AST::False(Span { start: 0, end: 0 }));
+                    swap(r, &mut left);
+                    let right_unwrapped = right.unwrap();
+                    right = None;
+                    let mut new = Box::new(AST::Infix(Span {
+                        start: r.get_span().start,
+                        end: right_unwrapped.get_span().end
+                    }, String::from("->"), left, Box::new(right_unwrapped)));
+                    swap(r, &mut new);
+                }
+
+                _ => ()
+            }
+
+            // Adjust top node
+            if right.is_some()
+            {
+                let right_unwrapped = right.unwrap();
+                top = AST::Infix(Span {
+                    start: top.get_span().start,
+                    end: right_unwrapped.get_span().end
+                }, String::from("->"), Box::new(top), Box::new(right_unwrapped));
+                acc = &mut top;
+            } else if let AST::Infix(_, _, _, r) = acc
+            {
+                acc = r;
+            }
+
+        // If there's no operator, break
+        } else
+        {
+            break;
+        }
+    }
+
+    Ok(top)
 }
 
 // declaration(&mut Parser) -> Result<(Span, String, AST), ParseError>

@@ -406,12 +406,22 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 }
             };
 
+            let mut _type = Type::Error;
+            for a in func.args.iter()
+            {
+                if a.1 == Type::ConversionError
+                {
+                    _type = Type::ConversionError;
+                    break;
+                }
+            }
+
             // Return assigning to the function id
             funcs.insert(func_name, func);
             SExpr::Assign(SExprMetadata {
                 span,
                 span2: Span { start: 0, end: 0 },
-                _type: Type::Error,
+                _type,
                 arity,
                 saved_argc: None
             }, name, Box::new(func_id))
