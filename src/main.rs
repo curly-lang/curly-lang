@@ -211,6 +211,7 @@ struct REPLFunc
     wrapper: fn(),
     arity: u32,
     argc: u32,
+    cleaners: fn(),
     args: fn()
 }
 

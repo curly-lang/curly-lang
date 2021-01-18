@@ -111,18 +111,48 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(", (void*) __func_wrapper_");
             func.code.push_str(s);
             func.code.push_str(&format!(", {}", f.args.len() + f.captured.len()));
+            let count = if f.captured.len() > 0
+            {
+                f.args.len() + f.captured.len()
+            } else
+            {
+                0
+            };
             func.code.push_str(", 0, calloc(");
-            func.code.push_str(&format!("{}", f.args.len() + f.captured.len()));
+            func.code.push_str(&format!("{}", count));
+            func.code.push_str(", sizeof(void*)), calloc(");
+            func.code.push_str(&format!("{}", count));
             func.code.push_str(", sizeof(void*)) };\n");
 
             // Save captured variables
             for c in f.captured_names.iter()
             {
+                // Fix doubles
+                let mut v = c.clone();
+                if *f.captured.get(c).unwrap() == Type::Float
+                {
+                    let name = format!("_{}", func.last_reference);
+                    func.last_reference += 1;
+                    func.code.push_str("double_wrapper_t ");
+                    func.code.push_str(&name);
+                    func.code.push_str(";\n");
+                    func.code.push_str(&name);
+                    func.code.push_str(".d = ");
+                    func.code.push_str(&v);
+                    func.code.push_str(";\nvoid* ");
+                    v = format!("_{}", func.last_reference);
+                    func.last_reference += 1;
+                    func.code.push_str(&v);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&name);
+                    func.code.push_str(".v;\n");
+                }
+
                 func.code.push_str(&name);
                 func.code.push_str(".args[");
                 func.code.push_str(&name);
                 func.code.push_str(".argc++] = (void*) ");
-                func.code.push_str(c);
+                func.code.push_str(&v);
                 func.code.push_str(";\n");
             }
 
@@ -355,6 +385,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                                 // Init list
                                 func.code.push_str("if (");
                                 func.code.push_str(&fstr);
+                                func.code.push_str(".cleaners == (void*) 0)\n");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".cleaners = calloc(");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".arity, sizeof(void*));\n");
+func.code.push_str("if (");
+                                func.code.push_str(&fstr);
                                 func.code.push_str(".args == (void*) 0)\n");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".args = calloc(");
@@ -405,6 +442,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                                 func.code.push_str(".args == (void*) 0)\n");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".args = calloc(");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".arity, sizeof(void*));\n");
+func.code.push_str("if (");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".cleaners == (void*) 0)\n");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".cleaners = calloc(");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".arity, sizeof(void*));\n");
                             }
@@ -498,28 +542,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                         // Create new function structure
                         func.code.push_str("func_t ");
                         func.code.push_str(&name);
-                        func.code.push_str(" = { 0, ");
-                        func.code.push_str(&fstr);
-                        func.code.push_str(".func, ");
-                        func.code.push_str(&fstr);
-                        func.code.push_str(".wrapper, ");
-                        func.code.push_str(&fstr);
-                        func.code.push_str(".arity, ");
-                        func.code.push_str(&fstr);
-                        func.code.push_str(".argc, calloc(sizeof(void*), ");
-                        func.code.push_str(&fstr);
-                        func.code.push_str(".argc + ");
-                        func.code.push_str(&format!("{}", args.len()));
-                        func.code.push_str(") };\n");
-
-                        // Copy previous args
-                        func.code.push_str("for (unsigned int i = 0; i < ");
-                        func.code.push_str(&fstr);
-                        func.code.push_str(".argc; i++)\n");
+                        func.code.push_str(";\ncopy_func(&");
                         func.code.push_str(&name);
-                        func.code.push_str(".args[i] = ");
+                        func.code.push_str(", &");
                         func.code.push_str(&fstr);
-                        func.code.push_str(".args[i];\n");
+                        func.code.push_str(");");
 
                         // Put in new args
                         for arg in astrs.iter().enumerate()
@@ -616,11 +643,9 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 {
                     Type::Func(_, _) => {
                         func.code.push_str(&astrs[a.0]);
-                        func.code.push_str(".refc--;\nif (");
+                        func.code.push_str(".refc--;\nrefc_func(&");
                         func.code.push_str(&astrs[a.0]);
-                        func.code.push_str(".refc == 0) {\nfree(");
-                        func.code.push_str(&astrs[a.0]);
-                        func.code.push_str(".args);\n}\n");
+                        func.code.push_str(");\n");
                     }
 
                     _ => ()
@@ -849,12 +874,72 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     }
 
     // Define structures and helper functions
-    let mut code_string = String::from("typedef struct {\nunsigned int refc;\nvoid* func;\nvoid* wrapper;\nunsigned int arity;\nunsigned int argc;\nvoid** args;\n} func_t;\ntypedef union {\ndouble d;\nvoid* v;\n} double_wrapper_t;\nint printf(const char*, ...);\nvoid* calloc(long unsigned int, long unsigned int);\nvoid free(void*);\n");
+    let mut code_string = String::from("
+typedef struct {
+    unsigned int refc;
+    void* func;
+    void* wrapper;
+    unsigned int arity;
+    unsigned int argc;
+    char (**cleaners)(void*);
+    void** args;
+} func_t;
+
+typedef union {
+    double d;
+    void* v;
+} double_wrapper_t;
+
+int printf(const char*, ...);
+
+void* calloc(long unsigned int, long unsigned int);
+
+void free(void*);
+
+char refc_func(func_t* func) {
+    if (func->refc == 0) {
+        for (int i = 0; i < func->argc; i++) {
+            if (func->cleaners[i] != (void*) 0
+                && func->cleaners[i](func->args[i]))
+                free(func->cleaners[i]);
+        }
+
+        free(func->args);
+        free(func->cleaners);
+    }
+
+    return (char) 1;
+}
+
+void copy_func(func_t* dest, func_t* source) {
+    dest->refc = 0;
+    dest->func = source->func;
+    dest->wrapper = source->wrapper;dest->arity = source->arity;
+    dest->argc = source->argc;
+    dest->cleaners = calloc(dest->arity, sizeof(void*));
+    dest->args = calloc(dest->arity, sizeof(void*));
+
+    for (int i = 0; i < dest->argc; i++) {
+        dest->cleaners[i] = source->cleaners[i];
+        dest->args[i] = source->args[i];
+    }
+}
+");
 
     // Define repl value struct
     if let Some(_) = repl_vars
     {
-        code_string.push_str("typedef struct {\nunsigned int tag;\nunion{\nlong long i;\ndouble d;\nchar b;\nfunc_t f;\n} vals;\n} repl_value_t;\n");
+        code_string.push_str("
+typedef struct {
+    unsigned int tag;
+    union {
+        long long i;
+        double d;
+        char b;
+        func_t f;
+    } vals;
+} repl_value_t;
+");
     }
 
     // Declare all functions
