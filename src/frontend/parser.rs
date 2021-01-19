@@ -281,7 +281,7 @@ impl<'a> Parser<'a>
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum AST
 {
     // Numbers
@@ -830,17 +830,52 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 }
 
 // type_symbol(&mut Parser) -> Result<AST, ParseError>
-// Parses a type symbol.
+// Parses a type symbol or parenthesised type.
 fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Symbol
-    let state = parser.save_state();
-    let (s, span) = consume_save!(parser, Symbol, state, false, false, "");
-    Ok(AST::Symbol(span, s))
+    let (token, span) = match parser.peek()
+    {
+        Some(v) => v,
+        None => return ParseError::empty()
+    };
+
+    // Symbols
+    if let Token::Symbol = token
+    {
+        let value = AST::Symbol(span, parser.slice());
+        parser.next();
+        Ok(value)
+
+    // Parenthesised types
+    } else if let Token::LParen = token
+    {
+        // Get value
+        let state = parser.save_state();
+        parser.next();
+        newline(parser);
+
+        let value = match type_expr(parser) {
+            Ok(v) => v,
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+
+        // Get right parenthesis
+        newline(parser);
+        consume_nosave!(parser, RParen, state, true, true, "");
+        Ok(AST::Prefix(span, String::with_capacity(0), Box::new(value)))
+
+    // Not a value
+    } else
+    {
+        ParseError::empty()
+    }
 }
 
 // type_expr(&mut Parser) -> Result<AST, ParseError>
-// Parses a type (currently just a symbol).
+// Parses a type.
 fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Set up
@@ -891,6 +926,18 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
             }
 
             // Adjust top node
+            if let AST::Prefix(span, s, v) = acc
+            {
+                #[allow(unused_assignments)]
+                if s == ""
+                {
+                    let mut temp = AST::True(span.clone());
+                    acc = &mut temp;
+                    top = *v.clone();
+                    acc = &mut top;
+                }
+            }
+
             if right.is_some()
             {
                 let right_unwrapped = right.unwrap();
