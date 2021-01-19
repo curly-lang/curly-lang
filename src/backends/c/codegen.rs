@@ -86,7 +86,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             // Generate code
             func.code.push_str("char ");
             func.code.push_str(&name);
-            func.code.push_str(" = 0; ");
+            func.code.push_str(" = 0;\n");
 
             name
         }
@@ -127,25 +127,40 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             // Save captured variables
             for c in f.captured_names.iter()
             {
-                // Fix doubles
+                // Fix doubles and functions
                 let mut v = c.clone();
-                if *f.captured.get(c).unwrap() == Type::Float
+                match f.captured.get(c).unwrap()
                 {
-                    let name = format!("_{}", func.last_reference);
-                    func.last_reference += 1;
-                    func.code.push_str("double_wrapper_t ");
-                    func.code.push_str(&name);
-                    func.code.push_str(";\n");
-                    func.code.push_str(&name);
-                    func.code.push_str(".d = ");
-                    func.code.push_str(&v);
-                    func.code.push_str(";\nvoid* ");
-                    v = format!("_{}", func.last_reference);
-                    func.last_reference += 1;
-                    func.code.push_str(&v);
-                    func.code.push_str(" = ");
-                    func.code.push_str(&name);
-                    func.code.push_str(".v;\n");
+                    Type::Float => {
+                        let name = format!("_{}", func.last_reference);
+                        func.last_reference += 1;
+                        func.code.push_str("double_wrapper_t ");
+                        func.code.push_str(&name);
+                        func.code.push_str(";\n");
+                        func.code.push_str(&name);
+                        func.code.push_str(".d = ");
+                        func.code.push_str(&v);
+                        func.code.push_str(";\nvoid* ");
+                        v = format!("_{}", func.last_reference);
+                        func.last_reference += 1;
+                        func.code.push_str(&v);
+                        func.code.push_str(" = ");
+                        func.code.push_str(&name);
+                        func.code.push_str(".v;\n");
+                    }
+
+                    Type::Func(_, _) => {
+                        let name = format!("_{}", func.last_reference);
+                        func.last_reference += 1;
+                        func.code.push_str("func_t* ");
+                        func.code.push_str(&name);
+                        func.code.push_str(" = copy_func_arg(&");
+                        func.code.push_str(&v);
+                        func.code.push_str(");\n");
+                        v = name;
+                    }
+
+                    _ => ()
                 }
 
                 func.code.push_str(&name);
@@ -177,7 +192,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 PrefixOp::Span => panic!("unsupported operator!")
             });
             func.code.push_str(&val);
-            func.code.push_str("; ");
+            func.code.push_str(";\n");
 
             name
         }
@@ -422,6 +437,11 @@ func.code.push_str("if (");
                             func.code.push_str(get_c_type(_type));
                             func.code.push(' ');
                             func.code.push_str(&name);
+                            if let Type::Func(_, _) = _type
+                            {
+                                func.code.push_str(" = ");
+                                func.code.push_str(&fstr);
+                            }
                             func.code.push_str(";\nif (");
                             func.code.push_str(&fstr);
                             func.code.push_str(".arity == ");
@@ -467,7 +487,7 @@ func.code.push_str("if (");
                         } else if f.get_metadata().arity <= astrs.len() + 1
                         {
                             // Get name
-                            astrs.push(v);
+                            astrs.push((v, &a.get_metadata()._type));
                             name = format!("_{}", func.last_reference);
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
@@ -515,7 +535,7 @@ func.code.push_str("if (");
                                 }
 
                                 func.code.push_str("(void*) ");
-                                func.code.push_str(&astrs[i]);
+                                func.code.push_str(&astrs[i].0);
                             }
 
                             // Close parentheses
@@ -534,7 +554,7 @@ func.code.push_str("if (");
                             }
                         } else
                         {
-                            astrs.push(v);
+                            astrs.push((v, &a.get_metadata()._type));
                         }
                     }
 
@@ -552,18 +572,53 @@ func.code.push_str("if (");
                         func.code.push_str(&name);
                         func.code.push_str(", &");
                         func.code.push_str(&fstr);
-                        func.code.push_str(");");
+                        func.code.push_str(");\n");
+
+                        // Init list
+                        func.code.push_str("if (");
+                        func.code.push_str(&name);
+                        func.code.push_str(".cleaners == (void*) 0)\n");
+                        func.code.push_str(&name);
+                        func.code.push_str(".cleaners = calloc(");
+                        func.code.push_str(&name);
+                        func.code.push_str(".arity, sizeof(void*));\n");
+func.code.push_str("if (");
+                        func.code.push_str(&name);
+                        func.code.push_str(".args == (void*) 0)\n");
+                        func.code.push_str(&name);
+                        func.code.push_str(".args = calloc(");
+                        func.code.push_str(&name);
+                        func.code.push_str(".arity, sizeof(void*));\n");
+
 
                         // Put in new args
-                        for arg in astrs.iter().enumerate()
+                        for arg in astrs.iter_mut()
                         {
+                            // If it's a function allocate space in the heap for it
+                            if let Type::Func(_, _) = arg.1
+                            {
+                                {
+                                    let name = format!("_{}", func.last_reference);
+                                    func.last_reference += 1;
+                                    func.code.push_str("func_t* ");
+                                    func.code.push_str(&name);
+                                    func.code.push_str(" = copy_func_arg(");
+                                    func.code.push_str(&arg.0);
+                                    func.code.push_str(");\n");
+                                    arg.0 = name;
+                                }
+
+                                func.code.push_str(&name);
+                                func.code.push_str(".cleaners[");
+                                func.code.push_str(&name);
+                                func.code.push_str(".argc] = force_free_func;\n");
+                            }
+
                             func.code.push_str(&name);
                             func.code.push_str(".args[");
-                            func.code.push_str(&fstr);
-                            func.code.push_str(".argc + ");
-                            func.code.push_str(&format!("{}", arg.0));
-                            func.code.push_str("] = (void*) ");
-                            func.code.push_str(&arg.1);
+                            func.code.push_str(&name);
+                            func.code.push_str(".argc++] = (void*) ");
+                            func.code.push_str(&arg.0);
                             func.code.push_str(";\n");
                         }
                     }
@@ -919,9 +974,12 @@ int printf(const char*, ...);
 
 void* calloc(long unsigned int, long unsigned int);
 
+void* malloc(long unsigned int);
+
 void free(void*);
 
-char force_free_func(func_t* func) {
+char force_free_func(void* _func) {
+    func_t* func = (func_t*) _func;
     for (int i = 0; i < func->argc; i++) {
         if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
             free(func->args[i]);
@@ -966,6 +1024,12 @@ void copy_func(func_t* dest, func_t* source) {
         dest->cleaners[i] = source->cleaners[i];
         dest->args[i] = source->args[i];
     }
+}
+
+func_t* copy_func_arg(func_t* source) {
+    func_t* dest = malloc(sizeof(func_t));
+    copy_func(dest, source);
+    return dest;
 }
 ");
 
@@ -1041,19 +1105,22 @@ typedef struct {
     // Deallocate everything
     for v in ir.sexprs.iter().enumerate()
     {
-        match v.1.get_metadata()._type
+        if let SExpr::Assign(m, _, _) = v.1
         {
-            Type::Func(_, _) => {
-                code_string.push_str("if (");
-                code_string.push_str(&cleanup[v.0]);
-                code_string.push_str(".refc != 0) {");
-                code_string.push_str(&cleanup[v.0]);
-                code_string.push_str(".refc = 0;\nfree_func(&");
-                code_string.push_str(&cleanup[v.0]);
-                code_string.push_str(");\n}\n");
-            }
+            match m._type
+            {
+                Type::Func(_, _) => {
+                    code_string.push_str("if (");
+                    code_string.push_str(&cleanup[v.0]);
+                    code_string.push_str(".refc != 0) {\n");
+                    code_string.push_str(&cleanup[v.0]);
+                    code_string.push_str(".refc = 0;\nfree_func(&");
+                    code_string.push_str(&cleanup[v.0]);
+                    code_string.push_str(");\n}\n");
+                }
 
-            _ => ()
+                _ => ()
+            }
         }
     }
 
