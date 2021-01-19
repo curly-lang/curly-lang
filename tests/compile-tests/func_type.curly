@@ -1,0 +1,3 @@
+apply f: Int -> Int, x: Int = f x
+_f x: Int = x + x
+debug (apply _f 3)
