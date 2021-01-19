@@ -1,0 +1,7 @@
+apply f: Int -> Int, x: Int = f x
+g x: Int = x + x
+debug (apply g)
+debug (apply g 3)
+apply_g = apply g
+debug apply_g
+debug (apply_g 7)
