@@ -12,7 +12,7 @@ struct CFunction<'a>
     last_reference: usize
 }
 
-// get_c_type(&Type, bool) -> &str
+// get_c_type(&Type) -> &str
 // Converts an IR type into a C type.
 fn get_c_type(_type: &Type) -> &str
 {
@@ -355,23 +355,31 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                         // Get argument
                         let (n, a) = a;
                         let mut v = convert_sexpr(a, root, func);
-                        if a.get_metadata()._type == Type::Float
+                        match a.get_metadata()._type
                         {
-                            let name = format!("_{}", func.last_reference);
-                            func.last_reference += 1;
-                            func.code.push_str("double_wrapper_t ");
-                            func.code.push_str(&name);
-                            func.code.push_str(";\n");
-                            func.code.push_str(&name);
-                            func.code.push_str(".d = ");
-                            func.code.push_str(&v);
-                            func.code.push_str(";\nvoid* ");
-                            v = format!("_{}", func.last_reference);
-                            func.last_reference += 1;
-                            func.code.push_str(&v);
-                            func.code.push_str(" = ");
-                            func.code.push_str(&name);
-                            func.code.push_str(".v;\n");
+                            Type::Float => {
+                                let name = format!("_{}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str("double_wrapper_t ");
+                                func.code.push_str(&name);
+                                func.code.push_str(";\n");
+                                func.code.push_str(&name);
+                                func.code.push_str(".d = ");
+                                func.code.push_str(&v);
+                                func.code.push_str(";\nvoid* ");
+                                v = format!("_{}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str(&v);
+                                func.code.push_str(" = ");
+                                func.code.push_str(&name);
+                                func.code.push_str(".v;\n");
+                            }
+
+                            Type::Func(_, _) => {
+                                v = format!("&{}", &v);
+                            }
+
+                            _ => ()
                         }
 
                         // Functions with unknown arity
@@ -737,9 +745,12 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction)
 
         s.push_str(get_c_type(a.1));
         s.push(' ');
-        if *a.1 == Type::Float
+        match a.1
         {
-            s.push_str("*_");
+            Type::Float
+                | Type::Func(_, _)
+                => s.push_str("*_"),
+            _ => ()
         }
         s.push_str(a.0);
     }
@@ -796,27 +807,44 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             last_reference: 0
         };
 
-        // Fix doubles
+        // Fix doubles and functions
         for a in cf.args.iter()
         {
+            match a.1
+            {
+                Type::Float => {
+                    // Get name
+                    let name = format!("_{}", cf.last_reference);
+                    cf.last_reference += 1;
+
+                    // Convert pointer to double
+                    cf.code.push_str("double_wrapper_t ");
+                    cf.code.push_str(&name);
+                    cf.code.push_str(";\n");
+                    cf.code.push_str(&name);
+                    cf.code.push_str(".v = _");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(";\ndouble ");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(" = ");
+                    cf.code.push_str(&name);
+                    cf.code.push_str(".d;\n");
+                }
+
+                Type::Func(_, _) => {
+                    // Dereference pointer
+                    cf.code.push_str("func_t ");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(" = *_");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(";\n");
+                }
+
+                _ => ()
+            }
             if *a.1 == Type::Float
             {
-                // Get name
-                let name = format!("_{}", cf.last_reference);
-                cf.last_reference += 1;
-
-                // Convert pointer to double
-                cf.code.push_str("double_wrapper_t ");
-                cf.code.push_str(&name);
-                cf.code.push_str(";\n");
-                cf.code.push_str(&name);
-                cf.code.push_str(".v = _");
-                cf.code.push_str(&a.0);
-                cf.code.push_str(";\ndouble ");
-                cf.code.push_str(&a.0);
-                cf.code.push_str(" = ");
-                cf.code.push_str(&name);
-                cf.code.push_str(".d;\n");
+                
             }
         }
 
