@@ -3,6 +3,7 @@
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
 - Add function types in type declarations
+- Fix bug where a function that is shadowed by the local scope is not shadowed and ends up replacing that variable anyway
 - Lambdas and anonymous closures
 - Lists
 - Strings (which are basically just lists of chars)
