@@ -434,11 +434,9 @@ func.code.push_str("if (");
                             func.code.push_str(&fstr);
                             func.code.push_str(".wrapper)(&");
                             func.code.push_str(&fstr);
-                            func.code.push_str(");\nif (");
+                            func.code.push_str(");\nfree_func(&");
                             func.code.push_str(&fstr);
-                            func.code.push_str(".refc == 0)\nfree(");
-                            func.code.push_str(&fstr);
-                            func.code.push_str(".args);\n");
+                            func.code.push_str(");\n");
 
                             // Reset the list of arguments
                             if n != args.len() - 1
@@ -650,8 +648,7 @@ func.code.push_str("if (");
                 match a.1.get_metadata()._type
                 {
                     Type::Func(_, _) => {
-                        func.code.push_str(&astrs[a.0]);
-                        func.code.push_str(".refc--;\nrefc_func(&");
+                        func.code.push_str("refc_func(&");
                         func.code.push_str(&astrs[a.0]);
                         func.code.push_str(");\n");
                     }
@@ -832,12 +829,14 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
                 }
 
                 Type::Func(_, _) => {
-                    // Dereference pointer
+                    // Copy
                     cf.code.push_str("func_t ");
                     cf.code.push_str(&a.0);
-                    cf.code.push_str(" = *_");
+                    cf.code.push_str(";\ncopy_func(&");
                     cf.code.push_str(&a.0);
-                    cf.code.push_str(";\n");
+                    cf.code.push_str(", _");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(");\n");
                 }
 
                 _ => ()
@@ -888,11 +887,9 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         match s.get_metadata()._type
         {
             Type::Func(_, _) => {
-                main_func.code.push_str("if (");
+                main_func.code.push_str("free_func(&");
                 main_func.code.push_str(&v);
-                main_func.code.push_str(".refc == 0)\nfree(");
-                main_func.code.push_str(&v);
-                main_func.code.push_str(".args);\n");
+                main_func.code.push_str(");\n");
             }
 
             _ => ()
@@ -924,19 +921,29 @@ void* calloc(long unsigned int, long unsigned int);
 
 void free(void*);
 
-char refc_func(func_t* func) {
-    if (func->refc == 0) {
-        for (int i = 0; i < func->argc; i++) {
-            if (func->cleaners[i] != (void*) 0
-                && func->cleaners[i](func->args[i]))
-                free(func->cleaners[i]);
-        }
-
-        free(func->args);
-        free(func->cleaners);
+char force_free_func(func_t* func) {
+    for (int i = 0; i < func->argc; i++) {
+        if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
+            free(func->args[i]);
     }
 
+    free(func->args);
+    free(func->cleaners);
     return (char) 1;
+}
+
+char free_func(func_t* func) {
+    if (func->refc == 0) {
+        return force_free_func(func);
+    }
+
+    return (char) 0;
+}
+
+char refc_func(func_t* func) {
+    if (func->refc > 0)
+        func->refc--;
+    return free_func(func);
 }
 
 void copy_func(func_t* dest, func_t* source) {
@@ -944,8 +951,16 @@ void copy_func(func_t* dest, func_t* source) {
     dest->func = source->func;
     dest->wrapper = source->wrapper;dest->arity = source->arity;
     dest->argc = source->argc;
-    dest->cleaners = calloc(dest->arity, sizeof(void*));
-    dest->args = calloc(dest->arity, sizeof(void*));
+
+    if (dest->argc != 0)
+    {
+        dest->cleaners = calloc(dest->arity, sizeof(void*));
+        dest->args = calloc(dest->arity, sizeof(void*));
+    } else
+    {
+        dest->cleaners = (void*) 0;
+        dest->args = (void*) 0;
+    }
 
     for (int i = 0; i < dest->argc; i++) {
         dest->cleaners[i] = source->cleaners[i];
@@ -1029,11 +1044,13 @@ typedef struct {
         match v.1.get_metadata()._type
         {
             Type::Func(_, _) => {
-                main_func.code.push_str("if (");
-                main_func.code.push_str(&cleanup[v.0]);
-                main_func.code.push_str(".refc != 0)\nfree(");
-                main_func.code.push_str(&cleanup[v.0]);
-                main_func.code.push_str(".args);\n");
+                code_string.push_str("if (");
+                code_string.push_str(&cleanup[v.0]);
+                code_string.push_str(".refc != 0) {");
+                code_string.push_str(&cleanup[v.0]);
+                code_string.push_str(".refc = 0;\nfree_func(&");
+                code_string.push_str(&cleanup[v.0]);
+                code_string.push_str(");\n}\n");
             }
 
             _ => ()
