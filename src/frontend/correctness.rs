@@ -44,6 +44,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         SExpr::True(_) => (),
         SExpr::False(_) => (),
 
+        // Lists
+        SExpr::List(_, _) => panic!("uwu"),
+
         // Functions
         SExpr::Function(m, f) => {
             match root.scope.get_var(f)
@@ -498,6 +501,9 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             | SExpr::True(m)
             | SExpr::False(m)
             => m._type.clone(),
+
+        // Lists
+        SExpr::List(_, _) => panic!("uwu"),
 
         // Functions
         SExpr::Function(_, f) => {

@@ -70,6 +70,9 @@ pub enum SExpr
     // Strings
     String(SExprMetadata, String),
 
+    // Lists
+    List(SExprMetadata, Vec<SExpr>),
+
     // Functions
     Function(SExprMetadata, String),
 
@@ -110,6 +113,7 @@ impl SExpr
                 | Self::False(m)
                 | Self::Symbol(m, _)
                 | Self::String(m, _)
+                | Self::List(m, _)
                 | Self::Function(m, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
@@ -135,6 +139,7 @@ impl SExpr
                 | Self::False(m)
                 | Self::Symbol(m, _)
                 | Self::String(m, _)
+                | Self::List(m, _)
                 | Self::Function(m, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
@@ -238,7 +243,13 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             saved_argc: None
         }),
 
-        AST::List(_span, _list) => panic!("oh no"),
+        AST::List(span, list) => SExpr::List(SExprMetadata {
+            span,
+            span2: Span { start: 0, end: 0 },
+            _type: Type::Error,
+            arity: 0,
+            saved_argc: None,
+        }, list.into_iter().map(|v| convert_node(v, funcs, global, seen_funcs)).collect()),
 
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
