@@ -124,7 +124,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             {
                 func.code.push_str("(void*) 0, (void*) 0 };\n");
             }
-            
 
             // Save captured variables
             for c in f.captured_names.iter()
