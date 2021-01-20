@@ -413,13 +413,29 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                                 func.code.push_str(".cleaners = calloc(");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".arity, sizeof(void*));\n");
-func.code.push_str("if (");
+                                func.code.push_str("if (");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".args == (void*) 0)\n");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".args = calloc(");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".arity, sizeof(void*));\n");
+                            }
+
+                            if let Type::Func(_, _) = a.get_metadata()._type
+                            {
+                                let name = format!("_{}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str("func_t* ");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = copy_func_arg(");
+                                func.code.push_str(&v);
+                                func.code.push_str(");\n");
+                                v = name;
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".cleaners[");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".argc] = force_free_func;\n");
                             }
 
                             // Save argument
@@ -589,7 +605,6 @@ func.code.push_str("if (");
                         func.code.push_str(".args = calloc(");
                         func.code.push_str(&name);
                         func.code.push_str(".arity, sizeof(void*));\n");
-
 
                         // Put in new args
                         for arg in astrs.iter_mut()
