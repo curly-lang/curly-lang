@@ -593,6 +593,15 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Applications
         SExpr::Application(_, f, a) => {
+            // Quick hack for debug function
+            if let SExpr::Symbol(_, s) = &**f
+            {
+                if s == "debug"
+                {
+                    return get_function_type(a, scope, funcs, errors, captured, captured_names);
+                }
+            }
+
             // Get function type
             let ft = get_function_type(f, scope, funcs, errors, captured, captured_names);
             if let Type::Unknown = ft
