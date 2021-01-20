@@ -298,6 +298,9 @@ pub enum AST
     // Symbol (variables and stuff)
     Symbol(Span, String),
 
+    // Lists
+    List(Span, Vec<AST>),
+
     // Function Application
     Application(Span, Box<AST>, Box<AST>),
 
@@ -334,6 +337,7 @@ impl AST
                 | Self::True(s)
                 | Self::False(s)
                 | Self::String(s, _)
+                | Self::List(s, _)
                 | Self::Symbol(s, _)
                 | Self::Application(s, _, _)
                 | Self::Prefix(s, _, _)
@@ -791,6 +795,46 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// list(&mut Parser) -> Result<AST, ParseError>
+// Parses a list.
+fn list(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let (_, start) = consume_save!(parser, LBrack, state, false, false, "");
+    let mut list = vec![];
+
+    loop
+    {
+        if list.len() > 0
+        {
+            match parser.peek()
+            {
+                Some((Token::Comma, _)) => {
+                    parser.next();
+                }
+
+                _ => break
+            }
+        }
+
+        newline(parser);
+        list.push(match expression(parser)
+        {
+            Ok(v) => v,
+            Err(e) if e.fatal => return Err(e),
+            Err(_) => break
+        });
+    }
+
+    newline(parser);
+    let (_, end) = consume_save!(parser, RBrack, state, true, true, "Expected `[` after end of list");
+
+    Ok(AST::List(Span {
+        start: start.start,
+        end: end.end
+    }, list))
+}
+
 // expression(&mut Parser) -> Result<AST, ParseError>
 // Parses an expression.
 fn expression(parser: &mut Parser) -> Result<AST, ParseError>
@@ -802,6 +846,9 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     } else if let Ok(withy) = call_optional!(with, parser)
     {
         Ok(withy)
+    } else if let Ok(list) = call_optional!(list, parser)
+    {
+        Ok(list)
     } else
     {
         bool_xor(parser)

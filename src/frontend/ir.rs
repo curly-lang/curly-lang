@@ -238,6 +238,8 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             saved_argc: None
         }),
 
+        AST::List(_span, _list) => panic!("oh no"),
+
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
             span,
