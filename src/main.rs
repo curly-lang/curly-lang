@@ -5,6 +5,7 @@ use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use owo_colors::OwoColorize;
 use rustyline::{Editor, Helper};
 use rustyline::completion::Completer;
+use rustyline::config::{Builder, CompletionType, EditMode};
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::validate::{Validator, ValidationContext, ValidationResult};
@@ -425,7 +426,13 @@ impl Helper for CurlyREPLHelper {}
 fn repl()
 {
     // Set up
-    let mut rl = Editor::new();
+    let config = Builder::new()
+        .edit_mode(EditMode::Vi)
+        .completion_type(CompletionType::List)
+        .tab_stop(4)
+        .indent_size(4)
+        .build();
+    let mut rl = Editor::with_config(config);
     let helper = CurlyREPLHelper::new();
     let mut n = 0;
     rl.set_helper(Some(helper));
