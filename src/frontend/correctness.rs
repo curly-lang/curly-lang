@@ -1,5 +1,6 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::mem::swap;
 
 use super::ir::{BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
@@ -415,7 +416,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
 // convert_function_symbols(&mut SExpr, &mut HashSet<String>) -> ()
 // Converts function symbols in a sexpression into function references.
-fn convert_function_symbols(sexpr: &mut SExpr, funcs: &HashSet<String>)
+fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
 {
     match sexpr
     {
@@ -468,14 +469,30 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &HashSet<String>)
 
         // Check scope
         SExpr::With(_, assigns, body) => {
+            // Save removed funcs
+            let mut removed = HashSet::with_capacity(0);
+
             // Check assigns
-            for a in assigns
+            for a in assigns.iter_mut()
             {
                 convert_function_symbols(a, funcs);
             }
 
+            // Remove assignments from function set
+            for a in assigns
+            {
+                if let SExpr::Assign(_, a, _) = a
+                {
+                    if funcs.remove(a)
+                    {
+                        removed.insert(a.clone());
+                    }
+                }
+            }
+
             // Check body
             convert_function_symbols(body, funcs);
+            *funcs = HashSet::from_iter(funcs.union(&removed).cloned());
         }
 
         // Check assignments
@@ -762,8 +779,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
 fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
 {
     // Get the set of all global functions
-    use std::iter::FromIterator;
-    let globals = HashSet::from_iter(ir.funcs.iter().filter_map(|v| {
+    let mut globals = HashSet::from_iter(ir.funcs.iter().filter_map(|v| {
         if v.1.global
         {
             Some(v.0.clone())
@@ -776,7 +792,19 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     // Iterate over every function
     for func in ir.funcs.iter_mut()
     {
-        convert_function_symbols(&mut func.1.body, &globals);
+        let mut removed = HashSet::with_capacity(0);
+        for a in func.1.args.iter()
+        {
+            if globals.remove(&a.0)
+            {
+                removed.insert(a.0.clone());
+            }
+        }
+
+        convert_function_symbols(&mut func.1.body, &mut globals);
+
+        globals = HashSet::from_iter(globals.union(&removed).cloned());
+
     }
 
     // Check all global functions
