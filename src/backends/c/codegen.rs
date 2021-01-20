@@ -151,14 +151,20 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                     }
 
                     Type::Func(_, _) => {
-                        let name = format!("_{}", func.last_reference);
-                        func.last_reference += 1;
-                        func.code.push_str("func_t* ");
+                        v = {
+                            let name = format!("_{}", func.last_reference);
+                            func.last_reference += 1;
+                            func.code.push_str("func_t* ");
+                            func.code.push_str(&name);
+                            func.code.push_str(" = copy_func_arg(&");
+                            func.code.push_str(&v);
+                            func.code.push_str(");\n");
+                            name
+                        };
                         func.code.push_str(&name);
-                        func.code.push_str(" = copy_func_arg(&");
-                        func.code.push_str(&v);
-                        func.code.push_str(");\n");
-                        v = name;
+                        func.code.push_str(".args[");
+                        func.code.push_str(&name);
+                        func.code.push_str(".argc] = (void*) force_free_func;\n");
                     }
 
                     _ => ()
@@ -431,6 +437,8 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                                 func.code.push_str(&name);
                                 func.code.push_str(" = copy_func_arg(");
                                 func.code.push_str(&v);
+                                func.code.push_str(");\nfree_func(");
+                                func.code.push_str(&v);
                                 func.code.push_str(");\n");
                                 v = name;
                                 func.code.push_str(&fstr);
@@ -561,6 +569,20 @@ func.code.push_str("if (");
                             if n < funcs.len()
                             {
                                 f = funcs[n];
+                            }
+
+                            for a in astrs.iter()
+                            {
+                                match a.1
+                                {
+                                    Type::Func(_, _) => {
+                                        func.code.push_str("free_func(");
+                                        func.code.push_str(&a.0);
+                                        func.code.push_str(");\n");
+                                    }
+
+                                    _ => ()
+                                }
                             }
 
                             astrs.clear();
@@ -908,18 +930,31 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
                     cf.code.push_str(", _");
                     cf.code.push_str(&a.0);
                     cf.code.push_str(");\n");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(".refc++;\n");
                 }
 
                 _ => ()
-            }
-            if *a.1 == Type::Float
-            {
-                
             }
         }
 
         let last = convert_sexpr(&f.1.body, ir, &mut cf);
 
+        // Deallocate functions
+        for a in cf.args.iter()
+        {
+            match a.1
+            {
+                Type::Func(_, _) => {
+                    // Delete
+                    cf.code.push_str("refc_func(&");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(");\n");
+                }
+
+                _ => ()
+            }
+        }
         // Return statement
         cf.code.push_str("return ");
         cf.code.push_str(&last);
