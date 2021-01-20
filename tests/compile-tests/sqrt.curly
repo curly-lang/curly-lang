@@ -1,0 +1,5 @@
+sqrtCurly num: Float, precision: Int, guess: Float =
+	if precision == 0 then
+		guess
+	else
+		sqrtCurly num (precision - 1) ((guess + (num / guess)) / 2)
