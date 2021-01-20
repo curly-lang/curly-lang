@@ -252,8 +252,14 @@ impl<'a> Parser<'a>
             self.peek();
         }
 
-        let range = &self.tokens[self.token_pos].1;
-        String::from(&self.lexer.source()[range.start..range.end])
+        if self.token_pos < self.tokens.len()
+        {
+            let range = &self.tokens[self.token_pos].1;
+            String::from(&self.lexer.source()[range.start..range.end])
+        } else
+        {
+            String::with_capacity(0)
+        }
     }
 
     // span(&self) -> Span

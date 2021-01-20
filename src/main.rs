@@ -7,7 +7,7 @@ use rustyline::{Editor, Helper};
 use rustyline::completion::Completer;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
-use rustyline::validate::Validator;
+use rustyline::validate::{Validator, ValidationContext, ValidationResult};
 use rustyline::error::ReadlineError;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ use curlyc::frontend::ir::{IR, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = true;
+static DEBUG: bool = false;
 
 enum CBackendCompiler
 {
@@ -405,6 +405,17 @@ impl Highlighter for CurlyREPLHelper
 
 impl Validator for CurlyREPLHelper
 {
+    fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult, ReadlineError>
+    {
+        use ValidationResult::*;
+
+        match parser::parse(ctx.input())
+        {
+            Ok(_) => Ok(Valid(None)),
+            Err(e) if e.continuable => Ok(Incomplete),
+            Err(_) => Ok(Invalid(None))
+        }
+    }
 }
 
 impl Helper for CurlyREPLHelper {}
@@ -426,7 +437,7 @@ fn repl()
     loop
     {
         // Get line
-        let readline = rl.readline(">>> ");
+        let readline = rl.readline(">>>\n");
         match readline
         {
             Ok(line) => {
@@ -447,12 +458,12 @@ fn repl()
 
             // Errors
             Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break;
+                println!("^C");
+                continue;
             }
 
             Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
+                println!("^D");
                 break;
             }
 
