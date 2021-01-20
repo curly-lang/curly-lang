@@ -440,6 +440,51 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             }, name, Box::new(func_id))
         }
 
+        AST::Lambda(span, args, val) => {
+            // Get function id
+            let func_name = {
+                let seen = seen_funcs.get_mut("").unwrap();
+                *seen += 1;
+                format!("_{}", seen)
+            };
+
+            let arity = args.len();
+            let func_id = SExpr::Function(SExprMetadata {
+                span: val.get_span(),
+                span2: Span { start: 0, end: 0 },
+                _type: Type::Error,
+                arity,
+                saved_argc: None
+            }, func_name.clone());
+
+            // Create the function
+            let func = IRFunction {
+                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
+                captured: HashMap::with_capacity(0),
+                captured_names: Vec::with_capacity(0),
+                body: convert_node(*val, funcs, false, seen_funcs),
+                global,
+                span: Span {
+                    start: span.start,
+                    end: func_id.get_metadata().span.start - 1
+                }
+            };
+
+            let mut _type = Type::Error;
+            for a in func.args.iter()
+            {
+                if let Type::ConversionError(_) = a.1
+                {
+                    _type = a.1.clone();
+                    break;
+                }
+            }
+
+            // Return the function id
+            funcs.insert(func_name, func);
+            func_id
+        }
+
         // With expressions
         AST::With(span, a, v) => {
             let v = convert_node(*v, funcs, false, seen_funcs);
@@ -459,6 +504,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
     let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
+    seen_funcs.insert(String::with_capacity(0), 0);
     for ast in asts
     {
         ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs));

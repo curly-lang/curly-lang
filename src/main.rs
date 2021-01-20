@@ -336,6 +336,7 @@ impl CurlyREPLHelper
                     | Enum
                     | Class
                     | Match
+                    | Lambda
                     | To
                     | And
                     | Or

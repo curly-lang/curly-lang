@@ -156,6 +156,9 @@ pub enum Token
     
     #[token("match")]
     Match,
+
+    #[token("lambda")]
+    Lambda,
     
     #[token("to")]
     To,
@@ -322,6 +325,9 @@ pub enum AST
     // Assignment of functions
     AssignFunction(Span, String, Vec<(String, AST)>, Box<AST>),
 
+    // Lambda functions
+    Lambda(Span, Vec<(String, AST)>, Box<AST>),
+
     // Scoping
     With(Span, Vec<AST>, Box<AST>)
 }
@@ -346,6 +352,7 @@ impl AST
                 | Self::Assign(s, _, _)
                 | Self::AssignTyped(s, _, _, _)
                 | Self::AssignFunction(s, _, _, _)
+                | Self::Lambda(s, _, _)
                 | Self::With(s, _, _)
                 => s.clone(),
         }
@@ -835,6 +842,68 @@ fn list(parser: &mut Parser) -> Result<AST, ParseError>
     }, list))
 }
 
+// lambda(&mut Parser) -> Result<AST, ParseError>
+// Parses a lambda function.
+fn lambda(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let mut args = vec![];
+    let (_, span) = consume_save!(parser, Lambda, state, false, false, "");
+
+    // Get arguments
+    loop
+    {
+        // Get comma
+        if args.len() != 0
+        {
+            match parser.peek()
+            {
+                Some((Token::Comma, _)) => {
+                    parser.next();
+                }
+
+                _ => break
+            }
+        }
+
+        let arg = match declaration(parser)
+        {
+            Ok(v) => (v.1, v.2),
+            Err(e) => {
+                parser.return_state(state);
+                return Err(e);
+            }
+        };
+
+        args.push(arg);
+    }
+
+    // Check that there is at least one argument
+    if args.len() == 0
+    {
+        parser.return_state(state);
+        return Err(ParseError {
+            span: parser.span(),
+            msg: String::from("Expected argument after `lambda`"),
+            continuable: false,
+            fatal: true
+        })
+    }
+
+    // Get the assign operator
+    let slice = parser.slice();
+    consume_nosave!(parser, Assign, state, false, true, "Expected `=`, got `{}`", slice);
+
+    // Get the value
+    newline(parser);
+    let body = call_func_fatal!(expression, parser, true, "Expected function body after `=`");
+
+    Ok(AST::Lambda(Span {
+        start: span.start,
+        end: body.get_span().end
+    }, args, Box::new(body)))
+}
+
 // expression(&mut Parser) -> Result<AST, ParseError>
 // Parses an expression.
 fn expression(parser: &mut Parser) -> Result<AST, ParseError>
@@ -846,6 +915,9 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     } else if let Ok(withy) = call_optional!(with, parser)
     {
         Ok(withy)
+    } else if let Ok(lambda) = call_optional!(lambda, parser)
+    {
+        Ok(lambda)
     } else if let Ok(list) = call_optional!(list, parser)
     {
         Ok(list)
