@@ -111,18 +111,22 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(", (void*) __func_wrapper_");
             func.code.push_str(s);
             func.code.push_str(&format!(", {}", f.args.len() + f.captured.len()));
+            func.code.push_str(", 0, ");
             let count = if f.captured.len() > 0
             {
-                f.args.len() + f.captured.len()
+                let count = f.args.len() + f.captured.len();
+                func.code.push_str("calloc(");
+                func.code.push_str(&format!("{}", count));
+                func.code.push_str(", sizeof(void*)), calloc(");
+                func.code.push_str(&format!("{}", count));
+                func.code.push_str(", sizeof(void*)) };\n");
+                count
             } else
             {
+                func.code.push_str("(void*) 0, (void*) 0 };\n");
                 0
             };
-            func.code.push_str(", 0, calloc(");
-            func.code.push_str(&format!("{}", count));
-            func.code.push_str(", sizeof(void*)), calloc(");
-            func.code.push_str(&format!("{}", count));
-            func.code.push_str(", sizeof(void*)) };\n");
+            
 
             // Save captured variables
             for c in f.captured_names.iter()
