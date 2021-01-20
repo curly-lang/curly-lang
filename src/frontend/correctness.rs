@@ -415,13 +415,13 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
 // convert_function_symbols(&mut SExpr, &mut HashSet<String>) -> ()
 // Converts function symbols in a sexpression into function references.
-fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
+fn convert_function_symbols(sexpr: &mut SExpr, funcs: &HashSet<String>)
 {
     match sexpr
     {
         // Check symbol for functions
         SExpr::Symbol(m, s) => {
-            if scopes.contains(s)
+            if funcs.contains(s)
             {
                 let mut meta = SExprMetadata {
                     span: Span {
@@ -446,7 +446,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
 
         // Prefix operators
         SExpr::Prefix(_, _, v) => {
-            convert_function_symbols(v, scopes);
+            convert_function_symbols(v, funcs);
         }
 
         // Infix operators
@@ -455,15 +455,15 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
             | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
             => {
-            convert_function_symbols(l, scopes);
-            convert_function_symbols(r, scopes);
+            convert_function_symbols(l, funcs);
+            convert_function_symbols(r, funcs);
         }
 
         // If expressions
         SExpr::If(_, c, b, e) => {
-            convert_function_symbols(c, scopes);
-            convert_function_symbols(b, scopes);
-            convert_function_symbols(e, scopes);
+            convert_function_symbols(c, funcs);
+            convert_function_symbols(b, funcs);
+            convert_function_symbols(e, funcs);
         }
 
         // Check scope
@@ -471,16 +471,16 @@ fn convert_function_symbols(sexpr: &mut SExpr, scopes: &HashSet<String>)
             // Check assigns
             for a in assigns
             {
-                convert_function_symbols(a, scopes);
+                convert_function_symbols(a, funcs);
             }
 
             // Check body
-            convert_function_symbols(body, scopes);
+            convert_function_symbols(body, funcs);
         }
 
         // Check assignments
         SExpr::Assign(_, _, value) => {
-            convert_function_symbols(value, scopes);
+            convert_function_symbols(value, funcs);
         }
 
         // Ignore everything else

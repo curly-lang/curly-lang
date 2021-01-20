@@ -2,11 +2,8 @@
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
-- Add function types in type declarations
 - Fix bug where a function that is shadowed by the local scope is not shadowed and ends up replacing that variable anyway
 - Lambdas and anonymous closures
-- Lists
-- Strings (which are basically just lists of chars)
 
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
@@ -20,6 +17,8 @@ These things are features and fixes I'd like to get completed for the fourth maj
 - Mutability
 - Laziness
 - `?`/`!` operators
+- Lists
+- Strings (which are basically just lists of chars)
 
 ## Future releases
 These things are features and fixes I'd like to get completed in some point in the far future. Although these features are desired, they are not a priority due to either their complexity or dependencies. These are not in any particular order, and will be moved into an appropriate release when decided upon. These features, however, will be necessary to implement before an official v1.0.0.
