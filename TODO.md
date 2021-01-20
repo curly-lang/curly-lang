@@ -3,7 +3,7 @@
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
 - Fix a name bug where names may clash with c keywords or previously used variable names in codegen
 - Fix bug where a function that is shadowed by the local scope is not shadowed and ends up replacing that variable anyway
-- Lambdas and anonymous closures
+- Fix memory leaks
 
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
