@@ -35,6 +35,9 @@ pub fn convert_ast_to_type(ast: AST) -> Type
         AST::Infix(_, op, l, r) if op.as_str() == "->" =>
             Type::Func(Box::new(convert_ast_to_type(*l)), Box::new(convert_ast_to_type(*r))),
 
+        AST::Prefix(_, op, v) if op.as_str() == "" =>
+            convert_ast_to_type(*v),
+
         _ => Type::ConversionError(ast.get_span())
     }
 }
