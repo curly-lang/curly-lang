@@ -1,7 +1,23 @@
-sqrtCurly num: Float, precision: Int, guess: Float =
-	if precision == 0 then
-		guess
-	else
-		sqrtCurly num (precision - 1) ((guess + (num / guess)) / 2)
+_sqrtCurly num:Float, precision:Int, guess:Float =
+  if precision == 0 then
+    guess
+  else
+    _sqrtCurly num (precision - 1) ((guess + (num / guess)) / 2)
 
-debug (sqrtCurly 2.0 200 1.0)
+sqrtCurly num:Float = _sqrtCurly num 100 1.0
+
+
+_numRtCurly num:Float, root:Int, precision:Int, guess:Float =
+  if precision == 0 then
+    guess
+  else
+    _numRtCurly num root (precision - 1) ((guess + (num / (power guess (root - 1)))) / 2)
+
+numRtCurly num:Float, root:Int = _numRtCurly num root 100 1.0
+
+
+power x:Float, y:Int = if y <= 1 then x else x * (power x (y-1))
+
+debug (sqrtCurly 5.0)
+debug (power 4.3 5)
+debug (numRtCurly 2.0 3)
