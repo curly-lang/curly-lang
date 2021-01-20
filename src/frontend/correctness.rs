@@ -727,23 +727,24 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     for name in names
     {
         // Remove function
-        let mut func = ir.funcs.remove(&name.0).unwrap();
-
-        // Push scope and add arguments
-        ir.scope.push_scope(false);
-        for arg in &func.args
+        if let Some(mut func) = ir.funcs.remove(&name.0)
         {
-            ir.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+            // Push scope and add arguments
+            ir.scope.push_scope(false);
+            for arg in &func.args
+            {
+                ir.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+            }
+
+            // Check body
+            check_sexpr(&mut func.body, ir, errors);
+
+            // Pop scope
+            ir.scope.pop_scope();
+
+            // Reinsert function
+            ir.funcs.insert(name.0, func);
         }
-
-        // Check body
-        check_sexpr(&mut func.body, ir, errors);
-
-        // Pop scope
-        ir.scope.pop_scope();
-
-        // Reinsert function
-        ir.funcs.insert(name.0, func);
     }
 }
 
