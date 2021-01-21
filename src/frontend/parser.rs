@@ -328,6 +328,9 @@ pub enum AST
     // Assignments with types
     AssignTyped(Span, String, Box<AST>, Box<AST>),
 
+    // Assignment of types
+    AssignType(Span, String, Box<AST>),
+
     // Assignment of functions
     AssignFunction(Span, String, Vec<(String, AST)>, Box<AST>),
 
@@ -357,6 +360,7 @@ impl AST
                 | Self::If(s, _, _, _)
                 | Self::Assign(s, _, _)
                 | Self::AssignTyped(s, _, _, _)
+                | Self::AssignType(s, _, _)
                 | Self::AssignFunction(s, _, _, _)
                 | Self::Lambda(s, _, _)
                 | Self::With(s, _, _)
@@ -1086,6 +1090,31 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     Ok(top)
 }
 
+// type_assignment(&mut Parser) -> Result<AST, ParseError>
+// Parses an assignment of a type.
+fn type_assignment(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    // Get type keyword
+    let state = parser.save_state();
+    let (_, span) = consume_save!(parser, Type, state, false, false, "");
+
+    // Get name of type
+    let (name, _) = consume_save!(parser, Symbol, state, false, true, "Expected symbol after type");
+
+    // Get assignment operator
+    consume_nosave!(parser, Assign, state, false, true, "Expected `=` after type name");
+    newline(parser);
+
+    // Get type
+    let _type = call_func_fatal!(type_expr, parser, true, "Expected type after `=`");
+
+    // Successfully return
+    Ok(AST::AssignType(Span {
+        start: span.start,
+        end: _type.get_span().end
+    }, name, Box::new(_type)))
+}
+
 // declaration(&mut Parser) -> Result<(Span, String, AST), ParseError>
 // Parses a declaration.
 fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
@@ -1254,7 +1283,10 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
         let p = &mut parser;
         if let Ok(assign) = call_optional!(assignment, p)
         {
-            lines.push(assign)
+            lines.push(assign);
+        } else if let Ok(_type) = call_optional!(type_assignment, p)
+        {
+            lines.push(_type);
         } else
         {
             lines.push(match expression(&mut parser)
