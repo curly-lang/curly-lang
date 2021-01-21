@@ -1,4 +1,5 @@
 use logos::Span;
+use std::fmt::{Display, Error, Formatter};
 
 use super::parser::AST;
 
@@ -18,26 +19,86 @@ pub enum Type
     Enum(String)
 }
 
+impl Display for Type
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error>
+    {
+        match self
+        {
+            Type::Error => { write!(f, "TypeError")?; }
+            Type::ConversionError(_) => { write!(f, "ConversionError")?; }
+            Type::Unknown => { write!(f, "UnknownType")?; }
+            
+            // Primatives
+            Type::Int => { write!(f, "Int")?; }
+            Type::Float => { write!(f, "Float")?; }
+            Type::Bool => { write!(f, "Bool")?; }
+            Type::String => { write!(f, "String")?; }
+            Type::Enum(e) => { write!(f, "enum {}", e)?; }
+
+            // Aggregate types
+            Type::Func(func, a) => {
+                if let Type::Func(_, _) = **func
+                {
+                    write!(f, "({})", **func)?;
+                } else
+                {
+                    write!(f, "{}", **func)?;
+                }
+                write!(f, " -> {}", a)?;
+            }
+
+            Type::Sum(fields) => {
+                let mut bar = false;
+                for field in fields
+                {
+                    if bar
+                    {
+                        write!(f, " | ")?;
+                    } else
+                    {
+                        bar = true;
+                    }
+
+                    if let Type::Func(_, _) = field
+                    {
+                        write!(f, "({})", field)?;
+                    } else
+                    {
+                        write!(f, "{}", field)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Type
 {
+    // is_subtype(&self, &Type) -> bool
+    // Returns true if self is a valid subtype in respect to the passed in type.
     pub fn is_subtype(&self, supertype: &Type) -> bool
     {
         match supertype
         {
+            // Primatives
             Type::Int => *self == Type::Int,
             Type::Float => *self == Type::Float,
             Type::Bool => *self == Type::Bool,
             Type::String => *self == Type::String,
 
+            // Functions
             Type::Func(sf, sa) =>
                 if let Type::Func(f, a) = self
                 {
-                    f.is_subtype(sf) && a.is_subtype(sa)
+                    f == sf && a == sa
                 } else
                 {
                     false
                 }
 
+            // Sum types
             Type::Sum(types) => {
                 for t in types
                 {
@@ -50,6 +111,7 @@ impl Type
                 false
             }
 
+            // Enums
             Type::Enum(se) =>
                 if let Type::Enum(e) = self
                 {
@@ -59,6 +121,7 @@ impl Type
                     false
                 }
 
+            // Everything else is to be ignored
             _ => false
         }
     }
@@ -112,13 +175,35 @@ pub fn convert_ast_to_type(ast: AST) -> Type
                 }
             }
 
+            for f in fields.iter()
+            {
+                if let Type::ConversionError(s) = f
+                {
+                    return Type::ConversionError(s.clone());
+                }
+            }
+
             fields.insert(0, convert_ast_to_type(acc));
             Type::Sum(fields)
         }
 
         // Function types
         AST::Infix(_, op, l, r) if op == "->" =>
-            Type::Func(Box::new(convert_ast_to_type(*l)), Box::new(convert_ast_to_type(*r))),
+        {
+            let l = convert_ast_to_type(*l);
+            let r = convert_ast_to_type(*r);
+
+            if let Type::ConversionError(s) = l
+            {
+                Type::ConversionError(s)
+            } else if let Type::ConversionError(s) = r
+            {
+                Type::ConversionError(s)
+            } else
+            {
+                Type::Func(Box::new(l), Box::new(r))
+            }
+        }
 
         // Parenthesised types
         AST::Prefix(_, op, v) if op == "" =>
@@ -128,3 +213,4 @@ pub fn convert_ast_to_type(ast: AST) -> Type
         _ => Type::ConversionError(ast.get_span())
     }
 }
+

@@ -543,7 +543,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Undefined prefix operator")
                             .with_labels(vec![
                                 Label::primary(file_id, s)
-                                .with_message(format!("`-` is undefined on `{:?}`", t))
+                                .with_message(format!("`-` is undefined on `{}`", t))
                             ]),
 
                     CorrectnessError::UndefinedInfixOp(s, op, l, r) =>
@@ -551,7 +551,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Undefined infix operator")
                             .with_labels(vec![
                                 Label::primary(file_id, s)
-                                .with_message(format!("`{:?}` is undefined on `{:?}` and `{:?}`", op, l, r))
+                                .with_message(format!("`{:?}` is undefined on `{}` and `{}`", op, l, r))
                             ]),
 
                     CorrectnessError::NonboolInBoolExpr(s, t) =>
@@ -559,7 +559,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Nonboolean in boolean expression")
                             .with_labels(vec![
                                 Label::primary(file_id, s)
-                                .with_message(format!("Expected `Bool`, got `{:?}`", t))
+                                .with_message(format!("Expected `Bool`, got `{}`", t))
                             ]),
 
                     CorrectnessError::NonboolInIfCond(s, t) =>
@@ -567,7 +567,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Nonboolean in if condition")
                             .with_labels(vec![
                                 Label::primary(file_id, s)
-                                .with_message(format!("Expected `Bool`, got `{:?}`", t))
+                                .with_message(format!("Expected `Bool`, got `{}`", t))
                             ]),
 
                     CorrectnessError::NonmatchingIfBodies(s1, t1, s2, t2) =>
@@ -575,9 +575,9 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Nonmatching if expression clauses")
                             .with_labels(vec![
                                 Label::secondary(file_id, s1)
-                                .with_message(format!("Then clause has type `{:?}`", t1)),
+                                .with_message(format!("Then clause has type `{}`", t1)),
                                 Label::primary(file_id, s2)
-                                .with_message(format!("Expected `{:?}`, got `{:?}`", t1, t2))
+                                .with_message(format!("Expected `{}`, got `{}`", t1, t2))
                             ]),
 
                     CorrectnessError::NonmatchingAssignTypes(s1, t1, s2, t2) =>
@@ -585,9 +585,9 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Nonmatching types in assignment")
                             .with_labels(vec![
                                 Label::secondary(file_id, s1)
-                                .with_message(format!("Assignment is declared with type `{:?}`", t1)),
+                                .with_message(format!("Assignment is declared with type `{}`", t1)),
                                 Label::primary(file_id, s2)
-                                .with_message(format!("Expected `{:?}`, got `{:?}`", t1, t2))
+                                .with_message(format!("Expected `{}`, got `{}`", t1, t2))
                             ]),
 
                     CorrectnessError::SymbolNotFound(s, v) =>
@@ -629,7 +629,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Wrong type passed as an argument")
                             .with_labels(vec![
                                 Label::primary(file_id, s)
-                                .with_message(format!("Expected `{:?}`, got `{:?}`", t1, t2))
+                                .with_message(format!("Expected `{}`, got `{}`", t1, t2))
                             ]),
 
                     CorrectnessError::InvalidApplication(s, t) => {
@@ -637,7 +637,7 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Invalid application")
                             .with_labels(vec![
                                 Label::primary(file_id, s)
-                                .with_message(format!("Expected function, got `{:?}`", t))
+                                .with_message(format!("Expected function, got `{}`", t))
                             ]);
 
                         if t == Type::String
