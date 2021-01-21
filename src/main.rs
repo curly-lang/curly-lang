@@ -347,6 +347,11 @@ impl CurlyREPLHelper
             }
         }
 
+        if line.contains("#")
+        {
+            new_line.push_str(&format!("{}", line[last.end..].to_owned().bright_black()));
+        }
+
         new_line
     }
 }

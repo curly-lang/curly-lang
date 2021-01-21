@@ -171,6 +171,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     left.get_metadata()._type.clone(),
                 ));
             }
+
             if right.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
@@ -178,6 +179,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     right.get_metadata()._type.clone(),
                 ));
             }
+
             if left.get_metadata()._type == Type::Bool && right.get_metadata()._type == Type::Bool
             {
                 m._type = Type::Bool;
