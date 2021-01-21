@@ -25,10 +25,11 @@ impl Display for Type
     {
         match self
         {
+            // Errors
             Type::Error => { write!(f, "TypeError")?; }
             Type::ConversionError(_) => { write!(f, "ConversionError")?; }
             Type::Unknown => { write!(f, "UnknownType")?; }
-            
+
             // Primatives
             Type::Int => { write!(f, "Int")?; }
             Type::Float => { write!(f, "Float")?; }
@@ -36,7 +37,7 @@ impl Display for Type
             Type::String => { write!(f, "String")?; }
             Type::Enum(e) => { write!(f, "enum {}", e)?; }
 
-            // Aggregate types
+            // Fuction types
             Type::Func(func, a) => {
                 if let Type::Func(_, _) = **func
                 {
@@ -48,6 +49,7 @@ impl Display for Type
                 write!(f, " -> {}", a)?;
             }
 
+            // Sum types
             Type::Sum(fields) => {
                 let mut bar = false;
                 for field in fields
