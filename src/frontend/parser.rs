@@ -975,6 +975,18 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
         Ok(value)
 
+    // Enums
+    } else if let Token::Enum = token
+    {
+        let state = parser.save_state();
+        parser.next();
+        let (value, span2) = consume_save!(parser, Symbol, state, false, true, "Expected symbol after `enum`");
+
+        Ok(AST::Prefix(Span {
+            start: span.start,
+            end: span2.end
+        }, String::from("enum"), Box::new(AST::Symbol(span2, value))))
+
     // Parenthesised types
     } else if let Token::LParen = token
     {
@@ -1003,6 +1015,13 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// type_union(&mut Parser) -> Result<AST, ParseError>
+// Parses a union type declaration.
+fn type_union(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    infix_op!(parser, type_symbol, Token::Bar, Token::Unreachable)
+}
+
 // type_expr(&mut Parser) -> Result<AST, ParseError>
 // Parses a type.
 fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
@@ -1010,7 +1029,7 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
     // Set up
     use std::mem::swap;
     let state = parser.save_state();
-    let mut top = call_func!(type_symbol, parser, state);
+    let mut top = call_func!(type_union, parser, state);
     let mut acc = &mut top;
 
     loop
@@ -1034,7 +1053,7 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
             parser.next();
 
             // Get right hand side
-            let mut right = Some(call_func_fatal!(type_symbol, parser, false, "Expected value after infix operator"));
+            let mut right = Some(call_func_fatal!(type_union, parser, false, "Expected value after infix operator"));
 
             // Build ast
             match &mut acc

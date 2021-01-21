@@ -414,7 +414,7 @@ impl Validator for CurlyREPLHelper
         {
             Ok(_) => Ok(Valid(None)),
             Err(e) if e.continuable => Ok(Incomplete),
-            Err(_) => Ok(Invalid(None))
+            Err(_) => Ok(Valid(None))
         }
     }
 }
