@@ -18,6 +18,52 @@ pub enum Type
     Enum(String)
 }
 
+impl Type
+{
+    pub fn is_subtype(&self, supertype: &Type) -> bool
+    {
+        match supertype
+        {
+            Type::Int => *self == Type::Int,
+            Type::Float => *self == Type::Float,
+            Type::Bool => *self == Type::Bool,
+            Type::String => *self == Type::String,
+
+            Type::Func(sf, sa) =>
+                if let Type::Func(f, a) = self
+                {
+                    f.is_subtype(sf) && a.is_subtype(sa)
+                } else
+                {
+                    false
+                }
+
+            Type::Sum(types) => {
+                for t in types
+                {
+                    if self.is_subtype(t)
+                    {
+                        return true;
+                    }
+                }
+
+                false
+            }
+
+            Type::Enum(se) =>
+                if let Type::Enum(e) = self
+                {
+                    se == e
+                } else
+                {
+                    false
+                }
+
+            _ => false
+        }
+    }
+}
+
 // convert_ast_to_type(AST) -> Type
 // Converts an ast node into a type.
 pub fn convert_ast_to_type(ast: AST) -> Type
@@ -58,7 +104,7 @@ pub fn convert_ast_to_type(ast: AST) -> Type
                 match acc
                 {
                     AST::Infix(_, op, l, r) if op == "|" => {
-                        fields.push(convert_ast_to_type(*r));
+                        fields.insert(0, convert_ast_to_type(*r));
                         acc = *l;
                     }
 
@@ -66,7 +112,7 @@ pub fn convert_ast_to_type(ast: AST) -> Type
                 }
             }
 
-            fields.push(convert_ast_to_type(acc));
+            fields.insert(0, convert_ast_to_type(acc));
             Type::Sum(fields)
         }
 
@@ -78,6 +124,7 @@ pub fn convert_ast_to_type(ast: AST) -> Type
         AST::Prefix(_, op, v) if op == "" =>
             convert_ast_to_type(*v),
 
+        // Error
         _ => Type::ConversionError(ast.get_span())
     }
 }

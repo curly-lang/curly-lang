@@ -261,7 +261,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
-                    if **l == arg.get_metadata()._type
+                    if arg.get_metadata()._type.is_subtype(&**l)
                     {
                         m._type = *r.clone();
                         m.arity = if func.get_metadata().arity > 0
@@ -336,7 +336,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 return;
             }
 
-
             // Check if an error occured or the type is unknown
             if value.get_metadata()._type == Type::Error
             {
@@ -352,7 +351,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Preassigned type
                 _ => {
                     // Types do not match
-                    if m._type != value.get_metadata()._type
+                    if !value.get_metadata()._type.is_subtype(&m._type)
                     {
                         errors.push(CorrectnessError::NonmatchingAssignTypes(
                             m.span2.clone(),

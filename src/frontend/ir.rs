@@ -383,8 +383,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             }, name, Box::new(convert_node(*val, funcs, global, seen_funcs)))
         }
 
-        AST::AssignType(_span, _name, _type) => {
-            println!("{:?}", _type);
+        AST::AssignType(span, name, _type) => {
             panic!("uwu");
         }
 
