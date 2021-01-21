@@ -1,16 +1,14 @@
 # List of things to do
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
+- Algebraic data types (product and sum types)
+- Match expressions
+- Span
 - See github issues
 
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Algebraic data types (product and sum types)
-- Match expressions
 - Intersection types
-
-## Fourth official release
-These things are features and fixes I'd like to get completed for the fourth major release (v0.4.0) of Curly.
 - Generics
 - Mutability
 - Laziness
