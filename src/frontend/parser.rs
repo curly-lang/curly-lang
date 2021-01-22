@@ -27,7 +27,7 @@ pub enum Token
     #[token("\n")]
     Newline,
 
-    #[regex(r"([ \t\f]|\\\n)+", logos::skip)]
+    #[regex(r"([ \t\f\r]|\\\n)+", logos::skip)]
     Whitespace,
 
     #[regex(r"#[^\n]*\n?", logos::skip)]
