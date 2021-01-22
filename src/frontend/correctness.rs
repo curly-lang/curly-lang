@@ -174,6 +174,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     m.span2.clone(),
                     m._type.clone()
                 ));
+                m._type = Type::Error;
             }
         }
 
