@@ -21,7 +21,8 @@ pub enum CorrectnessError
     InvalidType(Span),
     UnknownFunctionReturnType(Span, String),
     MismatchedFunctionArgType(Span, Type, Type),
-    InvalidApplication(Span, Type)
+    InvalidApplication(Span, Type),
+    InvalidCast(Span, Type, Span, Type)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
@@ -150,6 +151,28 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     *op,
                     left.get_metadata()._type.clone(),
                     right.get_metadata()._type.clone()
+                ));
+            }
+        }
+
+        SExpr::As(m, v) => {
+            // Check child node
+            check_sexpr(v, root, errors);
+
+            // Check if an error occured
+            if v.get_metadata()._type == Type::Error
+            {
+                return;
+            }
+
+            // Assert the types are valid
+            if !v.get_metadata()._type.is_subtype(&m._type) && !(v.get_metadata()._type == Type::Int && m._type == Type::Float)
+            {
+                errors.push(CorrectnessError::InvalidCast(
+                    v.get_metadata().span.clone(),
+                    v.get_metadata()._type.clone(),
+                    m.span2.clone(),
+                    m._type.clone()
                 ));
             }
         }
@@ -464,6 +487,9 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
             convert_function_symbols(r, funcs);
         }
 
+        // Casting
+        SExpr::As(_, v) => convert_function_symbols(v, funcs),
+
         // If expressions
         SExpr::If(_, c, b, e) => {
             convert_function_symbols(c, funcs);
@@ -593,6 +619,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 None => Type::Unknown
             }
         }
+
+        SExpr::As(m, _) => m._type.clone(),
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {

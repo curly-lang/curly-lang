@@ -85,6 +85,9 @@ pub enum SExpr
     // Infix expression
     Infix(SExprMetadata, BinOp, Box<SExpr>, Box<SExpr>),
 
+    // Casting
+    As(SExprMetadata, Box<SExpr>),
+
     // Boolean operators
     And(SExprMetadata, Box<SExpr>, Box<SExpr>),
     Or(SExprMetadata, Box<SExpr>, Box<SExpr>),
@@ -121,6 +124,7 @@ impl SExpr
                 | Self::Function(m, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
+                | Self::As(m, _)
                 | Self::And(m, _, _)
                 | Self::Or(m, _, _)
                 | Self::If(m, _, _, _)
@@ -148,6 +152,7 @@ impl SExpr
                 | Self::Function(m, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
+                | Self::As(m, _)
                 | Self::And(m, _, _)
                 | Self::Or(m, _, _)
                 | Self::If(m, _, _, _)
@@ -351,6 +356,14 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 }, op, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
             }
         }
+
+        AST::As(span, value, _type) => SExpr::As(SExprMetadata {
+            span,
+            span2: _type.get_span(),
+            _type: types::convert_ast_to_type(*_type, types),
+            arity: 0,
+            saved_argc: None
+        }, Box::new(convert_node(*value, funcs, global, seen_funcs, types))),
 
         // If expression
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {

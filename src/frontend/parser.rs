@@ -175,6 +175,9 @@ pub enum Token
     #[token("in")]
     In,
 
+    #[token("as")]
+    As,
+
     Unreachable
 }
 
@@ -319,6 +322,9 @@ pub enum AST
     // Infix expressions
     Infix(Span, String, Box<AST>, Box<AST>),
 
+    // Casting
+    As(Span, Box<AST>, Box<AST>),
+
     // If expressions
     If(Span, Box<AST>, Box<AST>, Box<AST>),
 
@@ -357,6 +363,7 @@ impl AST
                 | Self::Application(s, _, _)
                 | Self::Prefix(s, _, _)
                 | Self::Infix(s, _, _, _)
+                | Self::As(s, _, _)
                 | Self::If(s, _, _, _)
                 | Self::Assign(s, _, _)
                 | Self::AssignTyped(s, _, _, _)
@@ -582,15 +589,34 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+fn _as(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let value = value(parser)?;
+
+    if let Some((Token::As, _)) = parser.peek()
+    {
+        parser.next();
+        let _type = call_func_fatal!(type_expr, parser, false, "Expected type after `as`");
+
+        Ok(AST::As(Span {
+            start: value.get_span().start,
+            end: _type.get_span().end
+        }, Box::new(value), Box::new(_type)))
+    } else
+    {
+        Ok(value)
+    }
+}
+
 // application(&mut Parser) -> Result<AST, ParseError>
 // Parses function application.
 fn application(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    let mut left = value(parser)?;
+    let mut left = _as(parser)?;
 
     loop
     {
-        let right = match value(parser)
+        let right = match _as(parser)
         {
             Ok(v) => v,
             Err(e) if e.fatal => break Err(e),
