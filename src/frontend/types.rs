@@ -226,8 +226,14 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 }
             }
 
-            fields.insert(convert_ast_to_type(acc, types));
-            Type::Sum(HashSetWrapper(fields))
+            if fields.len() == 1
+            {
+                fields.into_iter().next().unwrap()
+            } else
+            {
+                fields.insert(convert_ast_to_type(acc, types));
+                Type::Sum(HashSetWrapper(fields))
+            }
         }
 
         // Function types
