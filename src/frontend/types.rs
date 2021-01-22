@@ -1,8 +1,27 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
+use std::hash::{Hash, Hasher};
 
 use super::parser::AST;
+
+#[derive(Clone, Debug)]
+pub struct HashSetWrapper<T>(HashSet<T>);
+
+impl<T: Hash + Eq> PartialEq for HashSetWrapper<T>
+{
+    fn eq(&self, other: &HashSetWrapper<T>) -> bool
+    {
+        self.0 == other.0
+    }
+}
+
+impl<T: Hash + Eq> Eq for HashSetWrapper<T> { }
+
+impl<T> Hash for HashSetWrapper<T>
+{
+    fn hash<H: Hasher>(&self, _: &mut H) { }
+}
 
 // Represents a type.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -17,7 +36,7 @@ pub enum Type
     String,
     Symbol(String),
     Func(Box<Type>, Box<Type>),
-    Sum(Vec<Type>),
+    Sum(HashSetWrapper<Type>),
     Enum(String)
 }
 
@@ -55,7 +74,7 @@ impl Display for Type
             // Sum types
             Type::Sum(fields) => {
                 let mut bar = false;
-                for field in fields
+                for field in fields.0.iter()
                 {
                     if bar
                     {
@@ -105,7 +124,7 @@ impl Type
 
             // Sum types
             Type::Sum(types) => {
-                for t in types
+                for t in types.0.iter()
                 {
                     if self.is_subtype(t)
                     {
@@ -183,7 +202,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                         let v = convert_ast_to_type(*r, types);
                         if let Type::Sum(v) = v
                         {
-                            for v in v
+                            for v in v.0
                             {
                                 fields.insert(v);
                             }
@@ -208,7 +227,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
             }
 
             fields.insert(convert_ast_to_type(acc, types));
-            Type::Sum(fields.into_iter().collect())
+            Type::Sum(HashSetWrapper(fields))
         }
 
         // Function types
