@@ -54,6 +54,9 @@ pub struct SExprMetadata
 #[derive(Debug)]
 pub enum SExpr
 {
+    // Empty
+    Empty(SExprMetadata),
+
     // Ints
     Int(SExprMetadata, i64),
 
@@ -107,7 +110,8 @@ impl SExpr
     {
         match self
         {
-            Self::Int(m, _)
+            Self::Empty(m)
+                | Self::Int(m, _)
                 | Self::Float(m, _)
                 | Self::True(m)
                 | Self::False(m)
@@ -133,7 +137,8 @@ impl SExpr
     {
         match self
         {
-            Self::Int(m, _)
+            Self::Empty(m)
+                | Self::Int(m, _)
                 | Self::Float(m, _)
                 | Self::True(m)
                 | Self::False(m)
@@ -171,6 +176,7 @@ pub struct IR
 {
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
+    pub types: HashMap<String, Type>,
     pub sexprs: Vec<SExpr>
 }
 
@@ -183,6 +189,7 @@ impl IR
         IR {
             scope: Scope::new().init_builtins(),
             funcs: HashMap::with_capacity(0),
+            types: HashMap::with_capacity(0),
             sexprs: vec![]
         }
     }
@@ -201,9 +208,9 @@ impl IR
     }
 }
 
-// convert_node(AST, &mut HashMap<String, IRFunction>, bool) -> SExpr
+// convert_node(AST, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
 // Converts an ast node into an sexpression.
-fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool, seen_funcs: &mut HashMap<String, usize>) -> SExpr
+fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool, seen_funcs: &mut HashMap<String, usize>, types: &mut HashMap<String, Type>) -> SExpr
 {
     match ast
     {
@@ -249,7 +256,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-        }, list.into_iter().map(|v| convert_node(v, funcs, global, seen_funcs)).collect()),
+        }, list.into_iter().map(|v| convert_node(v, funcs, global, seen_funcs, types)).collect()),
 
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
@@ -284,7 +291,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None
-            }, op, Box::new(convert_node(*v, funcs, global, seen_funcs)))
+            }, op, Box::new(convert_node(*v, funcs, global, seen_funcs, types)))
         }
 
         // Infix
@@ -298,7 +305,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None
-                }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
+                }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
             } else if op == "or"
             {
                 SExpr::Or(SExprMetadata {
@@ -307,7 +314,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None
-                }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
+                }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
             } else
             {
                 // Get operator
@@ -341,7 +348,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None
-                }, op, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs)))
+                }, op, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
             }
         }
 
@@ -352,7 +359,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             _type: Type::Error,
             arity: 0,
             saved_argc: None
-        }, Box::new(convert_node(*cond, funcs, global, seen_funcs)), Box::new(convert_node(*then, funcs, global, seen_funcs)), Box::new(convert_node(*elsy, funcs, global, seen_funcs))),
+        }, Box::new(convert_node(*cond, funcs, global, seen_funcs, types)), Box::new(convert_node(*then, funcs, global, seen_funcs, types)), Box::new(convert_node(*elsy, funcs, global, seen_funcs, types))),
 
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
@@ -361,7 +368,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             _type: Type::Error,
             arity: 0,
             saved_argc: None
-        }, Box::new(convert_node(*l, funcs, global, seen_funcs)), Box::new(convert_node(*r, funcs, global, seen_funcs))),
+        }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types))),
 
         // Assignment
         AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
@@ -370,21 +377,29 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             _type: Type::Error,
             arity: 0,
             saved_argc: None
-        }, name, Box::new(convert_node(*val, funcs, global, seen_funcs))),
+        }, name, Box::new(convert_node(*val, funcs, global, seen_funcs, types))),
 
         // Assignment with types
         AST::AssignTyped(span, name, _type, val) => {
             SExpr::Assign(SExprMetadata {
                 span,
                 span2: _type.get_span().clone(),
-                _type: types::convert_ast_to_type(*_type),
+                _type: types::convert_ast_to_type(*_type, types),
                 arity: 0,
                 saved_argc: None
-            }, name, Box::new(convert_node(*val, funcs, global, seen_funcs)))
+            }, name, Box::new(convert_node(*val, funcs, global, seen_funcs, types)))
         }
 
         AST::AssignType(span, name, _type) => {
-            panic!("uwu");
+            let _type = types::convert_ast_to_type(*_type, types);
+            types.insert(name, _type.clone());
+            SExpr::Empty(SExprMetadata {
+                span,
+                span2: Span { start: 0, end: 0 },
+                _type: Type::Unknown,
+                arity: 0,
+                saved_argc: None
+            })
         }
 
         // Assigning functions
@@ -412,10 +427,10 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             // Create the function
             let func = IRFunction {
-                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
+                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, types))).collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
-                body: convert_node(*val, funcs, false, seen_funcs),
+                body: convert_node(*val, funcs, false, seen_funcs, types),
                 global,
                 span: Span {
                     start: span.start,
@@ -463,10 +478,10 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             // Create the function
             let func = IRFunction {
-                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1))).collect(),
+                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, types))).collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
-                body: convert_node(*val, funcs, false, seen_funcs),
+                body: convert_node(*val, funcs, false, seen_funcs, types),
                 global,
                 span: Span {
                     start: span.start,
@@ -491,14 +506,27 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
         // With expressions
         AST::With(span, a, v) => {
-            let v = convert_node(*v, funcs, false, seen_funcs);
+            let v = convert_node(*v, funcs, false, seen_funcs, types);
             SExpr::With(SExprMetadata {
                 span,
                 span2: Span { start: 0, end: 0 },
                 _type: v.get_metadata()._type.clone(),
                 arity: 0,
                 saved_argc: None
-            }, a.into_iter().map(|a| convert_node(a, funcs, false, seen_funcs)).collect(), Box::new(v))
+            }, a.into_iter().map(|a| convert_node(a, funcs, false, seen_funcs, types)).collect(), Box::new(v))
+        }
+    }
+}
+
+// extract_types_to_ir(&Vec<AST>, &mut IR) -> ()
+// Extracts types and inserts them into the IR's list of types.
+fn extract_types_to_ir(asts: &Vec<AST>, ir: &mut IR)
+{
+    for ast in asts
+    {
+        if let AST::AssignType(_, v, _) = ast
+        {
+            ir.types.insert(v.clone(), Type::Unknown);
         }
     }
 }
@@ -507,11 +535,12 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
 {
+    extract_types_to_ir(&asts, ir);
     let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
     seen_funcs.insert(String::with_capacity(0), 0);
     for ast in asts
     {
-        ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs));
+        ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs, &mut ir.types));
     }
 }
 

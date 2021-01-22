@@ -38,6 +38,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
     match sexpr
     {
+        // Empty
+        SExpr::Empty(_) => (),
+
         // Values
         SExpr::Int(_, _) => (),
         SExpr::Float(_, _) => (),
@@ -513,7 +516,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
     match sexpr
     {
         // Values
-        SExpr::Int(m, _)
+        SExpr::Empty(m)
+            | SExpr::Int(m, _)
             | SExpr::Float(m, _)
             | SExpr::String(m, _)
             | SExpr::True(m)

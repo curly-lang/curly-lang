@@ -653,6 +653,12 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
         }
     }
 
+    // Remove empty sexpressions
+    use std::mem::swap;
+    let mut sexprs = Vec::with_capacity(0);
+    swap(&mut sexprs, &mut ir.sexprs);
+    ir.sexprs = sexprs.into_iter().filter(|v| if let SExpr::Empty(_) = v { false } else { true }).collect();
+
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir, repl_vars);
     if DEBUG { println!("{}", &c); }
