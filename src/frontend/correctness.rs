@@ -166,7 +166,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             // Assert the types are valid
-            if !v.get_metadata()._type.is_subtype(&m._type) && !(v.get_metadata()._type == Type::Int && m._type == Type::Float)
+            if !v.get_metadata()._type.is_subtype(&m._type)
             {
                 errors.push(CorrectnessError::InvalidCast(
                     v.get_metadata().span.clone(),
