@@ -43,10 +43,7 @@ pub enum Token
     
     #[token(",")]
     Comma,
-    
-    #[token("\\")]
-    Backslash,
-    
+
     #[token(".")]
     Dot,
     

@@ -286,7 +286,6 @@ impl CurlyREPLHelper
 
                 Colon
                     | Comma
-                    | Backslash
                     | Dot =>
                     new_line.push_str(&line[t.1]),
 
@@ -351,6 +350,9 @@ impl CurlyREPLHelper
         if line.contains("#")
         {
             new_line.push_str(&format!("{}", line[last.end..].to_owned().bright_black()));
+        } else
+        {
+            new_line.push_str(&line[last.end..]);
         }
 
         new_line
@@ -420,6 +422,7 @@ impl Validator for CurlyREPLHelper
         {
             Ok(_) => Ok(Valid(None)),
             Err(e) if e.continuable => Ok(Incomplete),
+            Err(_) if ctx.input().ends_with("\\") => Ok(Incomplete),
             Err(_) => Ok(Valid(None))
         }
     }
