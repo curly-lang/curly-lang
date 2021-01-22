@@ -4,6 +4,7 @@ These things are features and fixes I'd like to get completed for the second maj
 - Algebraic data types (product and sum types)
 - Match expressions
 - Span
+- `as` operator
 - See github issues
 
 ## Third official release

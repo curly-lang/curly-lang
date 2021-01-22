@@ -1,5 +1,5 @@
 use logos::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 
 use super::parser::AST;
@@ -171,7 +171,8 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
 
         // Sum types
         AST::Infix(_, op, l, r) if op == "|" => {
-            let mut fields = vec![convert_ast_to_type(*r, types)];
+            let mut fields = HashSet::new();
+            fields.insert(convert_ast_to_type(*r, types));
             let mut acc = *l;
 
             loop 
@@ -179,7 +180,18 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 match acc
                 {
                     AST::Infix(_, op, l, r) if op == "|" => {
-                        fields.insert(0, convert_ast_to_type(*r, types));
+                        let v = convert_ast_to_type(*r, types);
+                        if let Type::Sum(v) = v
+                        {
+                            for v in v
+                            {
+                                fields.insert(v);
+                            }
+                        } else
+                        {
+                            fields.insert(v);
+                        }
+
                         acc = *l;
                     }
 
@@ -195,8 +207,8 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 }
             }
 
-            fields.insert(0, convert_ast_to_type(acc, types));
-            Type::Sum(fields)
+            fields.insert(convert_ast_to_type(acc, types));
+            Type::Sum(fields.into_iter().collect())
         }
 
         // Function types
