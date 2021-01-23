@@ -221,7 +221,7 @@ struct REPLFunc
 struct REPLSum
 {
     tag: u32,
-    value: u64
+    value: REPLFunc
 }
 
 #[derive(Debug)]
