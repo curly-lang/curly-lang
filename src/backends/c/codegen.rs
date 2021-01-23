@@ -441,7 +441,16 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             _type = root.types.get(s).unwrap();
                         }
 
-                        match _type
+                        let mut arg_type = &**if let Type::Func(a, _) = &f.get_metadata()._type
+                        {
+                            a
+                        } else { unreachable!("this is always a function") };
+                        while let Type::Symbol(s) = arg_type
+                        {
+                            arg_type = root.types.get(s).unwrap();
+                        }
+
+                        match arg_type
                         {
                             Type::Float => {
                                 let name = format!("_{}", func.last_reference);
@@ -467,7 +476,31 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
                             Type::Sum(_) => {
                                 // Autocast argument if not already done so
-                                v = format!("&{}", &v);
+                                if _type == arg_type
+                                {
+                                    v = format!("&{}", &v);
+                                } else
+                                {
+                                    let name = format!("_{}", func.last_reference);
+                                    func.last_reference += 1;
+                                    let arg_ctype = types.get(arg_type).unwrap();
+                                    func.code.push_str(arg_ctype.get_c_name());
+                                    func.code.push(' ');
+                                    func.code.push_str(&name);
+                                    func.code.push_str(";\n");
+                                    func.code.push_str(&name);
+                                    func.code.push_str(".tag = ");
+                                    func.code.push_str(&format!("{};\n",
+                                                                arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
+                                    func.code.push_str(&name);
+                                    func.code.push_str(".values.");
+                                    func.code.push_str(&format!("_{}",
+                                                                arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
+                                    func.code.push_str(" = ");
+                                    func.code.push_str(&v);
+                                    func.code.push_str(";\n");
+                                    v = format!("&{}", name);
+                                }
                             }
 
                             _ => ()
