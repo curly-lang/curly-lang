@@ -1031,6 +1031,7 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
 // Puts a debug function in the built string.
 fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>)
 {
+    let original_type = _type;
     let mut _type = _type;
     while let Type::Symbol(v) = _type
     {
@@ -1060,13 +1061,13 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
 
         // Print out aggregate types
         Type::Func(_, _) => {
-            code.push_str(&format!("printf(\"({}) <func %p>\\n\", ", _type));
+            code.push_str(&format!("printf(\"({}) <func %p>\\n\", ", original_type));
             code.push_str(v);
             code.push_str(".func);\n");
         }
 
         Type::Sum(_) => {
-            code.push_str(&format!("printf(\"({}) \");\n", _type));
+            code.push_str(&format!("printf(\"({}) \");\n", original_type));
             code.push_str("switch (");
             code.push_str(v);
             code.push_str(".tag) {\n");
