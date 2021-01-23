@@ -517,6 +517,8 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             func_id
         }
 
+        AST::Match(_span, _value, _arms) => panic!("uwu"),
+
         // With expressions
         AST::With(span, a, v) => {
             let v = convert_node(*v, funcs, false, seen_funcs, types);

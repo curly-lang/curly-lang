@@ -340,6 +340,9 @@ pub enum AST
     // Lambda functions
     Lambda(Span, Vec<(String, AST)>, Box<AST>),
 
+    // Match expressions
+    Match(Span, Box<AST>, Vec<(AST, AST)>),
+
     // Scoping
     With(Span, Vec<AST>, Box<AST>)
 }
@@ -366,6 +369,7 @@ impl AST
                 | Self::AssignTyped(s, _, _, _)
                 | Self::AssignType(s, _, _)
                 | Self::AssignFunction(s, _, _, _)
+                | Self::Match(s, _, _)
                 | Self::Lambda(s, _, _)
                 | Self::With(s, _, _)
                 => s.clone(),
@@ -937,11 +941,57 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError>
     }, args, Box::new(body)))
 }
 
+fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let (_, span) = consume_save!(parser, Match, state, false, false, "");
+
+    // Get value
+    let value = call_func_fatal!(expression, parser, false, "Expected expression after `match`");
+    let mut arms = vec![];
+    newline(parser);
+
+    loop
+    {
+        match parser.peek()
+        {
+            Some((Token::To, _)) => (),
+            _ => break
+        }
+
+        parser.next();
+        let _type = call_func_fatal!(type_expr, parser, false, "Expected type after `to`");
+        newline(parser);
+        consume_nosave!(parser, ThiccArrow, state, true, true, "Expected `=>` after type");
+        newline(parser);
+        let value = call_func_fatal!(expression, parser, true, "Expected expression after `=>`");
+        arms.push((_type, value));
+    }
+
+    // Error if no match arms
+    if arms.len() == 0
+    {
+        return Err(ParseError {
+            span: Span {
+                start: span.start,
+                end: value.get_span().end
+            },
+            msg: String::from("Expected `to` after match value"),
+            continuable: true,
+            fatal: true
+        });
+    }
+
+    Ok(AST::Match(Span {
+        start: span.start,
+        end: arms.last().unwrap().1.get_span().end
+    }, Box::new(value), arms))
+}
+
 // expression(&mut Parser) -> Result<AST, ParseError>
 // Parses an expression.
 fn expression(parser: &mut Parser) -> Result<AST, ParseError>
 {
-
     if let Ok(iffy) = call_optional!(if_expr, parser)
     {
         Ok(iffy)
@@ -954,6 +1004,9 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     } else if let Ok(list) = call_optional!(list, parser)
     {
         Ok(list)
+    } else if let Ok(matchy) = call_optional!(matchy, parser)
+    {
+        Ok(matchy)
     } else
     {
         bool_xor(parser)
