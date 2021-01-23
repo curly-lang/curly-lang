@@ -105,26 +105,36 @@ impl Type
     // Returns true if self is a valid subtype in respect to the passed in type.
     pub fn is_subtype(&self, supertype: &Type, ir: &IR) -> bool
     {
+        let mut _type = self;
+        while let Type::Symbol(s) = _type
+        {
+            _type = ir.types.get(s).unwrap();
+        }
+
+        let mut supertype = supertype;
+        while let Type::Symbol(s) = supertype
+        {
+            supertype = ir.types.get(s).unwrap();
+        }
+
+        if _type == supertype
+        {
+            return true;
+        }
+
+        println!("uwu: {} < {}", _type, supertype);
+
         match supertype
         {
             // Primatives
-            Type::Int => *self == Type::Int,
-            Type::Float => *self == Type::Float,
-            Type::Bool => *self == Type::Bool,
-            Type::String => *self == Type::String,
-
-            // Symbols
-            Type::Symbol(s) => {
-                match ir.types.get(s)
-                {
-                    Some(t) => self.is_subtype(t, ir),
-                    None => false
-                }
-            }
+            Type::Int => *_type == Type::Int,
+            Type::Float => *_type == Type::Float,
+            Type::Bool => *_type == Type::Bool,
+            Type::String => *_type == Type::String,
 
             // Functions
             Type::Func(sf, sa) =>
-                if let Type::Func(f, a) = self
+                if let Type::Func(f, a) = _type
                 {
                     f == sf && a == sa
                 } else
@@ -136,7 +146,7 @@ impl Type
             Type::Sum(types) => {
                 for t in types.0.iter()
                 {
-                    if self.is_subtype(t, ir)
+                    if _type.is_subtype(t, ir)
                     {
                         return true;
                     }
@@ -147,7 +157,7 @@ impl Type
 
             // Enums
             Type::Enum(se) =>
-                if let Type::Enum(e) = self
+                if let Type::Enum(e) = _type
                 {
                     se == e
                 } else
