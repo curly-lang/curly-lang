@@ -175,9 +175,16 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             // Save captured variables
             for c in f.captured_names.iter()
             {
-                // Fix doubles and functions
+                // Get type
                 let mut v = c.clone();
-                match f.captured.get(c).unwrap()
+                let mut _type = f.captured.get(c).unwrap();
+                while let Type::Symbol(s) = _type
+                {
+                    _type = root.types.get(s).unwrap();
+                }
+
+                // Fix functions, floats, and sum types
+                match _type
                 {
                     Type::Float => {
                         let name = format!("_{}", func.last_reference);
@@ -212,6 +219,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                         func.code.push_str(".args[");
                         func.code.push_str(&name);
                         func.code.push_str(".argc] = (void*) force_free_func;\n");
+                    }
+
+                    Type::Sum(_) => {
+                        todo!("todo: captuwe vawiabwes fow cwowosuwuwes uwu");
                     }
 
                     _ => ()
@@ -424,7 +435,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                         // Get argument
                         let (n, a) = a;
                         let mut v = convert_sexpr(a, root, func, types);
-                        match a.get_metadata()._type
+                        let mut _type = &a.get_metadata()._type;
+                        while let Type::Symbol(s) = _type
+                        {
+                            _type = root.types.get(s).unwrap();
+                        }
+
+                        match _type
                         {
                             Type::Float => {
                                 let name = format!("_{}", func.last_reference);
@@ -445,6 +462,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             }
 
                             Type::Func(_, _) => {
+                                v = format!("&{}", &v);
+                            }
+
+                            Type::Sum(_) => {
                                 v = format!("&{}", &v);
                             }
 
@@ -476,7 +497,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(".arity, sizeof(void*));\n");
                             }
 
-                            if let Type::Func(_, _) = a.get_metadata()._type
+                            if let Type::Func(_, _) = _type
                             {
                                 let name = format!("_{}", func.last_reference);
                                 func.last_reference += 1;
@@ -492,6 +513,21 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(".cleaners[");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".argc] = force_free_func;\n");
+                            } else if let Type::Sum(_) = _type
+                            {
+                                let name = format!("_{}", func.last_reference);
+                                func.last_reference += 1;
+                                let type_name = types.get(_type).unwrap().get_c_name();
+                                func.code.push_str(type_name);
+                                func.code.push_str("* ");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = malloc(sizeof(");
+                                func.code.push_str(type_name);
+                                func.code.push_str("));\n*");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = ");
+                                func.code.push_str(&v[1..]);
+                                func.code.push_str(";\n");
                             }
 
                             // Save argument
