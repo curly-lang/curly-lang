@@ -122,8 +122,6 @@ impl Type
             return true;
         }
 
-        println!("uwu: {} < {}", _type, supertype);
-
         match supertype
         {
             // Primatives
