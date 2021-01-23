@@ -409,7 +409,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             SExpr::Empty(SExprMetadata {
                 span,
                 span2: Span { start: 0, end: 0 },
-                _type: Type::Unknown,
+                _type,
                 arity: 0,
                 saved_argc: None
             })

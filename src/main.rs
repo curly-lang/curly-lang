@@ -208,12 +208,20 @@ fn main() -> Result<(), ()>
 struct REPLFunc
 {
     refc: u32,
-    func: fn(),
-    wrapper: fn(),
+    func: *const fn(),
+    wrapper: *const fn(),
     arity: u32,
     argc: u32,
-    cleaners: fn(),
-    args: fn()
+    cleaners: *const fn(),
+    args: *const fn()
+}
+
+#[derive(Debug)]
+#[repr(C)]
+struct REPLSum
+{
+    tag: u32,
+    value: u64
 }
 
 #[derive(Debug)]
@@ -223,7 +231,8 @@ enum REPLValue
     Int(i64),
     Float(f64),
     Bool(u8),
-    Func(REPLFunc)
+    Func(REPLFunc),
+    Sum(REPLSum)
 }
 
 struct CurlyREPLHelper
@@ -724,9 +733,17 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
             let v;
             let values: Vec<&REPLValue> = names.iter().map(|v| map.get(v).unwrap()).collect();
 
+            let _type = if let Type::Symbol(v) = &sexpr.get_metadata()._type
+            {
+                ir.types.get(v).unwrap()
+            } else
+            {
+                &sexpr.get_metadata()._type
+            };
+
             unsafe 
             {
-                match sexpr.get_metadata()._type
+                match _type
                 {
                     Type::Int => {
                         let main: Symbol<fn(*const &REPLValue) -> i64> = lib.get("__repl_line".as_bytes()).unwrap();
@@ -746,6 +763,11 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
                     Type::Func(_, _) => {
                         let main: Symbol<fn(*const &REPLValue) -> REPLFunc> = lib.get("__repl_line".as_bytes()).unwrap();
                         v = REPLValue::Func(main(values.as_ptr()));
+                    }
+
+                    Type::Sum(_) => {
+                        let main: Symbol<fn(*const &REPLValue) -> REPLSum> = lib.get("__repl_line".as_bytes()).unwrap();
+                        v = REPLValue::Sum(main(values.as_ptr()));
                     }
 
                     _ => {

@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
 
+use super::ir::IR;
 use super::parser::AST;
 
 #[derive(Clone, Debug)]
-pub struct HashSetWrapper<T>(HashSet<T>);
+pub struct HashSetWrapper<T>(pub HashSet<T>);
 
 impl<T: Hash + Eq> PartialEq for HashSetWrapper<T>
 {
@@ -100,9 +101,9 @@ impl Display for Type
 
 impl Type
 {
-    // is_subtype(&self, &Type) -> bool
+    // is_subtype(&self, &Type, &IR) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
-    pub fn is_subtype(&self, supertype: &Type) -> bool
+    pub fn is_subtype(&self, supertype: &Type, ir: &IR) -> bool
     {
         match supertype
         {
@@ -111,6 +112,15 @@ impl Type
             Type::Float => *self == Type::Float,
             Type::Bool => *self == Type::Bool,
             Type::String => *self == Type::String,
+
+            // Symbols
+            Type::Symbol(s) => {
+                match ir.types.get(s)
+                {
+                    Some(t) => self.is_subtype(t, ir),
+                    None => false
+                }
+            }
 
             // Functions
             Type::Func(sf, sa) =>
@@ -126,7 +136,7 @@ impl Type
             Type::Sum(types) => {
                 for t in types.0.iter()
                 {
-                    if self.is_subtype(t)
+                    if self.is_subtype(t, ir)
                     {
                         return true;
                     }
@@ -226,12 +236,12 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 }
             }
 
+            fields.insert(convert_ast_to_type(acc, types));
             if fields.len() == 1
             {
                 fields.into_iter().next().unwrap()
             } else
             {
-                fields.insert(convert_ast_to_type(acc, types));
                 Type::Sum(HashSetWrapper(fields))
             }
         }

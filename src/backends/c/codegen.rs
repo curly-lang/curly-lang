@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 use crate::frontend::ir::{BinOp, IR, PrefixOp, SExpr};
 use crate::frontend::types::Type;
@@ -12,9 +13,53 @@ struct CFunction<'a>
     last_reference: usize
 }
 
-// get_c_type(&Type) -> &str
+// Represents a structure in C
+#[derive(Clone)]
+enum CType
+{
+    Primative(String, Type),
+    Sum(String, Type, HashMap<Type, usize>)
+}
+
+impl CType
+{
+    // get_c_name(&self) -> &String
+    // Gets the c name of the type.
+    fn get_c_name(&self) -> &String
+    {
+        match self
+        {
+            CType::Primative(s, _)
+                | CType::Sum(s, _, _)
+                => s
+        }
+    }
+
+    fn get_curly_type(&self) -> &Type
+    {
+        match self
+        {
+            CType::Primative(_, t)
+                | CType::Sum(_, t, _)
+                => t
+        }
+    }
+
+    // get_hashmap(&self) -> Option<&HashMap<Type, usize>>
+    // Gets the hashmap associated with a sum type.
+    fn get_hashmap(&self) -> Option<&HashMap<Type, usize>>
+    {
+        match self
+        {
+            CType::Sum(_, _, v) => Some(v),
+            _ => None
+        }
+    }
+}
+
+// get_c_type(&Type, &HashMap<Type, String>) -> &str
 // Converts an IR type into a C type.
-fn get_c_type(_type: &Type) -> &str
+fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 {
     match _type
     {
@@ -22,13 +67,15 @@ fn get_c_type(_type: &Type) -> &str
         Type::Float => "double",
         Type::Bool => "char",
         Type::Func(_, _) => "func_t",
+        Type::Symbol(_) => types.get(_type).unwrap().get_c_name(),
+        Type::Sum(_) => types.get(_type).unwrap().get_c_name(),
         _ => panic!("unsupported type!")
     }
 }
 
-// convert_sexpr(&SExpr, &IR, &mut CFunction) -> String
+// convert_sexpr(&SExpr, &IR, &mut CFunction, &HashMap<Type, String>) -> String
 // Converts a s expression into C code.
-fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
+fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap<Type, CType>) -> String
 {
     match sexpr
     {
@@ -184,12 +231,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         // Prefix
         SExpr::Prefix(m, op, v) => {
             // Get name and value
-            let val = convert_sexpr(v, root, func);
+            let val = convert_sexpr(v, root, func, types);
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str(get_c_type(&m._type));
+            func.code.push_str(get_c_type(&m._type, types));
             func.code.push(' ');
             func.code.push_str(&name);
             func.code.push_str(" = ");
@@ -207,13 +254,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         // Infix
         SExpr::Infix(m, op, l, r) => {
             // Get name and operands
-            let left = convert_sexpr(l, root, func);
-            let right = convert_sexpr(r, root, func);
+            let left = convert_sexpr(l, root, func, types);
+            let right = convert_sexpr(r, root, func, types);
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str(get_c_type(&m._type));
+            func.code.push_str(get_c_type(&m._type, types));
             func.code.push(' ');
             func.code.push_str(&name);
             func.code.push_str(" = ");
@@ -250,12 +297,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         // Boolean and
         SExpr::And(m, l, r) => {
             // Get name and left operand
-            let left = convert_sexpr(l, root, func);
+            let left = convert_sexpr(l, root, func, types);
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str(get_c_type(&m._type));
+            func.code.push_str(get_c_type(&m._type, types));
             func.code.push(' ');
             func.code.push_str(&name);
             func.code.push_str(" = ");
@@ -263,7 +310,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(";\nif (");
             func.code.push_str(&name);
             func.code.push_str(") {\n");
-            let right = convert_sexpr(r, root, func);
+            let right = convert_sexpr(r, root, func, types);
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&right);
@@ -275,12 +322,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
         // Boolean or
         SExpr::Or(m, l, r) => {
             // Get name and left operand
-            let left = convert_sexpr(l, root, func);
+            let left = convert_sexpr(l, root, func, types);
             let name = format!("_{}", func.last_reference);
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str(get_c_type(&m._type));
+            func.code.push_str(get_c_type(&m._type, types));
             func.code.push(' ');
             func.code.push_str(&name);
             func.code.push_str(" = ");
@@ -288,7 +335,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.code.push_str(";\nif (!");
             func.code.push_str(&name);
             func.code.push_str(") {\n");
-            let right = convert_sexpr(r, root, func);
+            let right = convert_sexpr(r, root, func, types);
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&right);
@@ -304,26 +351,26 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             func.last_reference += 1;
 
             // Declare variable
-            func.code.push_str(&get_c_type(&m._type));
+            func.code.push_str(&get_c_type(&m._type, types));
             func.code.push(' ');
             func.code.push_str(&name);
             func.code.push_str(";\n");
 
             // Get condition
-            let cond = convert_sexpr(c, root, func);
+            let cond = convert_sexpr(c, root, func, types);
             func.code.push_str("if (");
             func.code.push_str(&cond);
             func.code.push_str(") {\n");
 
             // Get body
-            let body = convert_sexpr(b, root, func);
+            let body = convert_sexpr(b, root, func, types);
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&body);
             func.code.push_str(";\n} else {\n");
 
             // Get else clause
-            let elsy = convert_sexpr(e, root, func);
+            let elsy = convert_sexpr(e, root, func, types);
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&elsy);
@@ -351,7 +398,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
             {
                 if v == "debug"
                 {
-                    let arg = convert_sexpr(&args[0], root, func);
+                    let arg = convert_sexpr(&args[0], root, func, types);
                     put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type);
                     if args.len() == 1
                     {
@@ -369,14 +416,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                 // Functions
                 Type::Func(_, _) => {
                     // Get function and args
-                    let mut fstr = convert_sexpr(f, root, func);
+                    let mut fstr = convert_sexpr(f, root, func, types);
                     let mut astrs = vec![];
                     let mut name = String::with_capacity(0);
                     for a in args.iter().enumerate()
                     {
                         // Get argument
                         let (n, a) = a;
-                        let mut v = convert_sexpr(a, root, func);
+                        let mut v = convert_sexpr(a, root, func, types);
                         match a.get_metadata()._type
                         {
                             Type::Float => {
@@ -459,7 +506,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             let _type = &funcs[n].get_metadata()._type;
                             name = format!("_{}", func.last_reference);
                             func.last_reference += 1;
-                            func.code.push_str(get_c_type(_type));
+                            func.code.push_str(get_c_type(_type, types));
                             func.code.push(' ');
                             func.code.push_str(&name);
                             if let Type::Func(_, _) = _type
@@ -474,7 +521,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction) -> String
                             func.code.push_str(".argc) {\n");
                             func.code.push_str(&name);
                             func.code.push_str(" = ((");
-                            func.code.push_str(get_c_type(_type));
+                            func.code.push_str(get_c_type(_type, types));
                             func.code.push_str(" (*)(func_t*))");
                             func.code.push_str(&fstr);
                             func.code.push_str(".wrapper)(&");
@@ -517,13 +564,13 @@ func.code.push_str("if (");
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
                             let _type = &funcs[n].get_metadata()._type;
-                            func.code.push_str(get_c_type(_type));
+                            func.code.push_str(get_c_type(_type, types));
                             func.code.push(' ');
                             func.code.push_str(&name);
                             func.code.push_str(" = ((");
 
                             // Create function pointer
-                            func.code.push_str(get_c_type(_type));
+                            func.code.push_str(get_c_type(_type, types));
                             func.code.push_str(" (*)(");
                             for i in 0..saved_argc + f.get_metadata().arity
                             {
@@ -671,27 +718,64 @@ func.code.push_str("if (");
 
         // Assignments
         SExpr::Assign(m, a, v) => {
-            // Get value and generate code
-            let val = convert_sexpr(v, root, func);
-            func.code.push_str(get_c_type(&m._type));
-            func.code.push(' ');
-            func.code.push_str(a);
-            func.code.push_str(" = ");
-            func.code.push_str(&val);
-            func.code.push_str(";\n");
+            let _type =
+                if let Type::Symbol(_) = m._type
+                {
+                    types.get(&m._type).unwrap().get_curly_type()
+                } else
+                {
+                    &m._type
+                };
 
-            // Increment reference counter
-            match m._type
+            match _type
             {
-                Type::Func(_, _) => {
-                    func.code.push_str(&a);
-                    func.code.push_str(".refc++;\n");
+                Type::Sum(_) => {
+                    // Get value and generate code
+                    let val = convert_sexpr(v, root, func, types);
+                    let map = types.get(&m._type).unwrap().get_hashmap().unwrap();
+                    func.code.push_str(get_c_type(&m._type, types));
+                    func.code.push(' ');
+                    func.code.push_str(a);
+                    func.code.push_str(";\n");
+                    func.code.push_str(a);
+                    func.code.push_str(".tag = ");
+                    let id = format!("{}", map.get(&v.get_metadata()._type).unwrap());
+                    func.code.push_str(&id);
+                    func.code.push_str(";\n");
+                    func.code.push_str(a);
+                    func.code.push_str(".values._");
+                    func.code.push_str(&id);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&val);
+                    func.code.push_str(";\n");
+
+                    a.clone()
                 }
 
-                _ => ()
-            }
+                _ => {
+                    // Get value and generate code
+                    let val = convert_sexpr(v, root, func, types);
+                    func.code.push_str(get_c_type(&m._type, types));
+                    func.code.push(' ');
+                    func.code.push_str(a);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&val);
+                    func.code.push_str(";\n");
 
-            a.clone()
+                    // Increment reference counter
+                    match m._type
+                    {
+                        Type::Func(_, _) => {
+                            func.code.push_str(&a);
+                            func.code.push_str(".refc++;\n");
+                        }
+
+                        _ => ()
+                    }
+
+                    a.clone()
+                }
+            }
         }
 
         // With expressions
@@ -701,7 +785,7 @@ func.code.push_str("if (");
             func.last_reference += 1;
 
             // Declare variable
-            func.code.push_str(&get_c_type(&m._type));
+            func.code.push_str(&get_c_type(&m._type, types));
             func.code.push(' ');
             func.code.push_str(&name);
             func.code.push_str(";\n{\n");
@@ -710,14 +794,14 @@ func.code.push_str("if (");
             let mut astrs = vec![];
             for a in a
             {
-                astrs.push(convert_sexpr(a, root, func));
+                astrs.push(convert_sexpr(a, root, func, types));
             }
 
             // Body
-            let body = convert_sexpr(b, root, func);
+            let body = convert_sexpr(b, root, func, types);
             let ptr = format!("_{}", func.last_reference);
             func.last_reference += 1;
-            func.code.push_str(&get_c_type(&m._type));
+            func.code.push_str(&get_c_type(&m._type, types));
             func.code.push_str("* ");
             func.code.push_str(&ptr);
             func.code.push_str(" = &");
@@ -777,13 +861,13 @@ func.code.push_str("if (");
 
 // put_fn_wrapper(&mut String, &str, &CFunction) -> ()
 // Puts the wrapper for a given function in the built string.
-fn put_fn_wrapper(s: &mut String, name: &str, func: &CFunction)
+fn put_fn_wrapper(s: &mut String, name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
-    s.push_str(get_c_type(func.ret_type));
+    s.push_str(get_c_type(func.ret_type, types));
     s.push_str(" __func_wrapper_");
     s.push_str(&name);
     s.push_str("(func_t* f) {\nreturn ((");
-    s.push_str(get_c_type(func.ret_type));
+    s.push_str(get_c_type(func.ret_type, types));
     s.push_str(" (*) (");
 
     for i in 0..func.args.len()
@@ -815,9 +899,9 @@ fn put_fn_wrapper(s: &mut String, name: &str, func: &CFunction)
 
 // put_fn_declaration(&mut String, &str, &CFunction) -> ()
 // Puts a function declaration in the built string.
-fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction)
+fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
-    s.push_str(get_c_type(func.ret_type));
+    s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
     s.push_str(name);
     s.push('(');
@@ -833,7 +917,7 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction)
             comma = true;
         }
 
-        s.push_str(get_c_type(a.1));
+        s.push_str(get_c_type(a.1, types));
         s.push(' ');
         match a.1
         {
@@ -862,7 +946,7 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type)
             Type::Float => "%0.5f",
             Type::Bool => "%s",
             Type::Func(_, _) => "<func %p>",
-            _ => panic!("unsupported type!")
+            _ => ""// panic!("unsupported type!")
         }
     );
 
@@ -882,10 +966,73 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type)
     code.push_str(");\n");
 }
 
+// collect_types(&IR, &mut HashMap<Type, String>, &mut String) -> ()
+// Collects user defined types into a string containing all type definitions.
+fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut String)
+{
+    // Iterate over every type
+    let mut last_reference = 0;
+    for _type in ir.types.iter()
+    {
+        match _type.1
+        {
+            // Primatives get mapped to old type
+            Type::Int => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("long long"), _type.1.clone()));
+            }
+
+            Type::Float => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("double"), _type.1.clone()));
+            }
+
+            Type::Bool => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("char"), _type.1.clone()));
+            }
+
+            // Sum types are tagged unions
+            Type::Sum(v) => {
+                types_string.push_str(&format!("struct _{} {{\n    unsigned int tag;\n    union {{\n", last_reference));
+
+                let mut field_ref = 0;
+                for t in v.0.iter()
+                {
+                    types_string.push_str("        ");
+                    match t
+                    {
+                        Type::Int => types_string.push_str("long long"),
+                        Type::Float => types_string.push_str("double"),
+                        Type::Bool => types_string.push_str("char"),
+                        Type::Func(_, _) => types_string.push_str("func_t"),
+                        _ => panic!("unsupported type!")
+                    }
+
+                    types_string.push_str(&format!(" _{};\n", field_ref));
+                    field_ref += 1;
+                }
+
+                // Save type definitions
+                let map = HashMap::from_iter(v.0.iter().enumerate().map(|v| (v.1.clone(), v.0)));
+                let ct = CType::Sum(format!("struct _{}", last_reference), _type.1.clone(), map);
+                types_string.push_str("    } values;\n};\n");
+                types.insert(_type.1.clone(), ct.clone());
+                types.insert(Type::Symbol(_type.0.clone()), ct);
+                last_reference += 1;
+            }
+
+            _ => ()
+        }
+    }
+}
+
 // convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
 // Converts Curly IR to C code.
 pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 {
+    // Create and populate types
+    let mut types = HashMap::new();
+    let mut types_string = String::with_capacity(0);
+    collect_types(ir, &mut types, &mut types_string);
+
     // Create and populate functions
     let mut funcs = HashMap::new();
     for f in ir.funcs.iter()
@@ -938,7 +1085,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             }
         }
 
-        let last = convert_sexpr(&f.1.body, ir, &mut cf);
+        let last = convert_sexpr(&f.1.body, ir, &mut cf, &types);
 
         // Deallocate functions
         for a in cf.args.iter()
@@ -981,7 +1128,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     let mut cleanup = vec![];
     for s in ir.sexprs.iter()
     {
-        let v = convert_sexpr(s, ir, &mut main_func);
+        let v = convert_sexpr(s, ir, &mut main_func, &types);
 
         // Debug print
         if let Some(_) = repl_vars
@@ -1083,6 +1230,7 @@ func_t* copy_func_arg(func_t* source) {
     return dest;
 }
 ");
+    code_string.push_str(&types_string);
 
     // Define repl value struct
     if let Some(_) = repl_vars
@@ -1103,15 +1251,15 @@ typedef struct {
     // Declare all functions
     for f in funcs.iter()
     {
-        put_fn_declaration(&mut code_string, f.0, &f.1);
+        put_fn_declaration(&mut code_string, f.0, &f.1, &types);
         code_string.push_str(";\n");
-        put_fn_wrapper(&mut code_string, f.0, &f.1);
+        put_fn_wrapper(&mut code_string, f.0, &f.1, &types);
     }
 
     // Put all function definitions
     for f in funcs
     {
-        put_fn_declaration(&mut code_string, f.0, &f.1);
+        put_fn_declaration(&mut code_string, f.0, &f.1, &types);
         code_string.push_str(" {\n");
         code_string.push_str(&f.1.code);
         code_string.push_str("}\n");
@@ -1120,12 +1268,12 @@ typedef struct {
     // Retrieve previous arguments
     if let Some(vec) = &repl_vars
     {
-        code_string.push_str(get_c_type(main_func.ret_type));
+        code_string.push_str(get_c_type(main_func.ret_type, &types));
 
         code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
         for v in vec.iter().enumerate()
         {
-            code_string.push_str(get_c_type(&ir.scope.get_var(v.1).unwrap().0));
+            code_string.push_str(get_c_type(&ir.scope.get_var(v.1).unwrap().0, &types));
             code_string.push(' ');
             code_string.push_str(&v.1);
             code_string.push_str(" = vars[");
