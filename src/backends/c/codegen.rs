@@ -966,13 +966,13 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
 
         // Print out aggregate types
         Type::Func(_, _) => {
-            code.push_str("printf(\"<func %p>\\n\", ");
+            code.push_str(&format!("printf(\"({}) <func %p>\\n\", ", _type));
             code.push_str(v);
             code.push_str(".func);\n");
         }
 
         Type::Sum(_) => {
-            code.push_str("printf(\"(sum) \");\n");
+            code.push_str(&format!("printf(\"({}) \");\n", _type));
             code.push_str("switch (");
             code.push_str(v);
             code.push_str(".tag) {\n");
@@ -1297,7 +1297,7 @@ typedef struct {
         char b;
         func_t f;
 ");
-    
+
     let mut set = HashSet::with_capacity(0);
     for _type in types.iter()
     {
@@ -1313,9 +1313,9 @@ typedef struct {
         }
     }
     code_string.push_str(
-"
-    } vals;
+"    } vals;
 } repl_value_t;
+
 ");
     }
 
