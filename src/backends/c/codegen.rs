@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
 use crate::frontend::ir::{BinOp, IR, PrefixOp, SExpr};
@@ -1296,6 +1296,24 @@ typedef struct {
         double d;
         char b;
         func_t f;
+");
+    
+    let mut set = HashSet::with_capacity(0);
+    for _type in types.iter()
+    {
+        let name = _type.1.get_c_name();
+        if !set.contains(name)
+        {
+            code_string.push_str("        ");
+            code_string.push_str(name);
+            code_string.push(' ');
+            code_string.push_str(&name[7..]);
+            code_string.push_str(";\n");
+            set.insert(name);
+        }
+    }
+    code_string.push_str(
+"
     } vals;
 } repl_value_t;
 ");
@@ -1333,16 +1351,25 @@ typedef struct {
             code_string.push_str(&format!("{}", v.0));
             code_string.push_str("]->vals.");
 
-            code_string.push_str(
-                match &ir.scope.get_var(v.1).unwrap().0
-                {
-                    Type::Int => "i",
-                    Type::Float => "d",
-                    Type::Bool => "b",
-                    Type::Func(_, _) => "f",
-                    _ => panic!("unsupported type!")
+            let mut _type = &ir.scope.get_var(v.1).unwrap().0;
+            while let Type::Symbol(v) = _type
+            {
+                _type = ir.types.get(v).unwrap();
+            }
+
+            let c = match _type
+            {
+                Type::Int => "i",
+                Type::Float => "d",
+                Type::Bool => "b",
+                Type::Func(_, _) => "f",
+                Type::Sum(_) => {
+                    code_string.push_str(&format!("{}", &types.get(_type).unwrap().get_c_name()[7..]));
+                    ""
                 }
-            );
+                _ => panic!("unsupported type!")
+            };
+            code_string.push_str(c);
 
             code_string.push_str(";\n");
         }
