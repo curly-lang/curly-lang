@@ -399,7 +399,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 if v == "debug"
                 {
                     let arg = convert_sexpr(&args[0], root, func, types);
-                    put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type);
+                    put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type, root, types);
                     if args.len() == 1
                     {
                         return arg;
@@ -932,38 +932,67 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
     s.push(')');
 }
 
-// put_debug_fn(&mut String, &str, &Type) -> ()
+// put_debug_fn(&mut String, &str, &Type, &IR) -> ()
 // Puts a debug function in the built string.
-fn put_debug_fn(code: &mut String, v: &str, _type: &Type)
+fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>)
 {
-    code.push_str("printf(\"");
+    let _type = if let Type::Symbol(v) = _type
+    {
+        ir.types.get(v).unwrap()
+    } else
+    {
+        _type
+    };
 
-    // Determine the type
-    code.push_str(
-        match _type
-        {
-            Type::Int => "%lli",
-            Type::Float => "%0.5f",
-            Type::Bool => "%s",
-            Type::Func(_, _) => "<func %p>",
-            _ => ""// panic!("unsupported type!")
+    match _type
+    {
+        // Print out primatives
+        Type::Int => {
+            code.push_str("printf(\"%lli\\n\", ");
+            code.push_str(v);
+            code.push_str(");\n");
         }
-    );
 
-    code.push_str("\\n\", ");
-    code.push_str(v);
-
-    // Deal with booleans and functions
-    code.push_str(
-        match _type
-        {
-            Type::Bool => " ? \"true\" : \"false\"",
-            Type::Func(_, _) => ".func",
-            _ => ""
+        Type::Float => {
+            code.push_str("printf(\"%.5f\\n\", ");
+            code.push_str(v);
+            code.push_str(");\n");
         }
-    );
 
-    code.push_str(");\n");
+        Type::Bool => {
+            code.push_str("printf(\"%s\\n\", ");
+            code.push_str(v);
+            code.push_str(" ? \"true\" : \"false\");\n");
+        }
+
+        // Print out aggregate types
+        Type::Func(_, _) => {
+            code.push_str("printf(\"<func %p>\\n\", ");
+            code.push_str(v);
+            code.push_str(".func);\n");
+        }
+
+        Type::Sum(_) => {
+            code.push_str("printf(\"(sum) \");\n");
+            code.push_str("switch (");
+            code.push_str(v);
+            code.push_str(".tag) {\n");
+            let _type = types.get(_type).unwrap();
+
+            if let CType::Sum(_, _, fields) = _type
+            {
+                for field in fields.iter()
+                {
+                    code.push_str(&format!("case {}: {{\n", field.1));
+                    put_debug_fn(code, &format!("{}.values._{}", v, field.1), &field.0, ir, types);
+                    code.push_str("break;\n}\n");
+                }
+            }
+            code.push_str("}\n");
+        }
+
+        _ => panic!("uwu")
+    }
 }
 
 // collect_types(&IR, &mut HashMap<Type, String>, &mut String) -> ()
@@ -1133,7 +1162,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         // Debug print
         if let Some(_) = repl_vars
         {
-            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type);
+            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, ir, &types);
         }
 
         // Deallocation
