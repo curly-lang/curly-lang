@@ -221,6 +221,14 @@ struct REPLFunc
 struct REPLSum
 {
     tag: u32,
+    value: u64
+}
+
+#[derive(Debug)]
+#[repr(C)]
+struct REPLSumFunc
+{
+    tag: u32,
     value: REPLFunc
 }
 
@@ -232,7 +240,8 @@ enum REPLValue
     Float(f64),
     Bool(u8),
     Func(REPLFunc),
-    Sum(REPLSum)
+    Sum(REPLSum),
+    SumFunc(REPLSumFunc)
 }
 
 struct CurlyREPLHelper
@@ -763,9 +772,26 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
                         v = REPLValue::Func(main(values.as_ptr()));
                     }
 
-                    Type::Sum(_) => {
-                        let main: Symbol<fn(*const &REPLValue) -> REPLSum> = lib.get("__repl_line".as_bytes()).unwrap();
-                        v = REPLValue::Sum(main(values.as_ptr()));
+                    Type::Sum(fields) => {
+                        let mut func = false;
+                        for v in fields.0.iter()
+                        {
+                            if let Type::Func(_, _) = v
+                            {
+                                func = true;
+                                break;
+                            }
+                        }
+
+                        if func
+                        {
+                            let main: Symbol<fn(*const &REPLValue) -> REPLSumFunc> = lib.get("__repl_line".as_bytes()).unwrap();
+                            v = REPLValue::SumFunc(main(values.as_ptr()));
+                        } else
+                        {
+                            let main: Symbol<fn(*const &REPLValue) -> REPLSum> = lib.get("__repl_line".as_bytes()).unwrap();
+                            v = REPLValue::Sum(main(values.as_ptr()));
+                        }
                     }
 
                     _ => {

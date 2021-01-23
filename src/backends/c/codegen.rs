@@ -1233,6 +1233,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
                 _ => ()
             }
         }
+
         // Return statement
         cf.code.push_str("return ");
         cf.code.push_str(&last);
