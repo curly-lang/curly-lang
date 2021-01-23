@@ -942,7 +942,6 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
         _type = ir.types.get(v).unwrap()
     }
 
-    println!("{:?}", _type);
     match _type
     {
         // Print out primatives

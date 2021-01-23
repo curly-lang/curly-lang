@@ -689,8 +689,14 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
         }
 
         // Assignments
-        SExpr::Assign(_, name, value) => {
-            let t = get_function_type(value, scope, funcs, errors, captured, captured_names);
+        SExpr::Assign(m, name, value) => {
+            let t = if m._type != Type::Error
+            {
+                m._type.clone()
+            } else
+            {
+                get_function_type(value, scope, funcs, errors, captured, captured_names)
+            };
             scope.put_var(&name, &t, 0, None, Span { start: 0, end: 0 }, true);
             t
         }
