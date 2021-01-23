@@ -466,6 +466,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             }
 
                             Type::Sum(_) => {
+                                // Autocast argument if not already done so
                                 v = format!("&{}", &v);
                             }
 
@@ -716,7 +717,7 @@ func.code.push_str("if (");
                         // Put in new args
                         for arg in astrs.iter_mut()
                         {
-                            // If it's a function allocate space in the heap for it
+                            // If it's a function or sum type allocate space in the heap for it
                             if let Type::Func(_, _) = arg.1
                             {
                                 {
@@ -734,6 +735,22 @@ func.code.push_str("if (");
                                 func.code.push_str(".cleaners[");
                                 func.code.push_str(&name);
                                 func.code.push_str(".argc] = force_free_func;\n");
+                            } else if let Type::Sum(_) = arg.1
+                            {
+                                let name = format!("_{}", func.last_reference);
+                                func.last_reference += 1;
+                                let type_name = types.get(arg.1).unwrap().get_c_name();
+                                func.code.push_str(type_name);
+                                func.code.push_str("* ");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = malloc(sizeof(");
+                                func.code.push_str(type_name);
+                                func.code.push_str("));\n*");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = ");
+                                func.code.push_str(&arg.0);
+                                func.code.push_str(";\n");
+                                arg.0 = name;
                             }
 
                             func.code.push_str(&name);
@@ -946,6 +963,12 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
     let mut comma = false;
     for a in func.args.iter()
     {
+        let mut _type = a.1;
+        if let Type::Symbol(_) = _type
+        {
+            _type = types.get(&_type).unwrap().get_curly_type();
+        }
+
         if comma
         {
             s.push_str(", ");
@@ -954,15 +977,17 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
             comma = true;
         }
 
-        s.push_str(get_c_type(a.1, types));
+        s.push_str(get_c_type(_type, types));
         s.push(' ');
-        match a.1
+        match _type
         {
             Type::Float
                 | Type::Func(_, _)
+                | Type::Sum(_)
                 => s.push_str("*_"),
             _ => ()
         }
+
         s.push_str(a.0);
     }
 
@@ -1136,7 +1161,13 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         // Fix doubles and functions
         for a in cf.args.iter()
         {
-            match a.1
+            let mut _type = a.1;
+            while let Type::Symbol(s) = _type
+            {
+                _type = ir.types.get(s).unwrap();
+            }
+
+            match _type
             {
                 Type::Float => {
                     // Get name
