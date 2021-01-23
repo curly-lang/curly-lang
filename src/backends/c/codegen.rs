@@ -14,7 +14,7 @@ struct CFunction<'a>
 }
 
 // Represents a structure in C
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum CType
 {
     Primative(String, Type),
@@ -668,7 +668,7 @@ func.code.push_str("if (");
                         func.code.push_str(".cleaners = calloc(");
                         func.code.push_str(&name);
                         func.code.push_str(".arity, sizeof(void*));\n");
-func.code.push_str("if (");
+                        func.code.push_str("if (");
                         func.code.push_str(&name);
                         func.code.push_str(".args == (void*) 0)\n");
                         func.code.push_str(&name);
@@ -936,14 +936,13 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
 // Puts a debug function in the built string.
 fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>)
 {
-    let _type = if let Type::Symbol(v) = _type
+    let mut _type = _type;
+    while let Type::Symbol(v) = _type
     {
-        ir.types.get(v).unwrap()
-    } else
-    {
-        _type
-    };
+        _type = ir.types.get(v).unwrap()
+    }
 
+    println!("{:?}", _type);
     match _type
     {
         // Print out primatives
@@ -1001,7 +1000,7 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
 {
     // Iterate over every type
     let mut last_reference = 0;
-    for _type in ir.types.iter()
+    for _type in ir.types.iter().filter(|v| if let Type::Symbol(_) = v.1 { false } else { true })
     {
         match _type.1
         {
@@ -1016,6 +1015,10 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
 
             Type::Bool => {
                 types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("char"), _type.1.clone()));
+            }
+
+            Type::Func(_, _) => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("func_t"), _type.1.clone()));
             }
 
             // Sum types are tagged unions
@@ -1049,6 +1052,27 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
             }
 
             _ => ()
+        }
+    }
+
+    // Do symbols
+    for _type in ir.types.iter()
+    {
+        // Symbols get mapped to last type in chain
+        if let Type::Symbol(_s) = _type.1
+        {
+            let mut s = _s;
+            let __type = loop
+            {
+                let _type = ir.types.get(s).unwrap();
+                match _type
+                {
+                    Type::Symbol(v) => s = v,
+                    _ => break _type
+                }
+            };
+
+            types.insert(Type::Symbol(_type.0.clone()), types.get(__type).unwrap().clone());
         }
     }
 }

@@ -733,13 +733,11 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
             let v;
             let values: Vec<&REPLValue> = names.iter().map(|v| map.get(v).unwrap()).collect();
 
-            let _type = if let Type::Symbol(v) = &sexpr.get_metadata()._type
+            let mut _type = &sexpr.get_metadata()._type;
+            while let Type::Symbol(v) = &_type
             {
-                ir.types.get(v).unwrap()
-            } else
-            {
-                &sexpr.get_metadata()._type
-            };
+                _type = ir.types.get(v).unwrap()
+            }
 
             unsafe 
             {
