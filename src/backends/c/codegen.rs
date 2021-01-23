@@ -550,6 +550,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(" = ");
                                 func.code.push_str(&fstr);
                             }
+
                             func.code.push_str(";\nif (");
                             func.code.push_str(&fstr);
                             func.code.push_str(".arity == ");
@@ -1167,6 +1168,17 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
                     cf.code.push_str(");\n");
                     cf.code.push_str(&a.0);
                     cf.code.push_str(".refc++;\n");
+                }
+
+                Type::Sum(_) => {
+                    // Copy
+                    let type_name = types.get(&a.1).unwrap().get_c_name();
+                    cf.code.push_str(type_name);
+                    cf.code.push(' ');
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(" = *_");
+                    cf.code.push_str(&a.0);
+                    cf.code.push_str(";\n");
                 }
 
                 _ => ()
