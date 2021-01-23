@@ -531,7 +531,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(".arity, sizeof(void*));\n");
                             }
 
-                            if let Type::Func(_, _) = _type
+                            if let Type::Func(_, _) = arg_type
                             {
                                 let name = format!("_{}", func.last_reference);
                                 func.last_reference += 1;
@@ -547,7 +547,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(".cleaners[");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".argc] = force_free_func;\n");
-                            } else if let Type::Sum(_) = _type
+                            } else if let Type::Sum(_) = arg_type
                             {
                                 let name = format!("_{}", func.last_reference);
                                 func.last_reference += 1;
@@ -630,7 +630,7 @@ func.code.push_str("if (");
                         } else if f.get_metadata().arity <= astrs.len() + 1
                         {
                             // Get name
-                            astrs.push((v, &a.get_metadata()._type));
+                            astrs.push((v, arg_type));
                             name = format!("_{}", func.last_reference);
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
@@ -711,7 +711,7 @@ func.code.push_str("if (");
                             }
                         } else
                         {
-                            astrs.push((v, &a.get_metadata()._type));
+                            astrs.push((v, arg_type));
                         }
                     }
 
@@ -781,7 +781,7 @@ func.code.push_str("if (");
                                 func.code.push_str("));\n*");
                                 func.code.push_str(&name);
                                 func.code.push_str(" = ");
-                                func.code.push_str(&arg.0);
+                                func.code.push_str(&arg.0[1..]);
                                 func.code.push_str(";\n");
                                 arg.0 = name;
                             }

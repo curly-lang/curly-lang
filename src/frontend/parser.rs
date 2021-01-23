@@ -150,12 +150,12 @@ pub enum Token
     
     #[token("class")]
     Class,
-    
-    #[token("match")]
-    Match,
 
     #[token("lambda")]
     Lambda,
+    
+    #[token("match")]
+    Match,
     
     #[token("to")]
     To,
