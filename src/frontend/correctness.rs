@@ -900,6 +900,73 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     check_function_group(v.into_iter(), ir, errors);
 }
 
+// save_single_type(&mut usize, &Type, &mut HashMap) -> ()
+// Saves one type.
+fn save_single_type(id: &mut usize, _type: &Type, types: &mut HashMap<String, Type>)
+{
+    for t in types.iter()
+    {
+        if _type == t.1
+        {
+            return;
+        }
+    }
+
+    types.insert(format!("{}", id), _type.clone());
+    *id += 1;
+}
+
+// save_types(&mut IR) -> ()
+// Saves anonymous types
+fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
+{
+    let m = sexpr.get_metadata();
+    if let Type::Sum(_) = &m._type
+    {
+        save_single_type(id, &m._type, types);
+    }
+
+    match sexpr
+    {
+        SExpr::Prefix(_, _, v) => {
+            save_types(v, types, id);
+        }
+
+        SExpr::Infix(_, _, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
+            | SExpr::Application(_, l, r)
+            => {
+            save_types(l, types, id);
+            save_types(r, types, id);
+        }
+
+        SExpr::If(_, c, t, e) => {
+            save_types(c, types, id);
+            save_types(t, types, id);
+            save_types(e, types, id);
+        }
+
+        SExpr::As(_, v) => {
+            save_types(v, types, id);
+        }
+
+        SExpr::Assign(_, _, v) => {
+            save_types(v, types, id);
+        }
+
+        SExpr::With(_, a, v) => {
+            for a in a.iter()
+            {
+                save_types(a, types, id);
+            }
+            save_types(v, types, id);
+        }
+
+        _ => ()
+    }
+}
+
 // check_correctness(&mut IR) -> ()
 // Checks the correctness of ir.
 pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
@@ -921,6 +988,17 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
+        let mut id = 0;
+        for sexpr in ir.sexprs.iter()
+        {
+            save_types(sexpr, &mut ir.types, &mut id);
+        }
+
+        for f in ir.funcs.iter()
+        {
+            save_types(&f.1.body, &mut ir.types, &mut id);
+        }
+
         Ok(())
     } else
     {
