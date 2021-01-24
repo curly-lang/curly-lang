@@ -355,6 +355,50 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             name
         }
 
+        // As operator
+        SExpr::As(m, v) => {
+            // Get name and value
+            let value = convert_sexpr(v, root, func, types);
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            func.code.push_str(get_c_type(&m._type, types));
+            func.code.push(' ');
+            func.code.push_str(&name);
+
+            let mut _type = &m._type;
+            while let Type::Symbol(s) = _type
+            {
+                _type = root.types.get(s).unwrap();
+            }
+
+            // Check result type
+            match &_type
+            {
+                // Sum types
+                Type::Sum(_) => {
+                    func.code.push_str(";\n");
+                    func.code.push_str(&name);
+                    func.code.push_str(".tag = ");
+                    let ctype = types.get(&_type).unwrap();
+                    let id = ctype.get_hashmap().unwrap().get(&v.get_metadata()._type).unwrap();
+                    func.code.push_str(&format!("{}", id));
+                    func.code.push_str(";\n");
+                    func.code.push_str(&name);
+                    func.code.push_str(".values._");
+                    func.code.push_str(&format!("{}", id));
+                    func.code.push_str(" = ");
+                    func.code.push_str(&value);
+                    func.code.push_str(";\n");
+                }
+
+                // Everything else is unsupported
+                _ => panic!("unsupported type!")
+            }
+
+            name
+        }
+
         // If expressions
         SExpr::If(m, c, b, e) => {
             // Get name

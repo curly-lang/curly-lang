@@ -664,9 +664,9 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                             .with_message("Invalid cast")
                             .with_labels(vec![
                                 Label::secondary(file_id, s1)
-                                .with_message(format!("Value has type {}", t1)),
+                                .with_message(format!("Value has type `{}`", t1)),
                                 Label::primary(file_id, s2)
-                                .with_message(format!("Cannot convert {} to {}", t1, t2))
+                                .with_message(format!("Cannot convert `{}` to `{}`", t1, t2))
                             ]);
                     }
                 }
