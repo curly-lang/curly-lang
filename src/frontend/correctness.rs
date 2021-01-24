@@ -1062,6 +1062,18 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
             save_types(v, types, id);
         }
 
+        SExpr::Match(_, v, a) => {
+            save_types(v, types, id);
+            for a in a
+            {
+                if let Type::Sum(_) = a.0
+                {
+                    save_single_type(id, &a.0, types);
+                }
+                save_types(&a.1, types, id);
+            }
+        }
+
         _ => ()
     }
 }

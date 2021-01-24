@@ -1020,6 +1020,76 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             name
         }
 
+        SExpr::Match(m, v, a) => {
+            // Get value and name
+            let value = convert_sexpr(v, root, func, types);
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+            let _type = types.get(&v.get_metadata()._type).unwrap();
+            let map = _type.get_hashmap().unwrap();
+
+            // Create switch statement
+            func.code.push_str(get_c_type(&m._type, types));
+            func.code.push(' ');
+            func.code.push_str(&name);
+            func.code.push_str(";\nswitch (");
+            func.code.push_str(&value);
+            func.code.push_str(".tag) {\n");
+
+            // Create match arms
+            for a in a.iter()
+            {
+                func.code.push_str("case ");
+                let id = map.get(&a.0).unwrap();
+                func.code.push_str(&format!("{}: {{\n", id));
+                func.code.push_str(get_c_type(&a.0, types));
+                func.code.push(' ');
+                func.code.push_str(
+                    if let Type::Symbol(s) = &v.get_metadata()._type
+                    {
+                        s
+                    } else
+                    {
+                        "$"
+                    }
+                );
+                func.code.push_str(" = ");
+                func.code.push_str(&value);
+                func.code.push_str(".values._");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(";\n");
+                let arm = convert_sexpr(&a.1, root, func, types);
+
+                if a.1.get_metadata()._type == m._type
+                {
+                    func.code.push_str(&name);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&arm);
+                    func.code.push_str(";\n");
+                } else
+                {
+                    let _type = types.get(&m._type).unwrap();
+                    let map = _type.get_hashmap().unwrap();
+                    let id = map.get(&a.0).unwrap();
+                    func.code.push_str(&name);
+                    func.code.push_str(".tag = ");
+                    func.code.push_str(&format!("{}", id));
+                    func.code.push_str(";\n");
+                    func.code.push_str(&name);
+                    func.code.push_str(".values._");
+                    func.code.push_str(&format!("{}", id));
+                    func.code.push_str(" = ");
+                    func.code.push_str(&arm);
+                    func.code.push_str(";\n");
+                }
+
+                func.code.push_str("break;\n}\n");
+            }
+            func.code.push_str("}\n");
+
+            name
+        }
+
         _ => panic!("unimplemented s expression!")
     }
 }
