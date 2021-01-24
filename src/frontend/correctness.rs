@@ -649,12 +649,15 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             let bt = get_function_type(body, scope, funcs, errors, captured, captured_names);
             let et = get_function_type(elsy, scope, funcs, errors, captured, captured_names);
 
-            if bt == Type::Unknown || et == Type::Unknown
+            if bt == Type::Unknown && et == Type::Unknown
             {
                 Type::Unknown
-            } else if bt == et
+            } else if bt == et || et == Type::Unknown
             {
                 bt
+            } else if bt == Type::Unknown
+            {
+                et
             } else
             {
                 let mut set = Vec::with_capacity(0);
