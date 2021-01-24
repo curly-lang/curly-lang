@@ -2,7 +2,6 @@
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
 - Make aggregate types work without type aliasing them first
-- Mismatched if expressions turn into sum types
 - Product types
 - Match expressions
 - Span
