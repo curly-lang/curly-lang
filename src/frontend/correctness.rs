@@ -21,7 +21,8 @@ pub enum CorrectnessError
     UnknownFunctionReturnType(Span, String),
     MismatchedFunctionArgType(Span, Type, Type),
     InvalidApplication(Span, Type),
-    InvalidCast(Span, Type, Span, Type)
+    InvalidCast(Span, Type, Span, Type),
+    NonSubtypeOnMatch(Span, Type, Span, Type)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
@@ -453,6 +454,65 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Pop scope
             root.scope.pop_scope();
         }
+
+        SExpr::Match(m, value, arms) => {
+            // Check value
+            check_sexpr(value, root, errors);
+            let _type = &value.get_metadata()._type;
+            if *_type == Type::Error
+            {
+                return;
+            }
+
+            // Get name of symbol
+            let name = if let SExpr::Symbol(_, s) = &**value
+            {
+                s
+            } else
+            {
+                "$"
+            };
+
+            // Check match arms
+            root.scope.push_scope(false);
+            let mut set = Vec::with_capacity(0);
+            for arm in arms.iter_mut()
+            {
+                // Nonsubtypes are errors
+                if !arm.0.is_subtype(&_type, root)
+                {
+                    errors.push(CorrectnessError::NonSubtypeOnMatch(
+                        value.get_metadata().span.clone(),
+                        _type.clone(),
+                        arm.1.get_metadata().span2.clone(),
+                        arm.0.clone()
+                    ));
+                    return;
+                }
+
+                // Check body of match arm
+                root.scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
+                check_sexpr(&mut arm.1, root, errors);
+
+                if arm.1.get_metadata()._type == Type::Error
+                {
+                    return;
+                }
+
+                set.push(&arm.1.get_metadata()._type);
+            }
+
+            root.scope.pop_scope();
+
+            let set = HashSet::from_iter(set.into_iter().cloned());
+            m._type = if set.len() == 1
+            {
+                set.into_iter().next().unwrap()
+            } else
+            {
+                Type::Sum(HashSetWrapper(set))
+            };
+        }
     }
 }
 
@@ -712,7 +772,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             match ft
             {
                 // Strings concatenate to other strings
-                Type::String => Type::String,
+                // Type::String => Type::String,
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
@@ -760,6 +820,45 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             // Pop the scope and return type
             scope.pop_scope();
             bt
+        }
+
+        SExpr::Match(_, value, arms) => {
+            // Get name of symbol
+            let name = if let SExpr::Symbol(_, s) = &**value
+            {
+                s
+            } else
+            {
+                "$"
+            };
+
+            // Check match arms
+            scope.push_scope(false);
+            let mut set = Vec::with_capacity(0);
+            for arm in arms.iter()
+            {
+                // Check body of match arm
+                scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
+                let _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names);
+
+                if _type == Type::Unknown
+                {
+                    continue;
+                }
+
+                set.push(&arm.1.get_metadata()._type);
+            }
+
+            scope.pop_scope();
+
+            let set = HashSet::from_iter(set.into_iter().cloned());
+            if set.len() == 1
+            {
+                set.into_iter().next().unwrap()
+            } else
+            {
+                Type::Sum(HashSetWrapper(set))
+            }
         }
     }
 }

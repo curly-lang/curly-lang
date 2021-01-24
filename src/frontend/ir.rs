@@ -103,6 +103,9 @@ pub enum SExpr
 
     // Scoping
     With(SExprMetadata, Vec<SExpr>, Box<SExpr>),
+
+    // Match expressions
+    Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr)>)
 }
 
 impl SExpr
@@ -131,6 +134,7 @@ impl SExpr
                 | Self::Application(m, _, _)
                 | Self::Assign(m, _, _)
                 | Self::With(m, _, _)
+                | Self::Match(m, _, _)
                 => m
         }
     }
@@ -159,6 +163,7 @@ impl SExpr
                 | Self::Application(m, _, _)
                 | Self::Assign(m, _, _)
                 | Self::With(m, _, _)
+                | Self::Match(m, _, _)
                 => m
         }
     }
@@ -517,7 +522,21 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             func_id
         }
 
-        AST::Match(_span, _value, _arms) => panic!("uwu"),
+        AST::Match(span, v, a) =>
+            SExpr::Match(SExprMetadata {
+                span,
+                span2: Span { start: 0, end: 0 },
+                _type: Type::Error,
+                arity: 0,
+                saved_argc: None
+            }, Box::new(convert_node(*v, funcs, global, seen_funcs, types)),
+                a.into_iter().map(|a| {
+                    let span2 = a.0.get_span().clone();
+                    let mut v = (types::convert_ast_to_type(a.0, types), convert_node(a.1, funcs, global, seen_funcs, types));
+                    v.1.get_mutable_metadata().span2 = span2;
+                    v
+                }).collect()
+            ),
 
         // With expressions
         AST::With(span, a, v) => {

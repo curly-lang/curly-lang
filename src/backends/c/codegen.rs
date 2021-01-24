@@ -691,7 +691,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(".args = calloc(");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".arity, sizeof(void*));\n");
-func.code.push_str("if (");
+                                func.code.push_str("if (");
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".cleaners == (void*) 0)\n");
                                 func.code.push_str(&fstr);
