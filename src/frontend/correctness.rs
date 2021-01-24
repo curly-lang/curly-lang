@@ -5,7 +5,7 @@ use std::mem::swap;
 
 use super::ir::{BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
-use super::types::Type;
+use super::types::{HashSetWrapper, Type};
 
 #[derive(Debug)]
 pub enum CorrectnessError
@@ -14,7 +14,6 @@ pub enum CorrectnessError
     UndefinedInfixOp(Span, BinOp, Type, Type),
     NonboolInBoolExpr(Span, Type),
     NonboolInIfCond(Span, Type),
-    NonmatchingIfBodies(Span, Type, Span, Type),
     NonmatchingAssignTypes(Span, Type, Span, Type),
     SymbolNotFound(Span, String),
     Reassignment(Span, Span, String),
@@ -238,12 +237,27 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Check that the types of the then and else blocks match
             if then.get_metadata()._type != elsy.get_metadata()._type
             {
-                errors.push(CorrectnessError::NonmatchingIfBodies(
-                    then.get_metadata().span.clone(),
-                    then.get_metadata()._type.clone(),
-                    elsy.get_metadata().span.clone(),
-                    elsy.get_metadata()._type.clone()
-                ));
+                let mut set = Vec::with_capacity(0);
+                if let Type::Sum(v) = &then.get_metadata()._type
+                {
+                    set = v.0.iter().collect();
+                } else
+                {
+                    set.push(&then.get_metadata()._type);
+                }
+
+                if let Type::Sum(v) = &elsy.get_metadata()._type
+                {
+                    for v in v.0.iter()
+                    {
+                        set.push(v);
+                    }
+                } else
+                {
+                    set.push(&elsy.get_metadata()._type);
+                }
+
+                m._type = Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter().cloned())));
             } else
             {
                 m._type = then.get_metadata()._type.clone();
@@ -633,12 +647,37 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
         // If expressions
         SExpr::If(_, _, body, elsy) => {
             let bt = get_function_type(body, scope, funcs, errors, captured, captured_names);
-            if bt != Type::Unknown
+            let et = get_function_type(elsy, scope, funcs, errors, captured, captured_names);
+
+            if bt == Type::Unknown || et == Type::Unknown
+            {
+                Type::Unknown
+            } else if bt == et
             {
                 bt
             } else
             {
-                get_function_type(elsy, scope, funcs, errors, captured, captured_names)
+                let mut set = Vec::with_capacity(0);
+                if let Type::Sum(v) = &body.get_metadata()._type
+                {
+                    set = v.0.iter().collect();
+                } else
+                {
+                    set.push(&body.get_metadata()._type);
+                }
+
+                if let Type::Sum(v) = &elsy.get_metadata()._type
+                {
+                    for v in v.0.iter()
+                    {
+                        set.push(v);
+                    }
+                } else
+                {
+                    set.push(&elsy.get_metadata()._type);
+                }
+
+                Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter().cloned())))
             }
         }
 
