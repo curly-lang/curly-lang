@@ -375,16 +375,50 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
             // Get body
             let body = convert_sexpr(b, root, func, types);
-            func.code.push_str(&name);
-            func.code.push_str(" = ");
-            func.code.push_str(&body);
+
+            // Save
+            if m._type == b.get_metadata()._type
+            {
+                func.code.push_str(&name);
+                func.code.push_str(" = ");
+                func.code.push_str(&body);
+            } else
+            {
+                let id = types.get(&m._type).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
+                func.code.push_str(&name);
+                func.code.push_str(".tag = ");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(";\n");
+                func.code.push_str(&name);
+                func.code.push_str(".values._");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(" = ");
+                func.code.push_str(&body);
+            }
             func.code.push_str(";\n} else {\n");
 
             // Get else clause
             let elsy = convert_sexpr(e, root, func, types);
-            func.code.push_str(&name);
-            func.code.push_str(" = ");
-            func.code.push_str(&elsy);
+
+            // Save
+            if m._type == e.get_metadata()._type
+            {
+                func.code.push_str(&name);
+                func.code.push_str(" = ");
+                func.code.push_str(&elsy);
+            } else
+            {
+                let id = types.get(&m._type).unwrap().get_hashmap().unwrap().get(&e.get_metadata()._type).unwrap();
+                func.code.push_str(&name);
+                func.code.push_str(".tag = ");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(";\n");
+                func.code.push_str(&name);
+                func.code.push_str(".values._");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(" = ");
+                func.code.push_str(&elsy);
+            }
             func.code.push_str(";\n}\n");
 
             name
