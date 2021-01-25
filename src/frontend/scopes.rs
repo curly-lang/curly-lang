@@ -108,6 +108,7 @@ impl Scope
 
          // Functions
          self.put_var_raw(String::from("debug"), Type::Unknown, 1, None, Span { start: 0, end: 0 }, true);
+         self.put_var_raw(String::from("putch"), Type::Func(Box::new(Type::Int), Box::new(Type::Int)), 1, Some(0), Span { start: 0, end: 0 }, true);
 
          self
     }

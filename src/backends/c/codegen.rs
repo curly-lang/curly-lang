@@ -512,6 +512,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     {
                         panic!("Using debug on multiple arguments is not supported");
                     }
+                } else if v == "putch"
+                {
+                    let arg = convert_sexpr(&args[0], root, func, types);
+                    func.code.push_str("printf(\"%c\", ");
+                    func.code.push_str(&arg);
+                    func.code.push_str(");\n");
+                    return arg;
                 }
             }
 
