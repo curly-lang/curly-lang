@@ -34,6 +34,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         errors.push(CorrectnessError::InvalidType(
             s.clone()
         ));
+        sexpr.get_mutable_metadata()._type = Type::Error;
         return;
     }
 
@@ -468,6 +469,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if *_type == Type::Error
             {
                 return;
+            } else if let Type::ConversionError(_) = *_type
+            {
+                return;
             }
 
             // Get name of symbol
@@ -484,6 +488,15 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             let mut set = Vec::with_capacity(0);
             for arm in arms.iter_mut()
             {
+                if let Type::ConversionError(s) = &arm.0
+                {
+                    errors.push(CorrectnessError::InvalidType(
+                        s.clone()
+                    ));
+                    root.scope.pop_scope();
+                    continue;
+                }
+
                 // Nonsubtypes are errors
                 if !arm.0.is_subtype(&_type, &root.types)
                 {
