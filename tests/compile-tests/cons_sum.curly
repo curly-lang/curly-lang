@@ -1,11 +1,19 @@
 type ListItem = Int | ((ListItem -> ListItem -> ListItem) -> ListItem)
+type List = (ListItem -> ListItem -> ListItem) -> ListItem
 
 cons x: ListItem, y: ListItem, f: ListItem -> ListItem -> ListItem = f x y
 truefn x: ListItem, y: ListItem = x
 falsefn x: ListItem, y: ListItem = y
-car list: (ListItem -> ListItem -> ListItem) -> ListItem = list truefn
-cdr list: (ListItem -> ListItem -> ListItem) -> ListItem = list falsefn
+car list: ListItem =
+	match list
+	to List => list truefn
+cdr list: ListItem =
+	match list
+	to List => list falsefn
 
 list = cons 1 (cons 2 3)
 debug (car list)
 debug (cdr list)
+debug (car (cdr list))
+debug (cdr (cdr list))
+

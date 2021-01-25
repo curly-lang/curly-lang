@@ -61,6 +61,8 @@ impl CType
 // Converts an IR type into a C type.
 fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 {
+    let mut _type = _type;
+
     match _type
     {
         Type::Int => "long long",
@@ -499,8 +501,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 }
             }
 
+            let mut _type = &f.get_metadata()._type;
+            while let Type::Symbol(s) = _type
+            {
+                _type = root.types.get(s).unwrap();
+            }
+
             let mut unknown_arity = false;
-            match f.get_metadata()._type
+            match _type
             {
                 // Functions
                 Type::Func(_, _) => {
@@ -519,7 +527,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             _type = root.types.get(s).unwrap();
                         }
 
-                        let mut arg_type = &**if let Type::Func(a, _) = &f.get_metadata()._type
+                        let mut ftype = &f.get_metadata()._type;
+                        while let Type::Symbol(s) = ftype
+                        {
+                            ftype = root.types.get(s).unwrap();
+                        }
+
+                        let mut arg_type = &**if let Type::Func(a, _) = ftype
                         {
                             a
                         } else { unreachable!("this is always a function") };
@@ -568,12 +582,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                     func.code.push_str(";\n");
                                     func.code.push_str(&name);
                                     func.code.push_str(".tag = ");
-                                    func.code.push_str(&format!("{};\n",
-                                                                arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
+                                    func.code.push_str(&format!("{};\n", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
                                     func.code.push_str(&name);
                                     func.code.push_str(".values.");
-                                    func.code.push_str(&format!("_{}",
-                                                                arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
+                                    func.code.push_str(&format!("_{}", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
                                     func.code.push_str(" = ");
                                     func.code.push_str(&v);
                                     func.code.push_str(";\n");
@@ -839,6 +851,8 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                     func.code.push_str(" = copy_func_arg(");
                                     func.code.push_str(&arg.0);
                                     func.code.push_str(");\n");
+                                    func.code.push_str(&name);
+                                    func.code.push_str("->refc++;\n");
                                     arg.0 = name;
                                 }
 
@@ -891,10 +905,18 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 {
                     &m._type
                 };
+            let vtype =
+                if let Type::Symbol(_) = v.get_metadata()._type
+                {
+                    types.get(&v.get_metadata()._type).unwrap().get_curly_type()
+                } else
+                {
+                    &v.get_metadata()._type
+                };
 
             match _type
             {
-                Type::Sum(_) => {
+                Type::Sum(_) if _type != vtype => {
                     // Get value and generate code
                     let val = convert_sexpr(v, root, func, types);
                     let map = types.get(&m._type).unwrap().get_hashmap().unwrap();
@@ -1040,23 +1062,34 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             for a in a.iter()
             {
                 func.code.push_str("case ");
-                let id = map.get(&a.0).unwrap();
+                let mut _type = &a.0;
+                while let Type::Symbol(s) = _type
+                {
+                    _type = root.types.get(s).unwrap();
+                }
+
+                let id = map.get(_type).unwrap();
                 func.code.push_str(&format!("{}: {{\n", id));
                 func.code.push_str(get_c_type(&a.0, types));
-                func.code.push(' ');
-                func.code.push_str(
-                    if let Type::Symbol(s) = &v.get_metadata()._type
-                    {
-                        s
-                    } else
-                    {
-                        "$"
-                    }
-                );
+                func.code.push_str(" _");
+                let _name = if let SExpr::Symbol(_, s) = &**v
+                {
+                    s
+                } else
+                {
+                    "$"
+                };
+                func.code.push_str(_name);
                 func.code.push_str(" = ");
                 func.code.push_str(&value);
                 func.code.push_str(".values._");
                 func.code.push_str(&format!("{}", id));
+                func.code.push_str(";\n");
+                func.code.push_str(get_c_type(&a.0, types));
+                func.code.push(' ');
+                func.code.push_str(_name);
+                func.code.push_str(" = _");
+                func.code.push_str(_name);
                 func.code.push_str(";\n");
                 let arm = convert_sexpr(&a.1, root, func, types);
 
@@ -1272,6 +1305,12 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                 for t in v.0.iter()
                 {
                     types_string.push_str("        ");
+                    let mut t = t;
+                    while let Type::Symbol(s) = t
+                    {
+                        t = ir.types.get(s).unwrap();
+                    }
+
                     match t
                     {
                         Type::Int => types_string.push_str("long long"),
@@ -1493,12 +1532,12 @@ void free(void*);
 char force_free_func(void* _func) {
     func_t* func = (func_t*) _func;
     for (int i = 0; i < func->argc; i++) {
-        if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
-            free(func->args[i]);
+        // if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
+            // free(func->args[i]);
     }
 
-    free(func->args);
-    free(func->cleaners);
+    // free(func->args);
+    // free(func->cleaners);
     return (char) 1;
 }
 
@@ -1519,7 +1558,8 @@ char refc_func(func_t* func) {
 void copy_func(func_t* dest, func_t* source) {
     dest->refc = 0;
     dest->func = source->func;
-    dest->wrapper = source->wrapper;dest->arity = source->arity;
+    dest->wrapper = source->wrapper;
+    dest->arity = source->arity;
     dest->argc = source->argc;
 
     if (dest->argc != 0)

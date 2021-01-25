@@ -166,7 +166,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             // Assert the types are valid
-            if !v.get_metadata()._type.is_subtype(&m._type, root)
+            if !v.get_metadata()._type.is_subtype(&m._type, &root.types)
             {
                 errors.push(CorrectnessError::InvalidCast(
                     v.get_metadata().span.clone(),
@@ -295,8 +295,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
             }
 
+            let mut _type = &func.get_metadata()._type;
+            while let Type::Symbol(s) = _type
+            {
+                _type = root.types.get(s).unwrap();
+            }
+
             // Match the function
-            match &func.get_metadata()._type
+            match _type
             {
                 // Strings concatenate to other strings
                 // Type::String => {
@@ -305,7 +311,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
-                    if arg.get_metadata()._type.is_subtype(&**l, root)
+                    if arg.get_metadata()._type.is_subtype(&**l, &root.types)
                     {
                         m._type = *r.clone();
                         m.arity = if func.get_metadata().arity > 0
@@ -324,7 +330,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
                             arg.get_metadata().span.clone(),
-                            *r.clone(),
+                            *l.clone(),
                             arg.get_metadata()._type.clone()
                         ));
                     }
@@ -395,7 +401,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Preassigned type
                 _ => {
                     // Types do not match
-                    if !value.get_metadata()._type.is_subtype(&m._type, root)
+                    if !value.get_metadata()._type.is_subtype(&m._type, &root.types)
                     {
                         errors.push(CorrectnessError::NonmatchingAssignTypes(
                             m.span2.clone(),
@@ -479,7 +485,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             for arm in arms.iter_mut()
             {
                 // Nonsubtypes are errors
-                if !arm.0.is_subtype(&_type, root)
+                if !arm.0.is_subtype(&_type, &root.types)
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().span.clone(),
@@ -487,6 +493,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         arm.1.get_metadata().span2.clone(),
                         arm.0.clone()
                     ));
+                    root.scope.pop_scope();
                     return;
                 }
 
@@ -496,6 +503,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                 if arm.1.get_metadata()._type == Type::Error
                 {
+                    root.scope.pop_scope();
                     return;
                 }
 
@@ -503,7 +511,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             root.scope.pop_scope();
-
             let set = HashSet::from_iter(set.into_iter().cloned());
             m._type = if set.len() == 1
             {
@@ -605,14 +612,22 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
             convert_function_symbols(value, funcs);
         }
 
+        SExpr::Match(_, v, a) => {
+            convert_function_symbols(v, funcs);
+            for a in a.iter_mut()
+            {
+                convert_function_symbols(&mut a.1, funcs);
+            }
+        }
+
         // Ignore everything else
         _ => ()
     }
 }
 
-// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>, &mut Vec<(String, Type)>) -> Type
+// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>, &mut Vec<(String, Type)>, &HashMap<String, Type>) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
-fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>) -> Type
+fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>) -> Type
 {
     match sexpr
     {
@@ -638,7 +653,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Check child function
                 None => {
                     let mut func = funcs.remove(f).unwrap();
-                    check_function_body(f, f, &mut func, scope, funcs, errors);
+                    check_function_body(f, f, &mut func, scope, funcs, errors, types);
                     funcs.insert(f.clone(), func);
                     scope.get_var(f).unwrap().0.clone()
                 }
@@ -670,7 +685,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             match op
             {
                 PrefixOp::Neg => {
-                    let vt = get_function_type(v, scope, funcs, errors, captured, captured_names).clone();
+                    let vt = get_function_type(v, scope, funcs, errors, captured, captured_names, types).clone();
 
                     match scope.get_func_ret(FunctionName::Prefix(vt))
                     {
@@ -685,8 +700,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Infix operators
         SExpr::Infix(_, op, l, r) => {
-            let lt = get_function_type(l, scope, funcs, errors, captured, captured_names).clone();
-            let rt = get_function_type(r, scope, funcs, errors, captured, captured_names).clone();
+            let lt = get_function_type(l, scope, funcs, errors, captured, captured_names, types).clone();
+            let rt = get_function_type(r, scope, funcs, errors, captured, captured_names, types).clone();
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt))
             {
@@ -699,15 +714,15 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
-            get_function_type(l, scope, funcs, errors, captured, captured_names);
-            get_function_type(r, scope, funcs, errors, captured, captured_names);
+            get_function_type(l, scope, funcs, errors, captured, captured_names, types);
+            get_function_type(r, scope, funcs, errors, captured, captured_names, types);
             Type::Bool
         }
 
         // If expressions
         SExpr::If(_, _, body, elsy) => {
-            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names);
-            let et = get_function_type(elsy, scope, funcs, errors, captured, captured_names);
+            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names, types);
+            let et = get_function_type(elsy, scope, funcs, errors, captured, captured_names, types);
 
             if bt == Type::Unknown && et == Type::Unknown
             {
@@ -751,19 +766,24 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 if s == "debug"
                 {
-                    return get_function_type(a, scope, funcs, errors, captured, captured_names);
+                    return get_function_type(a, scope, funcs, errors, captured, captured_names, types);
                 }
             }
 
             // Get function type
-            let ft = get_function_type(f, scope, funcs, errors, captured, captured_names);
+            let mut ft = get_function_type(f, scope, funcs, errors, captured, captured_names, types);
             if let Type::Unknown = ft
             {
                 return Type::Unknown;
             }
 
+            while let Type::Symbol(s) = ft
+            {
+                ft = types.get(&s).unwrap().clone();
+            }
+
             // Get argument type
-            let at = get_function_type(a, scope, funcs, errors, captured, captured_names);
+            let at = get_function_type(a, scope, funcs, errors, captured, captured_names, types);
             if let Type::Unknown = at
             {
                 return Type::Unknown;
@@ -775,14 +795,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Type::String => Type::String,
 
                 // Functions apply their arguments
-                Type::Func(l, r) => {
-                    if *l == at
-                    {
-                        *r.clone()
-                    } else
-                    {
-                        Type::Unknown
-                    }
+                Type::Func(_, r) => {
+                    *r.clone()
                 }
 
                 // Everything else is invalid
@@ -797,7 +811,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 m._type.clone()
             } else
             {
-                get_function_type(value, scope, funcs, errors, captured, captured_names)
+                get_function_type(value, scope, funcs, errors, captured, captured_names, types)
             };
             scope.put_var(&name, &t, 0, None, Span { start: 0, end: 0 }, true);
             t
@@ -811,11 +825,11 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             // Populate scope with variable types
             for a in assigns
             {
-                get_function_type(a, scope, funcs, errors, captured, captured_names);
+                get_function_type(a, scope, funcs, errors, captured, captured_names, types);
             }
 
             // Get the function type
-            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names);
+            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names, types);
 
             // Pop the scope and return type
             scope.pop_scope();
@@ -839,20 +853,23 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 // Check body of match arm
                 scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
-                let _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names);
+                let _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names, types);
 
                 if _type == Type::Unknown
                 {
                     continue;
                 }
 
-                set.push(&arm.1.get_metadata()._type);
+                set.push(_type);
             }
 
             scope.pop_scope();
 
-            let set = HashSet::from_iter(set.into_iter().cloned());
-            if set.len() == 1
+            let set = HashSet::from_iter(set.into_iter());
+            if set.len() == 0
+            {
+                Type::Unknown
+            } else if set.len() == 1
             {
                 set.into_iter().next().unwrap()
             } else
@@ -865,7 +882,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
 // check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
 // Checks a function body and determines the return type of the function.
-fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>)
+fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
 {
     if let None = scope.variables.get(name)
     {
@@ -886,7 +903,7 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
         // Get the type
         let mut captured = HashMap::with_capacity(0);
         let mut captured_names = Vec::with_capacity(0);
-        let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names);
+        let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names, types);
         func.captured = captured;
         func.captured_names = captured_names;
         scope.pop_scope();
@@ -926,7 +943,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     for name in names.clone()
     {
         let mut func = ir.funcs.remove(&name.0).unwrap();
-        check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors);
+        check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors, &ir.types);
         ir.funcs.insert(name.0, func);
     }
 

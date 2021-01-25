@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
 
-use super::ir::IR;
 use super::parser::AST;
 
 #[derive(Clone, Debug)]
@@ -101,20 +100,20 @@ impl Display for Type
 
 impl Type
 {
-    // is_subtype(&self, &Type, &IR) -> bool
+    // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
-    pub fn is_subtype(&self, supertype: &Type, ir: &IR) -> bool
+    pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, Type>) -> bool
     {
         let mut _type = self;
         while let Type::Symbol(s) = _type
         {
-            _type = ir.types.get(s).unwrap();
+            _type = types.get(s).unwrap();
         }
 
         let mut supertype = supertype;
         while let Type::Symbol(s) = supertype
         {
-            supertype = ir.types.get(s).unwrap();
+            supertype = types.get(s).unwrap();
         }
 
         if _type == supertype
@@ -141,10 +140,10 @@ impl Type
                 }
 
             // Sum types
-            Type::Sum(types) => {
-                for t in types.0.iter()
+            Type::Sum(fields) => {
+                for t in fields.0.iter()
                 {
-                    if _type.is_subtype(t, ir)
+                    if _type.is_subtype(t, types)
                     {
                         return true;
                     }

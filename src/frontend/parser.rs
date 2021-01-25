@@ -966,6 +966,7 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
         newline(parser);
         let value = call_func_fatal!(expression, parser, true, "Expected expression after `=>`");
         arms.push((_type, value));
+        newline(parser);
     }
 
     // Error if no match arms
