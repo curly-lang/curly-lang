@@ -359,20 +359,34 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
         // As operator
         SExpr::As(m, v) => {
-            // Get name and value
+            // Get value and types
             let value = convert_sexpr(v, root, func, types);
-            let name = format!("_{}", func.last_reference);
-            func.last_reference += 1;
-
-            func.code.push_str(get_c_type(&m._type, types));
-            func.code.push(' ');
-            func.code.push_str(&name);
 
             let mut _type = &m._type;
             while let Type::Symbol(s) = _type
             {
                 _type = root.types.get(s).unwrap();
             }
+
+            let mut vtype = &v.get_metadata()._type;
+            while let Type::Symbol(s) = vtype
+            {
+                vtype = root.types.get(s).unwrap();
+            }
+
+            // Check if types are equal
+            if _type == vtype
+            {
+                return value;
+            }
+
+            // Get name and value
+            let name = format!("_{}", func.last_reference);
+            func.last_reference += 1;
+
+            func.code.push_str(get_c_type(&m._type, types));
+            func.code.push(' ');
+            func.code.push_str(&name);
 
             // Check result type
             match &_type
@@ -1093,7 +1107,19 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 func.code.push_str(";\n");
                 let arm = convert_sexpr(&a.1, root, func, types);
 
-                if a.1.get_metadata()._type == m._type
+                let mut mtype = &m._type;
+                while let Type::Symbol(s) = mtype
+                {
+                    mtype = root.types.get(s).unwrap();
+                }
+
+                let mut atype = &a.1.get_metadata()._type;
+                while let Type::Symbol(s) = atype
+                {
+                    atype = root.types.get(s).unwrap();
+                }
+
+                if atype == mtype
                 {
                     func.code.push_str(&name);
                     func.code.push_str(" = ");
@@ -1103,7 +1129,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 {
                     let _type = types.get(&m._type).unwrap();
                     let map = _type.get_hashmap().unwrap();
-                    let id = map.get(&a.0).unwrap();
+                    let id = map.get(atype).unwrap();
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
                     func.code.push_str(&format!("{}", id));

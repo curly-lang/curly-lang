@@ -16,4 +16,9 @@ debug (car list)
 debug (cdr list)
 debug (car (cdr list))
 debug (cdr (cdr list))
+debug (car 2)
+
+concat a: ListItem, b: ListItem = match a
+    to List => cons (car a) (concat (cdr a) b)
+    to Int => b as ListItem
 

@@ -507,11 +507,26 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     return;
                 }
 
-                set.push(&arm.1.get_metadata()._type);
+                let mut _type = arm.1.get_metadata()._type.clone();
+                while let Type::Symbol(s) = _type
+                {
+                    _type = root.types.get(&s).unwrap().clone();
+                }
+
+                if let Type::Sum(v) = _type
+                {
+                    for v in v.0
+                    {
+                        set.push(v);
+                    }
+                } else
+                {
+                    set.push(_type);
+                }
             }
 
             root.scope.pop_scope();
-            let set = HashSet::from_iter(set.into_iter().cloned());
+            let set = HashSet::from_iter(set.into_iter());
             m._type = if set.len() == 1
             {
                 set.into_iter().next().unwrap()
