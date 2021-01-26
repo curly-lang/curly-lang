@@ -1,0 +1,35 @@
+type ListItem = Int | ((ListItem -> ListItem -> ListItem) -> ListItem)
+type List = (ListItem -> ListItem -> ListItem) -> ListItem
+
+
+type ListListItem = ListItem | ((ListListItem -> ListListItem -> ListListItem) -> ListListItem)
+type ListList = (ListListItem -> ListListItem -> ListListItem) -> ListListItem
+
+
+
+cons x: ListItem, y: ListItem, f: ListItem -> ListItem -> ListItem = f x y
+truefn x: ListItem, y: ListItem = x
+falsefn x: ListItem, y: ListItem = y
+car list: ListItem =
+    match list
+    to List => list truefn
+cdr list: ListItem =
+    match list
+    to List => list falsefn
+
+
+Listcons x: ListListItem, y: ListListItem, f: ListListItem -> ListListItem -> ListListItem = f x y
+Listtruefn x: ListListItem, y: ListListItem = x
+Listfalsefn x: ListListItem, y: ListListItem = y
+Listcar list: ListListItem =
+    match list
+    to ListList => list Listtruefn
+Listcdr list: ListListItem =
+    match list
+    to ListList => list Listfalsefn
+
+
+flag = cons 0x46 (cons 0x6c (cons 0x00 0))
+exc = cons 0x21 (cons 0x21 (cons 0x31 0))
+
+asdf = Listcons flag (Listcons exc 0)
