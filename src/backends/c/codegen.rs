@@ -599,9 +599,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 {
                                     let name = format!("_{}", func.last_reference);
                                     func.last_reference += 1;
-                                    println!("{} vs {}", arg_type, _type);
                                     let arg_ctype = types.get(arg_type).unwrap();
-                                    println!("{:#?}", arg_ctype);
                                     func.code.push_str(arg_ctype.get_c_name());
                                     func.code.push(' ');
                                     func.code.push_str(&name);
@@ -1401,8 +1399,6 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
             types.insert(Type::Symbol(_type.0.clone()), types.get(__type).unwrap().clone());
         }
     }
-
-    println!("{}", types_string);
 }
 
 // convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
