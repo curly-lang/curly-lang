@@ -515,7 +515,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 } else if v == "putch"
                 {
                     let arg = convert_sexpr(&args[0], root, func, types);
-                    func.code.push_str("printf(\"%c\", ");
+                    func.code.push_str("printf(\"%c\", (char) ");
                     func.code.push_str(&arg);
                     func.code.push_str(");\n");
                     return arg;
@@ -1082,6 +1082,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             func.code.push_str(&value);
             func.code.push_str(".tag) {\n");
 
+            let mut mtype = &m._type;
+            while let Type::Symbol(s) = mtype
+            {
+                mtype = root.types.get(s).unwrap();
+            }
+
             // Create match arms
             for a in a.iter()
             {
@@ -1116,12 +1122,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 func.code.push_str(_name);
                 func.code.push_str(";\n");
                 let arm = convert_sexpr(&a.1, root, func, types);
-
-                let mut mtype = &m._type;
-                while let Type::Symbol(s) = mtype
-                {
-                    mtype = root.types.get(s).unwrap();
-                }
 
                 let mut atype = &a.1.get_metadata()._type;
                 while let Type::Symbol(s) = atype

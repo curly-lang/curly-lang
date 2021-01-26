@@ -695,7 +695,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 Some(v) => {
                     // Check if captured
-                    if scope.is_captured(s) && !captured.contains_key(s)
+                    if scope.is_captured(s) && !captured.contains_key(s) && s != "debug" && s != "putch"
                     {
                         captured.insert(s.clone(), v.0.clone());
                         captured_names.push(s.clone());
