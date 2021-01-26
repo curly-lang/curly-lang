@@ -592,11 +592,16 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 if _type == arg_type
                                 {
                                     v = format!("&{}", &v);
+                                } else if let Type::Sum(_) = _type
+                                {
+                                    panic!("uwu moment");
                                 } else
                                 {
                                     let name = format!("_{}", func.last_reference);
                                     func.last_reference += 1;
+                                    println!("{} vs {}", arg_type, _type);
                                     let arg_ctype = types.get(arg_type).unwrap();
+                                    println!("{:#?}", arg_ctype);
                                     func.code.push_str(arg_ctype.get_c_name());
                                     func.code.push(' ');
                                     func.code.push_str(&name);
@@ -1335,10 +1340,10 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                 types_string.push_str(&format!("struct _{} {{\n    unsigned int tag;\n    union {{\n", last_reference));
 
                 let mut field_ref = 0;
-                for t in v.0.iter()
+                let mut iter: Vec<&Type> = v.0.iter().collect();
+                while let Some(t) = iter.get(field_ref)
                 {
-                    types_string.push_str("        ");
-                    let mut t = t;
+                    let mut t = *t;
                     while let Type::Symbol(s) = t
                     {
                         t = ir.types.get(s).unwrap();
@@ -1346,10 +1351,16 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
 
                     match t
                     {
-                        Type::Int => types_string.push_str("long long"),
-                        Type::Float => types_string.push_str("double"),
-                        Type::Bool => types_string.push_str("char"),
-                        Type::Func(_, _) => types_string.push_str("func_t"),
+                        Type::Int => types_string.push_str("        long long"),
+                        Type::Float => types_string.push_str("        double"),
+                        Type::Bool => types_string.push_str("        char"),
+                        Type::Func(_, _) => types_string.push_str("        func_t"),
+                        Type::Sum(v) => {
+                            iter.extend(v.0.iter());
+                            field_ref += 1;
+                            continue;
+                        }
+
                         _ => panic!("unsupported type!")
                     }
 
@@ -1358,7 +1369,7 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                 }
 
                 // Save type definitions
-                let map = HashMap::from_iter(v.0.iter().enumerate().map(|v| (v.1.clone(), v.0)));
+                let map = HashMap::from_iter(iter.iter().cloned().enumerate().map(|v| (v.1.clone(), v.0)));
                 let ct = CType::Sum(format!("struct _{}", last_reference), _type.1.clone(), map);
                 types_string.push_str("    } values;\n};\n");
                 types.insert(_type.1.clone(), ct.clone());
@@ -1390,6 +1401,8 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
             types.insert(Type::Symbol(_type.0.clone()), types.get(__type).unwrap().clone());
         }
     }
+
+    println!("{}", types_string);
 }
 
 // convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
@@ -1575,9 +1588,9 @@ char force_free_func(void* _func) {
 }
 
 char free_func(func_t* func) {
-    if (func->refc == 0) {
-        return force_free_func(func);
-    }
+    // if (func->refc == 0) {
+    //    return force_free_func(func);
+    //}
 
     return (char) 0;
 }

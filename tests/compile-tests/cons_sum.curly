@@ -22,3 +22,14 @@ concat a: ListItem, b: ListItem = match a
     to List => cons (car a) (concat (cdr a) b)
     to Int => b as ListItem
 
+_map_item f: Int -> Int, item: ListItem = match item
+    to Int => f item
+
+map f: Int -> Int, list: ListItem = match list
+    to List => cons (_map_item f (car list)) (map f (cdr list))
+    to Int => list
+
+add2 x: Int = x + 2
+
+debug (car (map add2 (cons 2 0)))
+
