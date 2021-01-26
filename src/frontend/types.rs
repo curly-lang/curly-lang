@@ -141,6 +141,30 @@ impl Type
 
             // Sum types
             Type::Sum(fields) => {
+                // Sum types mean the subtype has fields over a subset of fields of the supertype
+                if let Type::Sum(sub) = _type
+                {
+                    for s in sub.0.iter()
+                    {
+                        let mut is_subtype = false;
+                        for f in fields.0.iter()
+                        {
+                            if s.is_subtype(&f, types)
+                            {
+                                is_subtype = true;
+                                break;
+                            }
+                        }
+
+                        if !is_subtype
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
                 for t in fields.0.iter()
                 {
                     if _type.is_subtype(t, types)

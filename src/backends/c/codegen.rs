@@ -1091,36 +1091,79 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             // Create match arms
             for a in a.iter()
             {
-                func.code.push_str("case ");
                 let mut _type = &a.0;
                 while let Type::Symbol(s) = _type
                 {
                     _type = root.types.get(s).unwrap();
                 }
 
-                let id = map.get(_type).unwrap();
-                func.code.push_str(&format!("{}: {{\n", id));
-                func.code.push_str(get_c_type(&a.0, types));
-                func.code.push_str(" _");
-                let _name = if let SExpr::Symbol(_, s) = &**v
+                if let Type::Sum(_) = _type
                 {
-                    s
+                    let subtype = types.get(_type).unwrap();
+                    let submap = subtype.get_hashmap().unwrap();
+                    for s in submap
+                    {
+                        func.code.push_str("case ");
+                        func.code.push_str(&format!("{}:\n", map.get(&s.0).unwrap()));
+                    }
+
+                    func.code.push_str("{\n");
+                    func.code.push_str(subtype.get_c_name());
+                    func.code.push_str(" $;");
+                    func.code.push_str("switch (");
+                    func.code.push_str(&value);
+                    func.code.push_str(".tag) {\n");
+
+                    for s in submap
+                    {
+                        func.code.push_str("case ");
+                        func.code.push_str(&format!("{}:\n", map.get(s.0).unwrap()));
+                        func.code.push_str("$.tag = ");
+                        func.code.push_str(&format!("{};\n", s.1));
+                        func.code.push_str("$.values._");
+                        func.code.push_str(&format!("{}", s.1));
+                        func.code.push_str(" = ");
+                        func.code.push_str(&value);
+                        func.code.push_str(".values._");
+                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                        func.code.push_str(";\nbreak;\n");
+                    }
+                    func.code.push_str("}\n");
+                    if let SExpr::Symbol(_, s) = &**v
+                    {
+                        func.code.push_str(subtype.get_c_name());
+                        func.code.push(' ');
+                        func.code.push_str(s);
+                        func.code.push_str(" = $;\n");
+                    }
                 } else
                 {
-                    "$"
-                };
-                func.code.push_str(_name);
-                func.code.push_str(" = ");
-                func.code.push_str(&value);
-                func.code.push_str(".values._");
-                func.code.push_str(&format!("{}", id));
-                func.code.push_str(";\n");
-                func.code.push_str(get_c_type(&a.0, types));
-                func.code.push(' ');
-                func.code.push_str(_name);
-                func.code.push_str(" = _");
-                func.code.push_str(_name);
-                func.code.push_str(";\n");
+                    let id = map.get(_type).unwrap();
+                    func.code.push_str("case ");
+                    func.code.push_str(&format!("{}: {{\n", id));
+                    func.code.push_str(get_c_type(&a.0, types));
+                    func.code.push_str(" _");
+                    let _name = if let SExpr::Symbol(_, s) = &**v
+                    {
+                        s
+                    } else
+                    {
+                        "$"
+                    };
+                    func.code.push_str(_name);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&value);
+                    func.code.push_str(".values._");
+                    func.code.push_str(&format!("{}", id));
+                    func.code.push_str(";\n");
+                    func.code.push_str(get_c_type(&a.0, types));
+                    func.code.push(' ');
+                    func.code.push_str(_name);
+                    func.code.push_str(" = _");
+                    func.code.push_str(_name);
+                    func.code.push_str(";\n");
+                }
+
                 let arm = convert_sexpr(&a.1, root, func, types);
 
                 let mut atype = &a.1.get_metadata()._type;

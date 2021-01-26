@@ -1,0 +1,42 @@
+type ListItem = Int | ((ListItem -> ListItem -> ListItem) -> ListItem)
+type List = (ListItem -> ListItem -> ListItem) -> ListItem
+
+cons x: ListItem, y: ListItem, f: ListItem -> ListItem -> ListItem = f x y
+truefn x: ListItem, y: ListItem = x
+falsefn x: ListItem, y: ListItem = y
+car list: ListItem =
+    match list
+    to List => list truefn
+cdr list: ListItem =
+    match list
+    to List => list falsefn
+
+flag = cons 0x46 (cons 0x6c (cons 0x61 (cons 0x67 (cons 0x3a (cons 0x20 (cons 0xf0 (cons 0x9f (cons 0x8f (cons 0x81 0)))))))))
+exc = cons 0x21 (cons 0x21 (cons 0x31 0))
+
+_string_isutf8startchar x: ListItem = match x 
+    to Int => if (x < 128) or (x >= 191) then 1 else 0
+
+string_len str: ListItem = match str
+    to List => string_len (cdr str) + _string_isutf8startchar (car str)
+    to Int => 0
+
+concat a: ListItem, b: ListItem = match a
+    to List => cons (car a) (concat (cdr a) b)
+    to Int => b as ListItem
+
+_map_item f: Int -> Int, item: ListItem = match item
+    to Int => f item
+
+map f: Int -> Int, list: ListItem = match list
+    to List => cons (_map_item f (car list)) (map f (cdr list))
+    to Int => list
+
+_print_char item: ListItem = match item
+    to Int => putch item
+
+print str: ListItem = match str
+    to List => with _ = _print_char (car str), print (cdr str)
+    to Int => 0
+
+print (concat flag exc)
