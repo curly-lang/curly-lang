@@ -224,7 +224,19 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     }
 
                     Type::Sum(_) => {
-                        todo!("todo: captuwe vawiabwes fow cwowosuwuwes uwu");
+                        let name = format!("_{}", func.last_reference);
+                        func.last_reference += 1;
+                        func.code.push_str(get_c_type(&_type, types));
+                        func.code.push_str("* ");
+                        func.code.push_str(&name);
+                        func.code.push_str(" = malloc(sizeof(");
+                        func.code.push_str(get_c_type(&_type, types));
+                        func.code.push_str("));\n*");
+                        func.code.push_str(&name);
+                        func.code.push_str(" = ");
+                        func.code.push_str(&v);
+                        func.code.push_str(";\n");
+                        v = name;
                     }
 
                     _ => ()
