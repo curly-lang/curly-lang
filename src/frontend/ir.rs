@@ -55,7 +55,7 @@ pub struct SExprMetadata
 pub enum SExpr
 {
     // Empty
-    Empty(SExprMetadata),
+    TypeAlias(SExprMetadata, String),
 
     // Ints
     Int(SExprMetadata, i64),
@@ -116,7 +116,7 @@ impl SExpr
     {
         match self
         {
-            Self::Empty(m)
+            Self::TypeAlias(m, _)
                 | Self::Int(m, _)
                 | Self::Float(m, _)
                 | Self::True(m)
@@ -145,7 +145,7 @@ impl SExpr
     {
         match self
         {
-            Self::Empty(m)
+            Self::TypeAlias(m, _)
                 | Self::Int(m, _)
                 | Self::Float(m, _)
                 | Self::True(m)
@@ -409,15 +409,16 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         }
 
         AST::AssignType(span, name, _type) => {
+            let span2 = _type.get_span();
             let _type = types::convert_ast_to_type(*_type, types);
-            types.insert(name, _type.clone());
-            SExpr::Empty(SExprMetadata {
+            types.insert(name.clone(), _type.clone());
+            SExpr::TypeAlias(SExprMetadata {
                 span,
-                span2: Span { start: 0, end: 0 },
+                span2,
                 _type,
                 arity: 0,
                 saved_argc: None
-            })
+            }, name)
         }
 
         // Assigning functions

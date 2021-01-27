@@ -22,7 +22,8 @@ pub enum CorrectnessError
     MismatchedFunctionArgType(Span, Type, Type),
     InvalidApplication(Span, Type),
     InvalidCast(Span, Type, Span, Type),
-    NonSubtypeOnMatch(Span, Type, Span, Type)
+    NonSubtypeOnMatch(Span, Type, Span, Type),
+    InfiniteSizedType(Span, Type)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
@@ -40,8 +41,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
     match sexpr
     {
-        // Empty
-        SExpr::Empty(_) => (),
+        // Type alias
+        SExpr::TypeAlias(_, _) => (),
 
         // Values
         SExpr::Int(_, _) => (),
@@ -660,7 +661,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
     match sexpr
     {
         // Values
-        SExpr::Empty(m)
+        SExpr::TypeAlias(m, _)
             | SExpr::Int(m, _)
             | SExpr::Float(m, _)
             | SExpr::String(m, _)
@@ -1123,11 +1124,44 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
     }
 }
 
+// check_type_validity(&IR) -> ()
+// Checks whether the given types are valid or not.
+fn check_type_validity(ir: &IR, errors: &mut Vec<CorrectnessError>)
+{
+    for s in ir.sexprs.iter()
+    {
+        if let SExpr::TypeAlias(m, n) = s
+        {
+            match &m._type
+            {
+                Type::Symbol(s) if s == n => {
+                    errors.push(CorrectnessError::InfiniteSizedType(
+                        m.span2.clone(),
+                        m._type.clone()
+                    ));
+                }
+
+                Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
+                    errors.push(CorrectnessError::InfiniteSizedType(
+                        m.span2.clone(),
+                        m._type.clone()
+                    ));
+                }
+
+                _ => ()
+            }
+        }
+    }
+}
+
 // check_correctness(&mut IR) -> ()
 // Checks the correctness of ir.
 pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
 {
     let mut errors = Vec::with_capacity(0);
+
+    // Check types
+    check_type_validity(ir, &mut errors);
 
     // Check functions
     check_functions(ir, &mut errors);
