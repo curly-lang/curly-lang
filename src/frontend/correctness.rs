@@ -1061,7 +1061,7 @@ fn save_single_type(id: &mut usize, _type: &Type, types: &mut HashMap<String, Ty
 }
 
 // save_types(&mut IR) -> ()
-// Saves anonymous types
+// Saves anonymous types.
 fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
 {
     let m = sexpr.get_metadata();
@@ -1145,6 +1145,11 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     if errors.len() == 0
     {
         let mut id = 0;
+        while let Some(_) = ir.types.get(&format!("{}", id))
+        {
+            id += 1;
+        }
+
         for sexpr in ir.sexprs.iter()
         {
             save_types(sexpr, &mut ir.types, &mut id);

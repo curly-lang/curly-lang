@@ -637,7 +637,37 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                     v = format!("&{}", &v);
                                 } else if let Type::Sum(_) = _type
                                 {
-                                    panic!("uwu moment");
+                                    let name = format!("_{}", func.last_reference);
+                                    func.last_reference += 1;
+                                    let map = types.get(arg_type).unwrap().get_hashmap().unwrap();
+                                    let subtype = types.get(_type).unwrap();
+                                    let submap = subtype.get_hashmap().unwrap();
+                                    func.code.push_str(types.get(arg_type).unwrap().get_c_name());
+                                    func.code.push(' ');
+                                    func.code.push_str(&name);
+                                    func.code.push_str(";\n");
+                                    func.code.push_str("switch (");
+                                    func.code.push_str(&v);
+                                    func.code.push_str(".tag) {\n");
+
+                                    for s in submap
+                                    {
+                                        func.code.push_str("case ");
+                                        func.code.push_str(&format!("{}:\n", s.1));
+                                        func.code.push_str(&name);
+                                        func.code.push_str(".tag = ");
+                                        func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                                        func.code.push_str(&name);
+                                        func.code.push_str(".values._");
+                                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                                        func.code.push_str(" = ");
+                                        func.code.push_str(&v);
+                                        func.code.push_str(".values._");
+                                        func.code.push_str(&format!("{}", s.1));
+                                        func.code.push_str(";\nbreak;\n");
+                                    }
+                                    func.code.push_str("}\n");
+                                    v = format!("&{}", name);
                                 } else
                                 {
                                     let name = format!("_{}", func.last_reference);
