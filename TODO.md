@@ -1,7 +1,10 @@
 # List of things to do
 ## Second official release:
 These things are features and fixes I'd like to get completed for the second major release (v0.2.0) of Curly.
-- Match expressions
+- Closures and partial applications
+- Enums
+- New syntax for match expressions
+- Fix memory leaks
 - Product types
 - Span
 - See github issues
