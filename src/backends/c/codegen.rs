@@ -433,18 +433,35 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             func.code.push_str(&cond);
             func.code.push_str(") {\n");
 
+            // Get types
+            let mut mtype = &m._type;
+            while let Type::Symbol(s) = mtype
+            {
+                mtype = root.types.get(s).unwrap();
+            }
+            let mut btype = &b.get_metadata()._type;
+            while let Type::Symbol(s) = btype
+            {
+                btype = root.types.get(s).unwrap();
+            }
+            let mut etype = &e.get_metadata()._type;
+            while let Type::Symbol(s) = etype
+            {
+                etype = root.types.get(s).unwrap();
+            }
+
             // Get body
             let body = convert_sexpr(b, root, func, types);
 
             // Save
-            if m._type == b.get_metadata()._type
+            if mtype == btype
             {
                 func.code.push_str(&name);
                 func.code.push_str(" = ");
                 func.code.push_str(&body);
             } else
             {
-                let id = types.get(&m._type).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
+                let id = types.get(mtype).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
                 func.code.push_str(&format!("{}", id));
@@ -461,11 +478,37 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             let elsy = convert_sexpr(e, root, func, types);
 
             // Save
-            if m._type == e.get_metadata()._type
+            if mtype == etype
             {
                 func.code.push_str(&name);
                 func.code.push_str(" = ");
                 func.code.push_str(&elsy);
+            } else if let Type::Sum(_) = etype
+            {
+                let map = types.get(mtype).unwrap().get_hashmap().unwrap();
+                let subtype = types.get(etype).unwrap();
+                let submap = subtype.get_hashmap().unwrap();
+                func.code.push_str("switch (");
+                func.code.push_str(&elsy);
+                func.code.push_str(".tag) {\n");
+
+                for s in submap
+                {
+                    func.code.push_str("case ");
+                    func.code.push_str(&format!("{}:\n", s.1));
+                    func.code.push_str(&name);
+                    func.code.push_str(".tag = ");
+                    func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                    func.code.push_str(&name);
+                    func.code.push_str(".values._");
+                    func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                    func.code.push_str(" = ");
+                    func.code.push_str(&elsy);
+                    func.code.push_str(".values._");
+                    func.code.push_str(&format!("{}", s.1));
+                    func.code.push_str(";\nbreak;\n");
+                }
+                func.code.push_str("}\n");
             } else
             {
                 let id = types.get(&m._type).unwrap().get_hashmap().unwrap().get(&e.get_metadata()._type).unwrap();
