@@ -105,7 +105,10 @@ pub enum SExpr
     With(SExprMetadata, Vec<SExpr>, Box<SExpr>),
 
     // Match expressions
-    Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr)>)
+    Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr)>),
+
+    // Member access
+    MemberAccess(SExprMetadata, Vec<String>)
 }
 
 impl SExpr
@@ -135,6 +138,7 @@ impl SExpr
                 | Self::Assign(m, _, _)
                 | Self::With(m, _, _)
                 | Self::Match(m, _, _)
+                | Self::MemberAccess(m, _)
                 => m
         }
     }
@@ -164,6 +168,7 @@ impl SExpr
                 | Self::Assign(m, _, _)
                 | Self::With(m, _, _)
                 | Self::Match(m, _, _)
+                | Self::MemberAccess(m, _)
                 => m
         }
     }
@@ -325,6 +330,39 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     arity: 0,
                     saved_argc: None
                 }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
+
+            // Deal with accessing members
+            } else if op == "::"
+            {
+                let mut accesses = vec![];
+                if let AST::Symbol(_, s) = *r
+                {
+                    accesses.push(s);
+                }
+
+                let mut l = *l;
+                while let AST::Infix(_, _, l_, r) = l
+                {
+                    if let AST::Symbol(_, s) = *r
+                    {
+                        accesses.insert(0, s);
+                    }
+
+                    l = *l_;
+                }
+
+                if let AST::Symbol(_, s) = l
+                {
+                    accesses.insert(0, s);
+                }
+
+                SExpr::MemberAccess(SExprMetadata {
+                    span,
+                    span2: Span { start: 0, end: 0 },
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: None
+                }, accesses)
             } else
             {
                 // Get operator

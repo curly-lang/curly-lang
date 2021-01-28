@@ -302,12 +302,6 @@ impl CurlyREPLHelper
                     | Unreachable =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().red())),
 
-                Colon
-                    | ColonColon
-                    | Comma
-                    | Dot =>
-                    new_line.push_str(&line[t.1]),
-
                 Mul
                     | DivMod
                     | Add
@@ -318,7 +312,13 @@ impl CurlyREPLHelper
                     | Bar
                     | Caret
                     | Range
-                    | Assign =>
+                    | Assign
+                    | RightArrow
+                    | ThiccArrow
+                    | Colon
+                    | ColonColon
+                    | Comma
+                    | Dot =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().bright_yellow())),
 
                 Int(_)
@@ -336,10 +336,6 @@ impl CurlyREPLHelper
 
                 Symbol =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().cyan())),
-
-                RightArrow
-                    | ThiccArrow =>
-                    new_line.push_str(&line[t.1]),
 
                 With
                     | For
@@ -689,6 +685,15 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
                                 Label::primary(file_id, s)
                                 .with_message(format!("Type `{}` has infinite size", t))
                             ]);
+                    }
+
+                    CorrectnessError::NonmemberAccess(s, a, b) => {
+                        diagnostic = diagnostic
+                            .with_message("Attempted to access a member that does not exist")
+                            .with_labels(vec![
+                                Label::primary(file_id, s)
+                                .with_message(format!("`{}` has no member `{}`", a, b))
+                            ])
                     }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();

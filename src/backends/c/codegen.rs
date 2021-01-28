@@ -61,8 +61,6 @@ impl CType
 // Converts an IR type into a C type.
 fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 {
-    let mut _type = _type;
-
     match _type
     {
         Type::Int => "long long",
@@ -1221,6 +1219,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                         func.code.push_str(s);
                         func.code.push_str(" = $;\n");
                     }
+                } else if let Type::Enum(_) = _type
+                {
+                    let id = map.get(_type).unwrap();
+                    func.code.push_str("case ");
+                    func.code.push_str(&format!("{}: {{\n", id));
                 } else
                 {
                     let id = map.get(_type).unwrap();
@@ -1285,6 +1288,34 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             func.code.push_str("}\n");
 
             name
+        }
+
+        SExpr::MemberAccess(m, a) => {
+            let mut _type = &m._type;
+            while let Type::Symbol(s) = _type
+            {
+                _type = root.types.get(s).unwrap();
+            }
+
+            if let Type::Sum(_) = &_type
+            {
+                let name = format!("_{}", func.last_reference);
+                func.last_reference += 1;
+                let t = types.get(&m._type).unwrap();
+                func.code.push_str(t.get_c_name());
+                func.code.push(' ');
+                func.code.push_str(&name);
+                func.code.push_str(";\n");
+                func.code.push_str(&name);
+                func.code.push_str(".tag = ");
+                func.code.push_str(&format!("{}", t.get_hashmap().unwrap().get(&Type::Enum(a[1].clone())).unwrap()));
+                func.code.push_str(";\n");
+
+                name
+            } else
+            {
+                panic!("unimplemented member access");
+            }
         }
 
         _ => panic!("unimplemented s expression!")
@@ -1430,6 +1461,12 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
             code.push_str("}\n");
         }
 
+        Type::Enum(v) => {
+            code.push_str("printf(\"");
+            code.push_str(v);
+            code.push_str("\\n\");\n");
+        }
+
         _ => panic!("uwu")
     }
 }
@@ -1481,6 +1518,12 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                         Type::Float => types_string.push_str("        double"),
                         Type::Bool => types_string.push_str("        char"),
                         Type::Func(_, _) => types_string.push_str("        func_t"),
+
+                        Type::Enum(_) => {
+                            field_ref += 1;
+                            continue;
+                        }
+
                         Type::Sum(v) => {
                             iter.extend(v.0.iter());
                             field_ref += 1;

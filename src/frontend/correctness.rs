@@ -23,7 +23,8 @@ pub enum CorrectnessError
     InvalidApplication(Span, Type),
     InvalidCast(Span, Type, Span, Type),
     NonSubtypeOnMatch(Span, Type, Span, Type),
-    InfiniteSizedType(Span, Type)
+    InfiniteSizedType(Span, Type),
+    NonmemberAccess(Span, String, String)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
@@ -512,13 +513,17 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
 
                 // Check body of match arm
-                root.scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
+                if let Type::Enum(_) = arm.0
+                {
+                } else
+                {
+                    root.scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
+                }
                 check_sexpr(&mut arm.1, root, errors);
 
                 if arm.1.get_metadata()._type == Type::Error
                 {
-                    root.scope.pop_scope();
-                    return;
+                    continue;
                 }
 
                 let mut _type = arm.1.get_metadata()._type.clone();
@@ -544,10 +549,58 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             m._type = if set.len() == 1
             {
                 set.into_iter().next().unwrap()
+            } else if set.contains(&Type::Error)
+            {
+                Type::Error
             } else
             {
                 Type::Sum(HashSetWrapper(set))
             };
+            println!("{:?}", m._type);
+        }
+
+        SExpr::MemberAccess(m, a) => {
+            if let Some(t) = root.types.get(&a[0])
+            {
+                if let Type::Sum(f) = t
+                {
+                    if f.0.contains(&Type::Enum(a[1].clone()))
+                    {
+                        if a.len() != 2
+                        {
+                            errors.push(CorrectnessError::NonmemberAccess(
+                                m.span.clone(),
+                                format!("{}::{}", a[0], a[1]),
+                                a[2].clone()
+                            ));
+                        } else
+                        {
+                            m._type = Type::Symbol(a[0].clone());
+                        }
+                    } else
+                    {
+                        errors.push(CorrectnessError::NonmemberAccess(
+                            m.span.clone(),
+                            a[0].clone(),
+                            a[1].clone()
+                        ));
+                    }
+                } else
+                {
+                    errors.push(CorrectnessError::NonmemberAccess(
+                        m.span.clone(),
+                        a[0].clone(),
+                        a[1].clone()
+                    ));
+                }
+            } else
+            {
+                errors.push(CorrectnessError::NonmemberAccess(
+                    m.span.clone(),
+                    a[0].clone(),
+                    a[1].clone()
+                ));
+            }
         }
     }
 }
@@ -904,6 +957,34 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             } else
             {
                 Type::Sum(HashSetWrapper(set))
+            }
+        }
+
+        SExpr::MemberAccess(_, a) => {
+            if let Some(t) = types.get(&a[0])
+            {
+                if let Type::Sum(f) = t
+                {
+                    if f.0.contains(&Type::Enum(a[1].clone()))
+                    {
+                        if a.len() != 2
+                        {
+                            Type::Unknown
+                        } else
+                        {
+                            t.clone()
+                        }
+                    } else
+                    {
+                        Type::Unknown
+                    }
+                } else
+                {
+                    Type::Unknown
+                }
+            } else
+            {
+                Type::Unknown
             }
         }
     }
