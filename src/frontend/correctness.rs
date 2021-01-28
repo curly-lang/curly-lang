@@ -556,7 +556,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             {
                 Type::Sum(HashSetWrapper(set))
             };
-            println!("{:?}", m._type);
         }
 
         SExpr::MemberAccess(m, a) => {
