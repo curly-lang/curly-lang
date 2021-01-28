@@ -303,6 +303,7 @@ impl CurlyREPLHelper
                     new_line.push_str(&format!("{}", line[t.1].to_owned().red())),
 
                 Colon
+                    | ColonColon
                     | Comma
                     | Dot =>
                     new_line.push_str(&line[t.1]),

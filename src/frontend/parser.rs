@@ -40,6 +40,9 @@ pub enum Token
     // Punctuation and symbols
     #[token(":")]
     Colon,
+
+    #[token("::")]
+    ColonColon,
     
     #[token(",")]
     Comma,
@@ -502,6 +505,54 @@ macro_rules! consume_save
     }
 }
 
+// infix_op(ident, ident, pat, pat) -> Result<AST, ParseError>
+// Parses an infix operator.
+macro_rules! infix_op
+{
+    ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
+        // Set up
+        let state = $parser.save_state();
+        let mut left = call_func!($subfunc, $parser, state);
+
+        loop
+        {
+            // Save current state
+            let state2 = $parser.save_state();
+
+            // Check for operator
+            if let Some(op) = $parser.peek()
+            {
+                // Get operator
+                let op = match op.0
+                {
+                    $op1 | $op2 => String::from($parser.slice()),
+                    _ => {
+                        $parser.return_state(state2);
+                        break;
+                    }
+                };
+                $parser.next();
+
+                // Get right hand side
+                let right = call_func_fatal!($subfunc, $parser, false, "Expected value after infix operator");
+
+                // Build ast
+                left = AST::Infix(Span {
+                    start: left.get_span().start,
+                    end: right.get_span().end
+                }, op, Box::new(left), Box::new(right));
+
+            // If there's no operator, break
+            } else
+            {
+                break;
+            }
+        }
+
+        Ok(left)
+    }}
+}
+
 // newline(&mut Parser) -> ()
 // Optionally parses newlines.
 fn newline(parser: &mut Parser)
@@ -512,10 +563,32 @@ fn newline(parser: &mut Parser)
     }
 }
 
+// symbol(&mut Parser) -> Result<AST, ParseError>
+// Parses a symbol.
+fn symbol(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let (token, span) = consume_save!(parser, Symbol, state, false, false, "");
+    Ok(AST::Symbol(span, token))
+}
+
+// access_member(&mut Parser) -> Result<AST, ParseError>
+// Parses accessing a member.
+fn access_member(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    infix_op!(parser, symbol, Token::ColonColon, Token::Unreachable)
+}
+
 // value(&mut Parser) -> Result<AST, ParseError>
 // Gets the next value.
 fn value(parser: &mut Parser) -> Result<AST, ParseError>
 {
+    // Parse symbols/accessing members
+    if let Ok(v) = call_optional!(access_member, parser)
+    {
+        return Ok(v);
+    }
+
     // Get token
     let (token, span) = match parser.peek()
     {
@@ -555,13 +628,6 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
     {
         parser.next();
         Ok(AST::False(span))
-
-    // Check for symbol
-    } else if let Token::Symbol = token
-    {
-        let s = parser.slice();
-        parser.next();
-        Ok(AST::Symbol(span, String::from(s)))
 
     // Parenthesised expressions
     } else if let Token::LParen = token
@@ -673,54 +739,6 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
     {
         application(parser)
     }
-}
-
-// infix_op(ident, ident, pat, pat) -> Result<AST, ParseError>
-// Parses an infix operator.
-macro_rules! infix_op
-{
-    ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
-        // Set up
-        let state = $parser.save_state();
-        let mut left = call_func!($subfunc, $parser, state);
-
-        loop
-        {
-            // Save current state
-            let state2 = $parser.save_state();
-
-            // Check for operator
-            if let Some(op) = $parser.peek()
-            {
-                // Get operator
-                let op = match op.0
-                {
-                    $op1 | $op2 => String::from($parser.slice()),
-                    _ => {
-                        $parser.return_state(state2);
-                        break;
-                    }
-                };
-                $parser.next();
-
-                // Get right hand side
-                let right = call_func_fatal!($subfunc, $parser, false, "Expected value after infix operator");
-
-                // Build ast
-                left = AST::Infix(Span {
-                    start: left.get_span().start,
-                    end: right.get_span().end
-                }, op, Box::new(left), Box::new(right));
-
-            // If there's no operator, break
-            } else
-            {
-                break;
-            }
-        }
-
-        Ok(left)
-    }}
 }
 
 // muldivmod(&mut Parser) -> Option<AST::Infix, ParseError>
