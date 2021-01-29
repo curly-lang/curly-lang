@@ -523,6 +523,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                 if arm.1.get_metadata()._type == Type::Error
                 {
+                    set.push(Type::Error);
                     continue;
                 }
 
