@@ -1816,14 +1816,17 @@ typedef struct {
     for _type in types.iter()
     {
         let name = _type.1.get_c_name();
-        if !set.contains(name)
+        if let Type::Sum(_) = &_type.0
         {
-            code_string.push_str("        ");
-            code_string.push_str(name);
-            code_string.push(' ');
-            code_string.push_str(&name[7..]);
-            code_string.push_str(";\n");
-            set.insert(name);
+            if !set.contains(name)
+            {
+                code_string.push_str("        ");
+                code_string.push_str(name);
+                code_string.push(' ');
+                code_string.push_str(&name[7..]);
+                code_string.push_str(";\n");
+                set.insert(name);
+            }
         }
     }
     code_string.push_str(
