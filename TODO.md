@@ -23,6 +23,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Lists
 - Strings (which are basically just lists of chars)
 - `?`/`!` operators
+- Function composition operator
 - Iterators
 - For loops
 - Proper thought out system for IO

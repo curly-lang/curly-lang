@@ -1007,7 +1007,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 }
 
                 // String and list concatenation is unsupported at the moment
-                _ => panic!("unsupported application!")
+                _ => panic!("unsupported application of `{}` on {:?}!", _type, sexpr)
             }
         }
 
@@ -1130,7 +1130,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 {
                     Type::Func(_, _) => {
                         func.code.push_str("refc_func(&");
-                        func.code.push_str(&sanitise_symbol(&astrs[a.0]));
+                        func.code.push_str(&astrs[a.0]);
                         func.code.push_str(");\n");
                     }
 

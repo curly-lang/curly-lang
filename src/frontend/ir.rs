@@ -182,7 +182,8 @@ pub struct IRFunction
     pub captured_names: Vec<String>,
     pub body: SExpr,
     pub global: bool,
-    pub span: Span
+    pub span: Span,
+    pub checked: bool
 }
 
 // Represents the ir.
@@ -492,7 +493,8 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 span: Span {
                     start: span.start,
                     end: func_id.get_metadata().span.start - 1
-                }
+                },
+                checked: false
             };
 
             let mut _type = Type::Error;
@@ -526,7 +528,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             let arity = args.len();
             let mut func_id = SExpr::Function(SExprMetadata {
-                span: val.get_span(),
+                span: span.clone(),
                 span2: Span { start: 0, end: 0 },
                 _type: Type::Error,
                 arity,
@@ -539,11 +541,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
                 body: convert_node(*val, funcs, false, seen_funcs, types),
-                global,
-                span: Span {
-                    start: span.start,
-                    end: func_id.get_metadata().span.start - 1
-                }
+                global: false,
+                span,
+                checked: false
             };
 
             let mut _type = Type::Error;

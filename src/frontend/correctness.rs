@@ -64,16 +64,42 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     m.arity = t.1;
                     m.saved_argc = t.2;
 
+                    if !root.funcs.get(f).unwrap().checked
+                    {
+                        let mut func = root.funcs.remove(f).unwrap();
+                        root.scope.push_scope(true);
+                        for a in func.args.iter()
+                        {
+                            root.scope.put_var(&a.0, &a.1, 0, None, Span { start: 0, end: 0 }, true);
+                        }
+                        check_sexpr(&mut func.body, root, errors);
+                        root.scope.pop_scope();
+                        root.funcs.insert(f.clone(), func);
+                    }
+
                     if m._type == Type::Unknown
                     {
                         root.funcs.remove(f);
                     }
                 }
 
-                None => errors.push(CorrectnessError::SymbolNotFound(
-                    m.span.clone(),
-                    f.clone()
-                ))
+                None => {
+                    let mut func = root.funcs.remove(f).unwrap();
+                    check_function_body(f, f, &mut func, &mut root.scope, &mut root.funcs, errors, &root.types);
+
+                    root.scope.push_scope(true);
+                    for a in func.args.iter()
+                    {
+                        root.scope.put_var(&a.0, &a.1, 0, None, Span { start: 0, end: 0 }, true);
+                    }
+                    check_sexpr(&mut func.body, root, errors);
+                    root.scope.pop_scope();
+
+                    m._type = root.scope.get_var(f).unwrap().0.clone();
+                    m.arity = func.args.len();
+                    m.saved_argc = Some(func.captured.len());
+                    root.funcs.insert(f.clone(), func);
+                }
             }
         }
 
@@ -994,7 +1020,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 // Checks a function body and determines the return type of the function.
 fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
 {
-    if let None = scope.variables.get(name)
+    if let None = scope.get_var(name)
     {
         // Put function in scope
         scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
@@ -1032,6 +1058,22 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
             for t in func.args.iter().rev()
             {
                 acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
+            }
+
+            scope.variables.remove(refr);
+            scope.variables.remove(name);
+
+            // Get global scope
+            let mut scope = scope;
+            loop
+            {
+                if scope.parent.is_some()
+                {
+                    scope = &mut *scope.parent.as_mut().unwrap();
+                } else
+                {
+                    break;
+                }
             }
 
             // Put function type in global scope
@@ -1072,6 +1114,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
 
             // Check body
             check_sexpr(&mut func.body, ir, errors);
+            func.checked = true;
 
             // Pop scope
             ir.scope.pop_scope();
