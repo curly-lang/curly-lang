@@ -185,7 +185,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             for c in f.captured_names.iter()
             {
                 // Get type
-                let mut v = c.clone();
+                let mut v = sanitise_symbol(c);
                 let mut _type = f.captured.get(c).unwrap();
                 while let Type::Symbol(s) = _type
                 {
@@ -965,7 +965,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                     func.code.push_str("func_t* ");
                                     func.code.push_str(&name);
                                     func.code.push_str(" = copy_func_arg(");
-                                    func.code.push_str(&arg.0);
+                                    func.code.push_str(&sanitise_symbol(&arg.0));
                                     func.code.push_str(");\n");
                                     func.code.push_str(&name);
                                     func.code.push_str("->refc++;\n");
@@ -1130,7 +1130,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 {
                     Type::Func(_, _) => {
                         func.code.push_str("refc_func(&");
-                        func.code.push_str(&astrs[a.0]);
+                        func.code.push_str(&sanitise_symbol(&astrs[a.0]));
                         func.code.push_str(");\n");
                     }
 
@@ -1672,7 +1672,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
                 Type::Func(_, _) => {
                     // Delete
                     cf.code.push_str("refc_func(&");
-                    cf.code.push_str(&a.0);
+                    cf.code.push_str(&sanitise_symbol(&a.0));
                     cf.code.push_str(");\n");
                 }
 
