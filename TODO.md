@@ -9,23 +9,23 @@ These things are features and fixes I'd like to get completed for the second maj
 
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Intersection types
-- Generics
-- Mutability
-- Laziness
-- `?`/`!` operators
-- Lists
-- Strings (which are basically just lists of chars)
-
-## Future releases
-These things are features and fixes I'd like to get completed in some point in the far future. Although these features are desired, they are not a priority due to either their complexity or dependencies. These are not in any particular order, and will be moved into an appropriate release when decided upon. These features, however, will be necessary to implement before an official v1.0.0.
 - Standard library
 - Module system
 - Bindings with C
 - Overridable operators
+
+## Future releases
+These things are features and fixes I'd like to get completed in some point in the far future. Although these features are desired, they are not a priority due to either their complexity or dependencies. These are not in any particular order, and will be moved into an appropriate release when decided upon. These features, however, will be necessary to implement before an official v1.0.0.
+- Intersection types
+- Generics
+- Mutability
+- Laziness
+- Lists
+- Strings (which are basically just lists of chars)
+- `?`/`!` operators
 - Iterators
 - For loops
-- IO
+- Proper thought out system for IO
 
 ## Things in the far future
 These things are goals that will take months, if not years, to even start due to either their complexity or dependencies.
