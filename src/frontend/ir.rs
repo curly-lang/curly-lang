@@ -525,7 +525,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             };
 
             let arity = args.len();
-            let func_id = SExpr::Function(SExprMetadata {
+            let mut func_id = SExpr::Function(SExprMetadata {
                 span: val.get_span(),
                 span2: Span { start: 0, end: 0 },
                 _type: Type::Error,
@@ -558,6 +558,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             // Return the function id
             funcs.insert(func_name, func);
+            func_id.get_mutable_metadata()._type = _type;
             func_id
         }
 
