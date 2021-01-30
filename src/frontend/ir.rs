@@ -466,7 +466,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             {
                 let seen = seen_funcs.get_mut(&name).unwrap();
                 *seen += 1;
-                format!("{}_{}", name, seen)
+                format!("{}${}", name, seen)
             } else
             {
                 seen_funcs.insert(name.clone(), 0);
@@ -521,7 +521,7 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let func_name = {
                 let seen = seen_funcs.get_mut("").unwrap();
                 *seen += 1;
-                format!("_{}", seen)
+                format!("$${}", seen)
             };
 
             let arity = args.len();

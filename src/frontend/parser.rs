@@ -93,7 +93,7 @@ pub enum Token
     Float(f64),
 
     // Symbols (variables and stuff)
-    #[regex(r"[$@a-zA-Z_][a-zA-Z0-9_']*")]
+    #[regex(r"[$a-zA-Z_][a-zA-Z0-9_']*")]
     Symbol,
 
     // Strings
