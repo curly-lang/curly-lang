@@ -958,7 +958,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                     func.code.push_str("func_t* ");
                                     func.code.push_str(&name);
                                     func.code.push_str(" = copy_func_arg(");
-                                    func.code.push_str(&sanitise_symbol(&arg.0));
+                                    func.code.push_str(&arg.0);
                                     func.code.push_str(");\n");
                                     func.code.push_str(&name);
                                     func.code.push_str("->refc++;\n");
