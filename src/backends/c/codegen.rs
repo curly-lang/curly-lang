@@ -486,7 +486,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 func.code.push_str(&format!("{}", id));
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
-                func.code.push_str(".values._");
+                func.code.push_str(".values.$$");
                 func.code.push_str(&format!("{}", id));
                 func.code.push_str(" = ");
                 func.code.push_str(&body);
@@ -519,11 +519,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     func.code.push_str(".tag = ");
                     func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
                     func.code.push_str(&name);
-                    func.code.push_str(".values._");
+                    func.code.push_str(".values.$$");
                     func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
                     func.code.push_str(" = ");
                     func.code.push_str(&elsy);
-                    func.code.push_str(".values._");
+                    func.code.push_str(".values.$$");
                     func.code.push_str(&format!("{}", s.1));
                     func.code.push_str(";\nbreak;\n");
                 }
@@ -536,7 +536,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 func.code.push_str(&format!("{}", id));
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
-                func.code.push_str(".values._");
+                func.code.push_str(".values.$$");
                 func.code.push_str(&format!("{}", id));
                 func.code.push_str(" = ");
                 func.code.push_str(&elsy);
@@ -745,8 +745,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(&name);
                                 func.code.push_str(" = copy_func_arg(");
                                 func.code.push_str(&v);
-                                func.code.push_str(");\nfree_func(");
-                                func.code.push_str(&v);
                                 func.code.push_str(");\n");
                                 v = name;
                                 func.code.push_str(&fstr);
@@ -802,8 +800,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             func.code.push_str(" (*)(func_t*))");
                             func.code.push_str(&fstr);
                             func.code.push_str(".wrapper)(&");
-                            func.code.push_str(&fstr);
-                            func.code.push_str(");\nfree_func(&");
                             func.code.push_str(&fstr);
                             func.code.push_str(");\n");
 
@@ -900,9 +896,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 match a.1
                                 {
                                     Type::Func(_, _) => {
-                                        func.code.push_str("free_func(");
-                                        func.code.push_str(&a.0);
-                                        func.code.push_str(");\n");
                                     }
 
                                     _ => ()
@@ -1047,7 +1040,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     func.code.push_str(&id);
                     func.code.push_str(";\n");
                     func.code.push_str(a);
-                    func.code.push_str(".values._");
+                    func.code.push_str(".values.$$");
                     func.code.push_str(&id);
                     func.code.push_str(" = ");
                     func.code.push_str(&val);
@@ -1202,8 +1195,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
                     func.code.push_str("{\n");
                     func.code.push_str(subtype.get_c_name());
-                    func.code.push_str(" $;");
-                    func.code.push_str("switch (");
+                    func.code.push_str(" $$;\nswitch (");
                     func.code.push_str(&value);
                     func.code.push_str(".tag) {\n");
 
@@ -1211,13 +1203,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     {
                         func.code.push_str("case ");
                         func.code.push_str(&format!("{}:\n", map.get(s.0).unwrap()));
-                        func.code.push_str("$.tag = ");
+                        func.code.push_str("$$.tag = ");
                         func.code.push_str(&format!("{};\n", s.1));
-                        func.code.push_str("$.values._");
+                        func.code.push_str("$$.values.$$");
                         func.code.push_str(&format!("{}", s.1));
                         func.code.push_str(" = ");
                         func.code.push_str(&value);
-                        func.code.push_str(".values._");
+                        func.code.push_str(".values.$$");
                         func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
                         func.code.push_str(";\nbreak;\n");
                     }
@@ -1227,7 +1219,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                         func.code.push_str(subtype.get_c_name());
                         func.code.push(' ');
                         func.code.push_str(s);
-                        func.code.push_str(" = $;\n");
+                        func.code.push_str(" = $$;\n");
                     }
                 } else if let Type::Enum(_) = _type
                 {
@@ -1718,9 +1710,6 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         match s.get_metadata()._type
         {
             Type::Func(_, _) => {
-                main_func.code.push_str("free_func(&");
-                main_func.code.push_str(&v);
-                main_func.code.push_str(");\n");
             }
 
             _ => ()
@@ -1755,11 +1744,11 @@ void* malloc(long unsigned int);
 void free(void*);
 
 char force_free_func(void* _func) {
-    func_t* func = (func_t*) _func;
-    for (int i = 0; i < func->argc; i++) {
+    // func_t* func = (func_t*) _func;
+    // for (int i = 0; i < func->argc; i++) {
         // if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
             // free(func->args[i]);
-    }
+    // }
 
     // free(func->args);
     // free(func->cleaners);
@@ -1775,8 +1764,8 @@ char free_func(func_t* func) {
 }
 
 char refc_func(func_t* func) {
-    if (func->refc > 0)
-        func->refc--;
+    // if (func->refc > 0)
+        // func->refc--;
     return free_func(func);
 }
 

@@ -64,7 +64,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     m.arity = t.1;
                     m.saved_argc = t.2;
 
-                    if !root.funcs.get(f).unwrap().checked
+                    if root.funcs.get(f).is_some() && !root.funcs.get(f).unwrap().checked
                     {
                         let mut func = root.funcs.remove(f).unwrap();
                         root.scope.push_scope(true);
