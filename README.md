@@ -11,7 +11,7 @@ primes = n <span class="hljs-keyword">in</span> (from <span class="hljs-number">
 ## Build
 Just type in the following:
 ```bash
-git clone https://github.com/jenra-uwu/curly-lang && cd curly-lang && cargo build
+git clone https://github.com/curly-lang/curly-lang && cd curly-lang && cargo build
 ```
 This project depends on either `clang` or `gcc` for compiling, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
 
