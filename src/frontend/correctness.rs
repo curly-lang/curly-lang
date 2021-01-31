@@ -970,7 +970,13 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                     continue;
                 }
 
-                set.push(_type);
+                if let Type::Sum(v) = _type
+                {
+                    set.extend(v.0.into_iter());
+                } else
+                {
+                    set.push(_type);
+                }
             }
 
             scope.pop_scope();
