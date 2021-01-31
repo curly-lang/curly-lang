@@ -288,7 +288,6 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
 
                 m._type = Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter().cloned())));
-                println!("{:?}", m._type);
             } else
             {
                 m._type = then.get_metadata()._type.clone();
