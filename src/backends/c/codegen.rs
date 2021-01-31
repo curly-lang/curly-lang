@@ -589,6 +589,8 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             {
                 _type = root.types.get(s).unwrap();
             }
+            
+            let mut ftype = &f.get_metadata()._type;
 
             let mut unknown_arity = false;
             match _type
@@ -610,14 +612,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             _type = root.types.get(s).unwrap();
                         }
 
-                        let mut ftype = &f.get_metadata()._type;
                         while let Type::Symbol(s) = ftype
                         {
                             ftype = root.types.get(s).unwrap();
                         }
 
-                        let mut arg_type = &**if let Type::Func(a, _) = ftype
+                        let mut arg_type = &**if let Type::Func(a, b) = &ftype
                         {
+                            ftype = b;
                             a
                         } else { unreachable!("this is always a function") };
                         while let Type::Symbol(s) = arg_type
@@ -1539,7 +1541,7 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                 }
 
                 // Save type definitions
-                let map = HashMap::from_iter(iter.iter().cloned().enumerate().map(|v| (v.1.clone(), v.0)));
+                let map = HashMap::from_iter(iter.into_iter().cloned().enumerate().filter_map(|v| if let Type::Sum(_) = v.1 { None } else { Some((v.1, v.0)) }));
                 let ct = CType::Sum(format!("struct $${}", last_reference), _type.1.clone(), map);
                 types_string.push_str("    } values;\n};\n");
                 types.insert(_type.1.clone(), ct.clone());
