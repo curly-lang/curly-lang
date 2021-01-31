@@ -1528,8 +1528,14 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                         }
 
                         Type::Sum(v) => {
-                            iter.extend(v.0.iter());
-                            field_ref += 1;
+                            for v in v.0.iter()
+                            {
+                                if !iter.contains(&v)
+                                {
+                                    iter.push(v);
+                                }
+                            }
+                            iter.remove(field_ref);
                             continue;
                         }
 
