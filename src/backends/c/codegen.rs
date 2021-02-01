@@ -63,8 +63,8 @@ fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 {
     match _type
     {
-        Type::Int => "long long",
-        Type::Float => "double",
+        Type::Int => "int_t",
+        Type::Float => "float_t",
         Type::Bool => "char",
         Type::Func(_, _) => "func_t",
         Type::Symbol(_) => types.get(_type).unwrap().get_c_name(),
@@ -95,7 +95,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str("long long ");
+            func.code.push_str("int_t ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&format!("{}", n));
@@ -111,7 +111,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str("double ");
+            func.code.push_str("float_t ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
             func.code.push_str(&format!("{}", n));
@@ -589,7 +589,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             {
                 _type = root.types.get(s).unwrap();
             }
-            
+
             let mut ftype = &f.get_metadata()._type;
 
             let mut unknown_arity = false;
@@ -851,8 +851,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             name = format!("$${}", func.last_reference);
                             func.last_reference += 1;
                             let saved_argc = f.get_metadata().saved_argc.unwrap();
-                            let _type = &funcs[n].get_metadata()._type;
-                            func.code.push_str(get_c_type(_type, types));
+                            func.code.push_str(get_c_type(ftype, types));
                             func.code.push(' ');
                             func.code.push_str(&name);
 
@@ -882,7 +881,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 func.code.push_str(" = ((");
 
                                 // Create function pointer
-                                func.code.push_str(get_c_type(_type, types));
+                                func.code.push_str(get_c_type(ftype, types));
                                 func.code.push_str(" (*)(");
                                 for i in 0..saved_argc + f.get_metadata().arity
                                 {
@@ -1530,11 +1529,11 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
         {
             // Primatives get mapped to old type
             Type::Int => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("long long"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("int_t"), _type.1.clone()));
             }
 
             Type::Float => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("double"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("float_t"), _type.1.clone()));
             }
 
             Type::Bool => {
@@ -1561,8 +1560,8 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
 
                     match t
                     {
-                        Type::Int => types_string.push_str("        long long"),
-                        Type::Float => types_string.push_str("        double"),
+                        Type::Int => types_string.push_str("        int_t"),
+                        Type::Float => types_string.push_str("        float_t"),
                         Type::Bool => types_string.push_str("        char"),
                         Type::Func(_, _) => types_string.push_str("        func_t"),
 
@@ -1669,7 +1668,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
                     cf.code.push_str(&name);
                     cf.code.push_str(".v = $$");
                     cf.code.push_str(&arg_name);
-                    cf.code.push_str(";\ndouble ");
+                    cf.code.push_str(";\nfloat_t ");
                     cf.code.push_str(&arg_name);
                     cf.code.push_str(" = ");
                     cf.code.push_str(&name);
@@ -1771,7 +1770,24 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     }
 
     // Define structures and helper functions
-    let mut code_string = String::from("
+    let ptr_size = std::mem::size_of::<&char>();
+    let mut code_string = format!("
+typedef {} int_t;
+typedef {} float_t;
+",
+    match ptr_size
+    {
+        4 => "int",
+        8 => "long long",
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    },
+    match ptr_size
+    {
+        4 => "float",
+        8 => "double",
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    });
+    code_string.push_str("
 typedef struct {
     unsigned int refc;
     void* func;
@@ -1783,7 +1799,7 @@ typedef struct {
 } func_t;
 
 typedef union {
-    double d;
+    float_t d;
     void* v;
 } double_wrapper_t;
 
@@ -1859,8 +1875,8 @@ func_t* copy_func_arg(func_t* source) {
 typedef struct {
     unsigned int tag;
     union {
-        long long i;
-        double d;
+        int_t i;
+        float_t d;
         char b;
         func_t f;
 ");
