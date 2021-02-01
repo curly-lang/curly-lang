@@ -892,13 +892,6 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 ft = types.get(&s).unwrap().clone();
             }
 
-            // Get argument type
-            let at = get_function_type(a, scope, funcs, errors, captured, captured_names, types);
-            if let Type::Unknown = at
-            {
-                return Type::Unknown;
-            }
-
             match ft
             {
                 // Strings concatenate to other strings
@@ -963,11 +956,16 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 // Check body of match arm
                 scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
-                let _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names, types);
+                let mut _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names, types);
 
                 if _type == Type::Unknown
                 {
                     continue;
+                }
+
+                while let Type::Symbol(s) = _type
+                {
+                    _type = types.get(&s).unwrap().clone();
                 }
 
                 if let Type::Sum(v) = _type
