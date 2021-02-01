@@ -591,6 +591,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             }
 
             let mut ftype = &f.get_metadata()._type;
+            let original_f = f;
 
             let mut unknown_arity = false;
             match _type
@@ -858,6 +859,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             if fstr == ""
                             {
                                 // Get function name
+                                f = original_f;
                                 fstr = format!("{}$FUNC$$", if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
                                 func.code.push_str(" = ");
                                 func.code.push_str(&fstr);
@@ -959,6 +961,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     {
                         if fstr == ""
                         {
+                            f = original_f;
                             fstr = convert_sexpr(f, root, func, types)
                         }
 
