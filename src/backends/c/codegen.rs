@@ -591,7 +591,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             }
 
             let mut ftype = &f.get_metadata()._type;
-            let original_f = f;
 
             let mut unknown_arity = false;
             match _type
@@ -859,7 +858,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             if fstr == ""
                             {
                                 // Get function name
-                                f = original_f;
                                 fstr = format!("{}$FUNC$$", if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
                                 func.code.push_str(" = ");
                                 func.code.push_str(&fstr);
@@ -961,7 +959,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     {
                         if fstr == ""
                         {
-                            f = original_f;
                             fstr = convert_sexpr(f, root, func, types)
                         }
 
@@ -1467,7 +1464,14 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
     {
         // Print out primatives
         Type::Int => {
-            code.push_str("printf(\"%lli\\n\", ");
+            let ptr_size = std::mem::size_of::<&char>();
+            code.push_str("printf(\"");
+            match ptr_size
+            {
+                4 => code.push_str("%i\\n\", "),
+                8 => code.push_str("%lli\\n\", "),
+                _ => panic!("unsupported pointer size {}", ptr_size)
+            }
             code.push_str(v);
             code.push_str(");\n");
         }
