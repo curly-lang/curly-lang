@@ -566,7 +566,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 if v == "debug"
                 {
                     let arg = convert_sexpr(&args[0], root, func, types);
-                    put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type, root, types);
+                    put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type, root, types, true);
                     if args.len() == 1
                     {
                         return arg;
@@ -1449,9 +1449,9 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
     s.push(')');
 }
 
-// put_debug_fn(&mut String, &str, &Type, &IR) -> ()
+// put_debug_fn(&mut String, &str, &Type, &IR, &HashMap<Type, CType>, bool) -> ()
 // Puts a debug function in the built string.
-fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>)
+fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>, newline: bool)
 {
     let original_type = _type;
     let mut _type = _type;
@@ -1468,8 +1468,8 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
             code.push_str("printf(\"");
             match ptr_size
             {
-                4 => code.push_str("%i\\n\", "),
-                8 => code.push_str("%lli\\n\", "),
+                4 => code.push_str("%i\", "),
+                8 => code.push_str("%lli\", "),
                 _ => panic!("unsupported pointer size {}", ptr_size)
             }
             code.push_str(v);
@@ -1477,26 +1477,25 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
         }
 
         Type::Float => {
-            code.push_str("printf(\"%.5f\\n\", ");
+            code.push_str("printf(\"%.5f\", ");
             code.push_str(v);
             code.push_str(");\n");
         }
 
         Type::Bool => {
-            code.push_str("printf(\"%s\\n\", ");
+            code.push_str("printf(\"%s\", ");
             code.push_str(v);
             code.push_str(" ? \"true\" : \"false\");\n");
         }
 
         // Print out aggregate types
         Type::Func(_, _) => {
-            code.push_str(&format!("printf(\"({}) <func %p>\\n\", ", original_type));
+            code.push_str(&format!("printf(\"<func %p> : {}\", ", original_type));
             code.push_str(v);
             code.push_str(".func);\n");
         }
 
         Type::Sum(_) => {
-            code.push_str(&format!("printf(\"({}) \");\n", original_type));
             code.push_str("switch (");
             code.push_str(v);
             code.push_str(".tag) {\n");
@@ -1507,20 +1506,26 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
                 for field in fields.iter()
                 {
                     code.push_str(&format!("case {}: {{\n", field.1));
-                    put_debug_fn(code, &format!("{}.values.$${}", v, field.1), &field.0, ir, types);
+                    put_debug_fn(code, &format!("{}.values.$${}", v, field.1), &field.0, ir, types, false);
                     code.push_str("break;\n}\n");
                 }
             }
             code.push_str("}\n");
+            code.push_str(&format!("printf(\" : {}\");\n", original_type));
         }
 
         Type::Enum(v) => {
             code.push_str("printf(\"");
             code.push_str(v);
-            code.push_str("\\n\");\n");
+            code.push_str("\");\n");
         }
 
         _ => panic!("uwu")
+    }
+
+    if newline
+    {
+        code.push_str("printf(\"\\n\");\n");
     }
 }
 
@@ -1761,7 +1766,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         // Debug print
         if let Some(_) = repl_vars
         {
-            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, ir, &types);
+            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, ir, &types, true);
         }
 
         // Deallocation

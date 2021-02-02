@@ -353,7 +353,6 @@ impl CurlyREPLHelper
                     | Match
                     | Lambda
                     | To
-                    | As
                     | And
                     | Or
                     | Xor

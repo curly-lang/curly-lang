@@ -175,9 +175,6 @@ pub enum Token
     #[token("in")]
     In,
 
-    #[token("as")]
-    As,
-
     Unreachable
 }
 
@@ -660,10 +657,10 @@ fn _as(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let value = value(parser)?;
 
-    if let Some((Token::As, _)) = parser.peek()
+    if let Some((Token::Colon, _)) = parser.peek()
     {
         parser.next();
-        let _type = call_func_fatal!(type_expr, parser, false, "Expected type after `as`");
+        let _type = call_func_fatal!(type_expr, parser, false, "Expected type after `:`");
 
         Ok(AST::As(Span {
             start: value.get_span().start,
