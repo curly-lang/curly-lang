@@ -1351,7 +1351,7 @@ fn is_called(sexpr: &mut SExpr, name: &str) -> bool
 // check_tailrec(&mut SExpr, &str) -> bool
 // Checks whether a given function is tail recursive. Returns false if the function is called
 // outside of a tail call.
-fn check_tailrec(sexpr: &mut SExpr, name: &str) -> bool
+fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
 {
     match sexpr
     {
@@ -1370,12 +1370,12 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str) -> bool
                 return false;
             }
 
-            if !check_tailrec(t, name)
+            if !check_tailrec(t, name, top)
             {
                 return false;
             }
 
-            if !check_tailrec(e, name)
+            if !check_tailrec(e, name, top)
             {
                 return false;
             }
@@ -1389,12 +1389,20 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str) -> bool
         }
 
         SExpr::Application(m, f, a) => {
+            if top && m.arity != 0
+            {
+                return !is_called(f, name) && !is_called(a, name);
+            } else if !top && m.arity == 0
+            {
+                return !is_called(f, name) && !is_called(a, name);
+            }
+
             if is_called(a, name)
             {
                 return false;
             }
 
-            if !check_tailrec(f, name)
+            if !check_tailrec(f, name, false)
             {
                 return false;
             } else if f.get_metadata().tailrec
@@ -1453,7 +1461,7 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
         // Check for tail recursion
         for f in ir.funcs.iter_mut()
         {
-            check_tailrec(&mut f.1.body, &f.0);
+            check_tailrec(&mut f.1.body, &f.0, true);
         }
 
         Ok(())

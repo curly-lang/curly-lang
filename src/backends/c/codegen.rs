@@ -851,81 +851,99 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             astrs.push((v, arg_type));
                             name = format!("$${}", func.last_reference);
                             func.last_reference += 1;
-                            let saved_argc = f.get_metadata().saved_argc.unwrap();
-                            func.code.push_str(get_c_type(ftype, types));
-                            func.code.push(' ');
-                            func.code.push_str(&name);
 
-                            if fstr == ""
+                            if f.get_metadata().tailrec
                             {
-                                // Get function name
-                                fstr = format!("{}$FUNC$$", if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
-                                func.code.push_str(" = ");
-                                func.code.push_str(&fstr);
-                                func.code.push('(');
-
-                                // Pass arguments
-                                for i in 0..f.get_metadata().arity
+                                for a in func.args.iter().enumerate()
                                 {
-                                    if i != 0 || saved_argc > 0
-                                    {
-                                        func.code.push_str(", ");
-                                    }
-
-                                    func.code.push_str(&astrs[i].0);
+                                    func.code.push_str(&sanitise_symbol(a.1.0));
+                                    func.code.push_str(" = ");
+                                    func.code.push_str(&astrs[a.0].0);
+                                    func.code.push_str(";\n");
                                 }
 
-                                // Close parentheses
-                                func.code.push_str(");\n");
+                                func.code.push_str("$$LOOP$$ = 1;\n");
+                                func.code.push_str(get_c_type(ftype, types));
+                                func.code.push(' ');
+                                func.code.push_str(&name);
+                                func.code.push_str(";\n");
                             } else
                             {
-                                func.code.push_str(" = ((");
-
-                                // Create function pointer
+                                let saved_argc = f.get_metadata().saved_argc.unwrap();
                                 func.code.push_str(get_c_type(ftype, types));
-                                func.code.push_str(" (*)(");
-                                for i in 0..saved_argc + f.get_metadata().arity
+                                func.code.push(' ');
+                                func.code.push_str(&name);
+
+                                if fstr == ""
                                 {
-                                    if i != 0
-                                    {
-                                        func.code.push_str(", ");
-                                    }
-                                    func.code.push_str("void*");
-                                }
-
-                                // Call the function
-                                func.code.push_str(")) ");
-                                func.code.push_str(&fstr);
-                                func.code.push_str(".func)(");
-
-                                // Print saved arguments
-                                for i in 0..saved_argc
-                                {
-                                    if i != 0
-                                    {
-                                        func.code.push_str(", ");
-                                    }
-
+                                    // Get function name
+                                    fstr = format!("{}$FUNC$$", if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
+                                    func.code.push_str(" = ");
                                     func.code.push_str(&fstr);
-                                    func.code.push_str(&format!(".args[{}]", i));
-                                }
+                                    func.code.push('(');
 
-                                // Pass new arguments
-                                for i in 0..f.get_metadata().arity
-                                {
-                                    if i != 0 || saved_argc > 0
+                                    // Pass arguments
+                                    for i in 0..f.get_metadata().arity
                                     {
-                                        func.code.push_str(", ");
+                                        if i != 0 || saved_argc > 0
+                                        {
+                                            func.code.push_str(", ");
+                                        }
+
+                                        func.code.push_str(&astrs[i].0);
                                     }
 
-                                    func.code.push_str("(void*) ");
-                                    func.code.push_str(&astrs[i].0);
+                                    // Close parentheses
+                                    func.code.push_str(");\n");
+                                } else
+                                {
+                                    func.code.push_str(" = ((");
+
+                                    // Create function pointer
+                                    func.code.push_str(get_c_type(ftype, types));
+                                    func.code.push_str(" (*)(");
+                                    for i in 0..saved_argc + f.get_metadata().arity
+                                    {
+                                        if i != 0
+                                        {
+                                            func.code.push_str(", ");
+                                        }
+                                        func.code.push_str("void*");
+                                    }
+
+                                    // Call the function
+                                    func.code.push_str(")) ");
+                                    func.code.push_str(&fstr);
+                                    func.code.push_str(".func)(");
+
+                                    // Print saved arguments
+                                    for i in 0..saved_argc
+                                    {
+                                        if i != 0
+                                        {
+                                            func.code.push_str(", ");
+                                        }
+
+                                        func.code.push_str(&fstr);
+                                        func.code.push_str(&format!(".args[{}]", i));
+                                    }
+
+                                    // Pass new arguments
+                                    for i in 0..f.get_metadata().arity
+                                    {
+                                        if i != 0 || saved_argc > 0
+                                        {
+                                            func.code.push_str(", ");
+                                        }
+
+                                        func.code.push_str("(void*) ");
+                                        func.code.push_str(&astrs[i].0);
+                                    }
+
+                                    // Close parentheses
+                                    func.code.push_str(");\n");
                                 }
-
-                                // Close parentheses
-                                func.code.push_str(");\n");
                             }
-
 
                             if n < funcs.len()
                             {
@@ -1412,7 +1430,7 @@ fn put_fn_declaration(s: &mut String, func: &CFunction, types: &HashMap<Type, CT
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
-    s.push_str(&sanitise_symbol(&func.name));
+    s.push_str(&func.name);
     s.push_str("$FUNC$$");
     s.push('(');
 
@@ -1651,7 +1669,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     for f in ir.funcs.iter()
     {
         let mut cf = CFunction {
-            name: f.0.clone(),
+            name: sanitise_symbol(&f.0),
             args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
             ret_type: &f.1.body.get_metadata()._type,
             code: String::new(),
@@ -1719,7 +1737,21 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             }
         }
 
+        if f.1.body.get_metadata().tailrec
+        {
+            cf.code.push_str("char $$LOOP$$ = 1;\n");
+            cf.code.push_str(get_c_type(&f.1.body.get_metadata()._type, &types));
+            cf.code.push_str(" $$RET$$;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
+        }
+
         let last = convert_sexpr(&f.1.body, ir, &mut cf, &types);
+
+        if f.1.body.get_metadata().tailrec
+        {
+            cf.code.push_str("$$RET$$ = ");
+            cf.code.push_str(&last);
+            cf.code.push_str(";\n}\n");
+        }
 
         // Deallocate functions
         for a in cf.args.iter()
@@ -1739,7 +1771,13 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
         // Return statement
         cf.code.push_str("return ");
-        cf.code.push_str(&last);
+        if f.1.body.get_metadata().tailrec
+        {
+            cf.code.push_str("$$RET$$");
+        } else
+        {
+            cf.code.push_str(&last);
+        }
         cf.code.push_str(";\n");
 
         funcs.insert(f.0, cf);
