@@ -641,91 +641,94 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                             arg_type = root.types.get(s).unwrap();
                         }
 
-                        match arg_type
+                        if !f.get_metadata().tailrec
                         {
-                            Type::Float => {
-                                let name = format!("$${}", func.last_reference);
-                                func.last_reference += 1;
-                                func.code.push_str("double_wrapper_t ");
-                                func.code.push_str(&name);
-                                func.code.push_str(";\n");
-                                func.code.push_str(&name);
-                                func.code.push_str(".d = ");
-                                func.code.push_str(&v);
-                                func.code.push_str(";\nvoid* ");
-                                v = format!("$${}", func.last_reference);
-                                func.last_reference += 1;
-                                func.code.push_str(&v);
-                                func.code.push_str(" = ");
-                                func.code.push_str(&name);
-                                func.code.push_str(".v;\n");
-                            }
-
-                            Type::Func(_, _) => {
-                                v = format!("&{}", &v);
-                            }
-
-                            Type::Sum(_) => {
-                                // Autocast argument if not already done so
-                                if _type == arg_type
-                                {
-                                    v = format!("&{}", &v);
-                                } else if let Type::Sum(_) = _type
-                                {
+                            match arg_type
+                            {
+                                Type::Float => {
                                     let name = format!("$${}", func.last_reference);
                                     func.last_reference += 1;
-                                    let map = types.get(arg_type).unwrap().get_hashmap().unwrap();
-                                    let subtype = types.get(_type).unwrap();
-                                    let submap = subtype.get_hashmap().unwrap();
-                                    func.code.push_str(types.get(arg_type).unwrap().get_c_name());
-                                    func.code.push(' ');
+                                    func.code.push_str("double_wrapper_t ");
                                     func.code.push_str(&name);
                                     func.code.push_str(";\n");
-                                    func.code.push_str("switch (");
+                                    func.code.push_str(&name);
+                                    func.code.push_str(".d = ");
                                     func.code.push_str(&v);
-                                    func.code.push_str(".tag) {\n");
+                                    func.code.push_str(";\nvoid* ");
+                                    v = format!("$${}", func.last_reference);
+                                    func.last_reference += 1;
+                                    func.code.push_str(&v);
+                                    func.code.push_str(" = ");
+                                    func.code.push_str(&name);
+                                    func.code.push_str(".v;\n");
+                                }
 
-                                    for s in submap
+                                Type::Func(_, _) => {
+                                    v = format!("&{}", &v);
+                                }
+
+                                Type::Sum(_) => {
+                                    // Autocast argument if not already done so
+                                    if _type == arg_type
                                     {
-                                        func.code.push_str("case ");
-                                        func.code.push_str(&format!("{}:\n", s.1));
+                                        v = format!("&{}", &v);
+                                    } else if let Type::Sum(_) = _type
+                                    {
+                                        let name = format!("$${}", func.last_reference);
+                                        func.last_reference += 1;
+                                        let map = types.get(arg_type).unwrap().get_hashmap().unwrap();
+                                        let subtype = types.get(_type).unwrap();
+                                        let submap = subtype.get_hashmap().unwrap();
+                                        func.code.push_str(types.get(arg_type).unwrap().get_c_name());
+                                        func.code.push(' ');
+                                        func.code.push_str(&name);
+                                        func.code.push_str(";\n");
+                                        func.code.push_str("switch (");
+                                        func.code.push_str(&v);
+                                        func.code.push_str(".tag) {\n");
+
+                                        for s in submap
+                                        {
+                                            func.code.push_str("case ");
+                                            func.code.push_str(&format!("{}:\n", s.1));
+                                            func.code.push_str(&name);
+                                            func.code.push_str(".tag = ");
+                                            func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                                            func.code.push_str(&name);
+                                            func.code.push_str(".values.$$");
+                                            func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                                            func.code.push_str(" = ");
+                                            func.code.push_str(&v);
+                                            func.code.push_str(".values.$$");
+                                            func.code.push_str(&format!("{}", s.1));
+                                            func.code.push_str(";\nbreak;\n");
+                                        }
+                                        func.code.push_str("}\n");
+                                        v = format!("&{}", name);
+                                    } else
+                                    {
+                                        let name = format!("$${}", func.last_reference);
+                                        func.last_reference += 1;
+                                        let arg_ctype = types.get(arg_type).unwrap();
+                                        func.code.push_str(arg_ctype.get_c_name());
+                                        func.code.push(' ');
+                                        func.code.push_str(&name);
+                                        func.code.push_str(";\n");
                                         func.code.push_str(&name);
                                         func.code.push_str(".tag = ");
-                                        func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                                        func.code.push_str(&format!("{};\n", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
                                         func.code.push_str(&name);
-                                        func.code.push_str(".values.$$");
-                                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                                        func.code.push_str(".values.");
+                                        func.code.push_str(&format!("$${}", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
                                         func.code.push_str(" = ");
                                         func.code.push_str(&v);
-                                        func.code.push_str(".values.$$");
-                                        func.code.push_str(&format!("{}", s.1));
-                                        func.code.push_str(";\nbreak;\n");
+                                        func.code.push_str(";\n");
+                                        v = format!("&{}", name);
                                     }
-                                    func.code.push_str("}\n");
-                                    v = format!("&{}", name);
-                                } else
-                                {
-                                    let name = format!("$${}", func.last_reference);
-                                    func.last_reference += 1;
-                                    let arg_ctype = types.get(arg_type).unwrap();
-                                    func.code.push_str(arg_ctype.get_c_name());
-                                    func.code.push(' ');
-                                    func.code.push_str(&name);
-                                    func.code.push_str(";\n");
-                                    func.code.push_str(&name);
-                                    func.code.push_str(".tag = ");
-                                    func.code.push_str(&format!("{};\n", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
-                                    func.code.push_str(&name);
-                                    func.code.push_str(".values.");
-                                    func.code.push_str(&format!("$${}", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
-                                    func.code.push_str(" = ");
-                                    func.code.push_str(&v);
-                                    func.code.push_str(";\n");
-                                    v = format!("&{}", name);
                                 }
-                            }
 
-                            _ => ()
+                                _ => ()
+                            }
                         }
 
                         // Functions with unknown arity
