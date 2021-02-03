@@ -1294,7 +1294,7 @@ fn is_called(sexpr: &mut SExpr, name: &str) -> bool
         //List(SExprMetadata, Vec<SExpr>),
 
         SExpr::Function(_, f) => {
-            f != name
+            f == name
         }
 
         SExpr::Prefix(_, _, v)
