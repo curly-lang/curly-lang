@@ -654,7 +654,8 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
                     },
                     _type: Type::Error,
                     arity: 0,
-                    saved_argc: None
+                    saved_argc: None,
+                    tailrec: false
                 };
 
                 swap(&mut meta, m);
@@ -1284,6 +1285,130 @@ fn check_type_validity(ir: &IR, errors: &mut Vec<CorrectnessError>)
     }
 }
 
+// is_called(&mut SExpr, &str) -> bool
+// Checks whether a given function is called or not.
+fn is_called(sexpr: &mut SExpr, name: &str) -> bool
+{
+    match sexpr
+    {
+        //List(SExprMetadata, Vec<SExpr>),
+
+        SExpr::Function(_, f) => {
+            f != name
+        }
+
+        SExpr::Prefix(_, _, v)
+            | SExpr::As(_, v)
+            | SExpr::Assign(_, _, v)
+            => {
+            is_called(v, name)
+        }
+
+        SExpr::Infix(_, _, l, r)
+            | SExpr::Application(_, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
+            => {
+            is_called(l, name) || is_called(r, name)
+        }
+
+        SExpr::If(_, c, t, e) => {
+            is_called(c, name) || is_called(t, name) || is_called(e, name)
+        }
+
+        SExpr::With(_, a, v) => {
+            for a in a
+            {
+                if is_called(a, name)
+                {
+                    return true;
+                }
+            }
+            is_called(v, name)
+        }
+
+        SExpr::Match(_, v, a) => {
+            if is_called(v, name)
+            {
+                return true;
+            }
+
+            for a in a
+            {
+                if is_called(&mut a.1, name)
+                {
+                    return true;
+                }
+            }
+
+            false
+        }
+
+        _ => false
+    }
+}
+
+// check_tailrec(&mut SExpr, &str) -> bool
+// Checks whether a given function is tail recursive. Returns false if the function is called
+// outside of a tail call.
+fn check_tailrec(sexpr: &mut SExpr, name: &str) -> bool
+{
+    match sexpr
+    {
+        SExpr::Function(m, f) => {
+            if f == name
+            {
+                m.tailrec = true;
+            }
+
+            true
+        }
+
+        SExpr::If(m, c, t, e) => {
+            if is_called(c, name)
+            {
+                return false;
+            }
+
+            if !check_tailrec(t, name)
+            {
+                return false;
+            }
+
+            if !check_tailrec(e, name)
+            {
+                return false;
+            }
+
+            if t.get_metadata().tailrec || e.get_metadata().tailrec
+            {
+                m.tailrec = true;
+            }
+
+            true
+        }
+
+        SExpr::Application(m, f, a) => {
+            if is_called(a, name)
+            {
+                return false;
+            }
+
+            if !check_tailrec(f, name)
+            {
+                return false;
+            } else if f.get_metadata().tailrec
+            {
+                m.tailrec = true;
+            }
+
+            true
+        }
+
+        _ => !is_called(sexpr, name)
+    }
+}
+
 // check_correctness(&mut IR) -> ()
 // Checks the correctness of ir.
 pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
@@ -1308,6 +1433,7 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
+        // Save types
         let mut id = 0;
         while let Some(_) = ir.types.get(&format!("{}", id))
         {
@@ -1322,6 +1448,12 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
         for f in ir.funcs.iter()
         {
             save_types(&f.1.body, &mut ir.types, &mut id);
+        }
+
+        // Check for tail recursion
+        for f in ir.funcs.iter_mut()
+        {
+            check_tailrec(&mut f.1.body, &f.0);
         }
 
         Ok(())

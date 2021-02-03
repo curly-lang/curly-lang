@@ -7,6 +7,7 @@ use crate::frontend::types::Type;
 // Represents a function in C.
 struct CFunction<'a>
 {
+    name: String,
     args: Vec<(&'a String, &'a Type)>,
     ret_type: &'a Type,
     code: String,
@@ -1405,13 +1406,13 @@ fn put_fn_wrapper(s: &mut String, name: &str, func: &CFunction, types: &HashMap<
     s.push_str(");\n}\n");
 }
 
-// put_fn_declaration(&mut String, &str, &CFunction) -> ()
+// put_fn_declaration(&mut String, &CFunction, &HashMap<Type, CType>) -> ()
 // Puts a function declaration in the built string.
-fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &HashMap<Type, CType>)
+fn put_fn_declaration(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>)
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
-    s.push_str(&sanitise_symbol(name));
+    s.push_str(&sanitise_symbol(&func.name));
     s.push_str("$FUNC$$");
     s.push('(');
 
@@ -1419,7 +1420,7 @@ fn put_fn_declaration(s: &mut String, name: &str, func: &CFunction, types: &Hash
     for a in func.args.iter()
     {
         let mut _type = a.1;
-        if let Type::Symbol(_) = _type
+        if let Type::Symbol(_) =& _type
         {
             _type = types.get(&_type).unwrap().get_curly_type();
         }
@@ -1650,6 +1651,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     for f in ir.funcs.iter()
     {
         let mut cf = CFunction {
+            name: f.0.clone(),
             args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
             ret_type: &f.1.body.get_metadata()._type,
             code: String::new(),
@@ -1745,6 +1747,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
     // Create the main function
     let mut main_func = CFunction {
+        name: String::from(""),
         args: Vec::with_capacity(0),
         ret_type: if let Some(v) = ir.sexprs.last()
         {
@@ -1920,7 +1923,7 @@ typedef struct {
     // Declare all functions
     for f in funcs.iter()
     {
-        put_fn_declaration(&mut code_string, f.0, &f.1, &types);
+        put_fn_declaration(&mut code_string, &f.1, &types);
         code_string.push_str(";\n");
         put_fn_wrapper(&mut code_string, f.0, &f.1, &types);
     }
@@ -1928,7 +1931,7 @@ typedef struct {
     // Put all function definitions
     for f in funcs
     {
-        put_fn_declaration(&mut code_string, f.0, &f.1, &types);
+        put_fn_declaration(&mut code_string, &f.1, &types);
         code_string.push_str(" {\n");
         code_string.push_str(&f.1.code);
         code_string.push_str("}\n");
