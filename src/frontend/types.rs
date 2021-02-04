@@ -18,9 +18,15 @@ impl<T: Hash + Eq> PartialEq for HashSetWrapper<T>
 
 impl<T: Hash + Eq> Eq for HashSetWrapper<T> { }
 
-impl<T> Hash for HashSetWrapper<T>
+impl<T: Hash + Eq> Hash for HashSetWrapper<T>
 {
-    fn hash<H: Hasher>(&self, _: &mut H) { }
+    fn hash<H: Hasher>(&self, h: &mut H)
+    {
+        for v in self.0.iter()
+        {
+            v.hash(h)
+        }
+    }
 }
 
 // Represents a type.
