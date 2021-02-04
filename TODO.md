@@ -1,7 +1,6 @@
 # List of things to do
 ## Bug fixes and features for 0.2.1
 - Real sum types (not union types) (this means making the `a: Int` syntax work and making `Int | Int` error instead of reduce)
-- `curlyc check` compiler option
 - Improved debug function that outputs line number and the call to debug
 - `--debug-lines` flag that takes in a comma separated list and inserts `debug`s after them
 - New syntax for match expressions
@@ -12,11 +11,11 @@ These things are features and fixes I'd like to get completed for the third majo
 - Module system
 - Bindings with C
 - Overridable operators
+- Fix memory leaks
 - See github issues
 
 ## Fourth official release:
 These things are features and fixes I'd like to get completed for the fourth major release (v0.4.0) of Curly.
-- Fix memory leaks
 - Product types
 - Span
 
