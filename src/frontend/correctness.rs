@@ -1413,6 +1413,32 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
             true
         }
 
+        SExpr::Match(m, v, a) => {
+            if is_called(v, name)
+            {
+                return false;
+            }
+
+            for a in a.iter_mut()
+            {
+                if !check_tailrec(&mut a.1, name, top)
+                {
+                    return false;
+                }
+            }
+
+            for a in a
+            {
+                if a.1.get_metadata().tailrec
+                {
+                    m.tailrec = true;
+                    return true;
+                }
+            }
+
+            true
+        }
+
         _ => !is_called(sexpr, name)
     }
 }
