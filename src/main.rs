@@ -166,6 +166,35 @@ fn main() -> Result<(), ()>
                 }
             }
 
+            "check" => {
+                match args.next()
+                {
+                    Some(file) => {
+                        // Get file contents
+                        let contents = match fs::read_to_string(&file)
+                        {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Error reading file: {}", e);
+                                return Err(());
+                            }
+                        };
+
+                        // Execute file
+                        let mut ir = IR::new();
+                        match check(&file, &contents, &mut ir)
+                        {
+                            Ok(_) => println!("No errors found"),
+                            Err(_) => return Err(())
+                        }
+                    }
+
+                    None => {
+                        println!("usage:\n{} check [file]", &name);
+                    }
+                }
+            }
+
             "run" => {
                 match args.next()
                 {
@@ -507,9 +536,9 @@ fn repl()
     rl.save_history("history.txt").unwrap();
 }
 
-// compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
-// Compiles curly into C code.
-fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
+// check(&str, &str, &mut IR) -> Result<(), ()>
+// Checks whether given code is valid.
+fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
 {
     // Set up codespan
     let mut files = SimpleFiles::new();
@@ -546,9 +575,10 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
     {
         Ok(_) if DEBUG => {
             dbg!(&ir);
+            Ok(())
         }
 
-        Ok(_) => (),
+        Ok(_) => Ok(()),
 
         Err(e) => {
             for e in e
@@ -700,6 +730,14 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
             return Err(());
         }
     }
+}
+
+// compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
+// Compiles curly into C code.
+fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
+{
+    // Check the file
+    check(filename, code, ir)?;
 
     // Remove empty sexpressions
     use std::mem::swap;
