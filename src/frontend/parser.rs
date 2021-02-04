@@ -956,6 +956,8 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError>
     }, args, Box::new(body)))
 }
 
+// matchy(&mut Parser) -> Result<AST, ParseError>
+// Parses a match expression.
 fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
@@ -1107,11 +1109,44 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// type_tagged(&mut Parser) -> Result<AST< ParseError>
+// Parses a tagged type (a: T).
+fn type_tagged(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let s = call_func!(symbol, parser, state);
+    consume_nosave!(parser, Colon, state, false, false, "");
+    let t = call_func_fatal!(type_symbol, parser, false, "Expected type after `:`");
+
+    Ok(AST::Infix(
+        Span {
+            start: s.get_span().start,
+            end: t.get_span().end
+        },
+        String::from(":"),
+        Box::new(s),
+        Box::new(t)
+    ))
+}
+
+// type_field(&mut Parser) -> Result<AST, ParseError>
+// Parses a field of a union or product type.
+fn type_field(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    if let Ok(v) = call_optional!(type_tagged, parser)
+    {
+        Ok(v)
+    } else
+    {
+        type_symbol(parser)
+    }
+}
+
 // type_union(&mut Parser) -> Result<AST, ParseError>
 // Parses a union type declaration.
 fn type_union(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, type_symbol, Token::Bar, Token::Unreachable)
+    infix_op!(parser, type_field, Token::Bar, Token::Unreachable)
 }
 
 // type_expr(&mut Parser) -> Result<AST, ParseError>

@@ -37,7 +37,8 @@ pub enum Type
     Symbol(String),
     Func(Box<Type>, Box<Type>),
     Sum(HashSetWrapper<Type>),
-    Enum(String)
+    Enum(String),
+    Tag(String, Box<Type>)
 }
 
 impl Display for Type
@@ -92,6 +93,11 @@ impl Display for Type
                         write!(f, "{}", field)?;
                     }
                 }
+            }
+
+            // Tagged types
+            Type::Tag(tag, field) => {
+                write!(f, "{}: {}", tag, field)?;
             }
         }
         Ok(())
@@ -186,8 +192,21 @@ impl Type
                     false
                 }
 
+            Type::Tag(s, t) => {
+                if let Type::Tag(s2, t2) = _type
+                {
+                    s == s2 && t2.is_subtype(t, types)
+                } else
+                {
+                    _type.is_subtype(t, types)
+                }
+            }
+
             // Everything else is to be ignored
-            _ => false
+            Type::Error
+                | Type::ConversionError(_)
+                | Type::Unknown
+                | Type::Symbol(_) => false
         }
     }
 }
@@ -278,8 +297,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
         }
 
         // Function types
-        AST::Infix(_, op, l, r) if op == "->" =>
-        {
+        AST::Infix(_, op, l, r) if op == "->" => {
             let l = convert_ast_to_type(*l, types);
             let r = convert_ast_to_type(*r, types);
 
@@ -292,6 +310,21 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
             } else
             {
                 Type::Func(Box::new(l), Box::new(r))
+            }
+        }
+
+        AST::Infix(_, op, l, r) if op == ":" => {
+            let r = convert_ast_to_type(*r, types);
+
+            if let Type::ConversionError(s) = r
+            {
+                Type::ConversionError(s)
+            } else if let AST::Symbol(_, s) = *l
+            {
+                Type::Tag(s, Box::new(r))
+            } else
+            {
+                unreachable!("Tag always has symbol as left operand");
             }
         }
 
