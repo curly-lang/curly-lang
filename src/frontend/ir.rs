@@ -520,7 +520,11 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let mut _type = Type::Error;
             for a in func.args.iter()
             {
-                if let Type::ConversionError(_) = a.1
+                if let Type::UndeclaredTypeError(_) = a.1
+                {
+                    _type = a.1.clone();
+                    break;
+                } else if let Type::DuplicateTypeError(_, _, _) = a.1
                 {
                     _type = a.1.clone();
                     break;
@@ -571,7 +575,11 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             let mut _type = Type::Error;
             for a in func.args.iter()
             {
-                if let Type::ConversionError(_) = a.1
+                if let Type::UndeclaredTypeError(_) = a.1
+                {
+                    _type = a.1.clone();
+                    break;
+                } else if let Type::DuplicateTypeError(_, _, _) = a.1
                 {
                     _type = a.1.clone();
                     break;

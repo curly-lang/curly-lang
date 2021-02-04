@@ -1,6 +1,7 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
+use std::iter::FromIterator;
 use std::hash::{Hash, Hasher};
 
 use super::parser::AST;
@@ -34,7 +35,8 @@ impl<T: Hash + Eq> Hash for HashSetWrapper<T>
 pub enum Type
 {
     Error,
-    ConversionError(Span),
+    UndeclaredTypeError(Span),
+    DuplicateTypeError(Span, Span, Box<Type>),
     Unknown,
     Int,
     Float,
@@ -55,7 +57,8 @@ impl Display for Type
         {
             // Errors
             Type::Error => { write!(f, "TypeError")?; }
-            Type::ConversionError(_) => { write!(f, "ConversionError")?; }
+            Type::UndeclaredTypeError(_) => { write!(f, "UndeclaredTypeError")?; }
+            Type::DuplicateTypeError(_, _, _) => { write! (f, "DuplicateTypeError")?; }
             Type::Unknown => { write!(f, "UnknownType")?; }
 
             // Primatives
@@ -210,7 +213,8 @@ impl Type
 
             // Everything else is to be ignored
             Type::Error
-                | Type::ConversionError(_)
+                | Type::UndeclaredTypeError(_)
+                | Type::DuplicateTypeError(_, _, _)
                 | Type::Unknown
                 | Type::Symbol(_) => false
         }
@@ -239,7 +243,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                         Type::Symbol(v)
                     } else
                     {
-                        Type::ConversionError(s)
+                        Type::UndeclaredTypeError(s)
                     }
             }
         }
@@ -256,8 +260,9 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
 
         // Sum types
         AST::Infix(_, op, l, r) if op == "|" => {
-            let mut fields = HashSet::new();
-            fields.insert(convert_ast_to_type(*r, types));
+            let mut fields = HashMap::new();
+            let s = r.get_span().clone();
+            fields.insert(convert_ast_to_type(*r, types), s);
             let mut acc = *l;
 
             loop 
@@ -265,16 +270,27 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 match acc
                 {
                     AST::Infix(_, op, l, r) if op == "|" => {
+                        let s = r.get_span().clone();
                         let v = convert_ast_to_type(*r, types);
                         if let Type::Sum(v) = v
                         {
                             for v in v.0
                             {
-                                fields.insert(v);
+                                if let Some(s2) = fields.remove(&v)
+                                {
+                                    return Type::DuplicateTypeError(s, s2, Box::new(v));
+                                }
+
+                                fields.insert(v, s.clone());
                             }
                         } else
                         {
-                            fields.insert(v);
+                            if let Some(s2) = fields.remove(&v)
+                            {
+                                return Type::DuplicateTypeError(s, s2, Box::new(v));
+                            }
+
+                            fields.insert(v, s);
                         }
 
                         acc = *l;
@@ -286,19 +302,26 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
 
             for f in fields.iter()
             {
-                if let Type::ConversionError(s) = f
+                if let Type::UndeclaredTypeError(s) = f.0
                 {
-                    return Type::ConversionError(s.clone());
+                    return Type::UndeclaredTypeError(s.clone());
                 }
             }
 
-            fields.insert(convert_ast_to_type(acc, types));
+            let s = acc.get_span();
+            let v = convert_ast_to_type(acc, types);
+            if let Some(s2) = fields.remove(&v)
+            {
+                return Type::DuplicateTypeError(s, s2, Box::new(v));
+            }
+
+            fields.insert(v, s);
             if fields.len() == 1
             {
-                fields.into_iter().next().unwrap()
+                fields.into_iter().next().unwrap().0
             } else
             {
-                Type::Sum(HashSetWrapper(fields))
+                Type::Sum(HashSetWrapper(HashSet::from_iter(fields.into_iter().map(|v| v.0))))
             }
         }
 
@@ -307,12 +330,12 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
             let l = convert_ast_to_type(*l, types);
             let r = convert_ast_to_type(*r, types);
 
-            if let Type::ConversionError(s) = l
+            if let Type::UndeclaredTypeError(s) = l
             {
-                Type::ConversionError(s)
-            } else if let Type::ConversionError(s) = r
+                Type::UndeclaredTypeError(s)
+            } else if let Type::UndeclaredTypeError(s) = r
             {
-                Type::ConversionError(s)
+                Type::UndeclaredTypeError(s)
             } else
             {
                 Type::Func(Box::new(l), Box::new(r))
@@ -322,9 +345,9 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
         AST::Infix(_, op, l, r) if op == ":" => {
             let r = convert_ast_to_type(*r, types);
 
-            if let Type::ConversionError(s) = r
+            if let Type::UndeclaredTypeError(s) = r
             {
-                Type::ConversionError(s)
+                Type::UndeclaredTypeError(s)
             } else if let AST::Symbol(_, s) = *l
             {
                 Type::Tag(s, Box::new(r))
@@ -339,7 +362,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
             convert_ast_to_type(*v, types),
 
         // Error
-        _ => Type::ConversionError(ast.get_span())
+        _ => Type::UndeclaredTypeError(ast.get_span())
     }
 }
 

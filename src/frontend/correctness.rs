@@ -18,6 +18,7 @@ pub enum CorrectnessError
     SymbolNotFound(Span, String),
     Reassignment(Span, Span, String),
     InvalidType(Span),
+    DuplicateTypeInUnion(Span, Span, Type),
     UnknownFunctionReturnType(Span, String),
     MismatchedFunctionArgType(Span, Type, Type),
     InvalidApplication(Span, Type),
@@ -31,10 +32,19 @@ pub enum CorrectnessError
 // Checks an s expression for type correctness and correct symbol usage.
 fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessError>)
 {
-    if let Type::ConversionError(s) = &sexpr.get_metadata()._type
+    if let Type::UndeclaredTypeError(s) = &sexpr.get_metadata()._type
     {
         errors.push(CorrectnessError::InvalidType(
             s.clone()
+        ));
+        sexpr.get_mutable_metadata()._type = Type::Error;
+        return;
+    } else if let Type::DuplicateTypeError(s1, s2, t) = &sexpr.get_metadata()._type
+    {
+        errors.push(CorrectnessError::DuplicateTypeInUnion(
+            s1.clone(),
+            s2.clone(),
+            *t.clone()
         ));
         sexpr.get_mutable_metadata()._type = Type::Error;
         return;
@@ -499,7 +509,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if *_type == Type::Error
             {
                 return;
-            } else if let Type::ConversionError(_) = *_type
+            } else if let Type::UndeclaredTypeError(_) = *_type
             {
                 return;
             }
@@ -518,7 +528,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             let mut set = Vec::with_capacity(0);
             for arm in arms.iter_mut()
             {
-                if let Type::ConversionError(s) = &arm.0
+                if let Type::UndeclaredTypeError(s) = &arm.0
                 {
                     errors.push(CorrectnessError::InvalidType(
                         s.clone()

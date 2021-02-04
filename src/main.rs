@@ -654,6 +654,16 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                                 .with_message("Undeclared type")
                             ]),
 
+                    CorrectnessError::DuplicateTypeInUnion(s1, s2, t) =>
+                        diagnostic = diagnostic
+                            .with_message("Duplicate type in union type declaration")
+                            .with_labels(vec![
+                                Label::secondary(file_id, s1)
+                                .with_message("Type used here first"),
+                                Label::primary(file_id, s2)
+                                .with_message(format!("Type `{}` used a second time here", t))
+                            ]),
+
                     CorrectnessError::UnknownFunctionReturnType(s, v) =>
                         diagnostic = diagnostic
                             .with_message("Could not determine the return type of the function")
