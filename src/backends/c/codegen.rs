@@ -36,6 +36,8 @@ impl CType
         }
     }
 
+    // get_curly_type(&self) -> &Type
+    // Returns the Curly IR type.
     fn get_curly_type(&self) -> &Type
     {
         match self
@@ -1614,6 +1616,17 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                             }
                             iter.remove(field_ref);
                             continue;
+                        }
+
+                        Type::Tag(_, t) => {
+                            match &**t
+                            {
+                                Type::Int => types_string.push_str("        int_t"),
+                                Type::Float => types_string.push_str("        float_t"),
+                                Type::Bool => types_string.push_str("        char"),
+                                Type::Func(_, _) => types_string.push_str("        func_t"),
+                                _ => panic!("unsupported type!")
+                            }
                         }
 
                         _ => panic!("unsupported type!")

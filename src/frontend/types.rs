@@ -207,7 +207,7 @@ impl Type
                     s == s2 && t2.is_subtype(t, types)
                 } else
                 {
-                    _type.is_subtype(t, types)
+                    false
                 }
             }
 

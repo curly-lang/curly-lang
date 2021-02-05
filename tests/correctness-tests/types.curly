@@ -25,7 +25,10 @@
 # z1: Comp = {r = 1.0, theta = 2.0}
 # z2: Comp = {1.0, 2.0}
 
-Tree = type T => leaf: T | branch: (Tree T * Tree T)
+type Option 'a = Some: 'a | enum None
+type Result 'v 'e = Ok: 'v | Err: 'e
+
+type Tree 'a = leaf: 'a | branch: (Tree 'a * Tree 'a)
 # t1: Tree Bool = {
 #	branch = {
 #		leaf = true, leaf = false
