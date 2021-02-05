@@ -290,6 +290,10 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             tailrec: false
         }, s),
 
+        AST::Annotation(_, _) => {
+            unreachable!("unhandled annotation!");
+        }
+
         // String
         AST::String(span, s) => SExpr::String(SExprMetadata {
             span,
@@ -646,7 +650,64 @@ pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
     seen_funcs.insert(String::with_capacity(0), 0);
     for ast in asts
     {
-        ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs, &mut ir.types));
+        if let AST::Annotation(span, a) = ast
+        {
+            if a == "@debug"
+            {
+                let last = ir.sexprs.pop().unwrap();
+                let called = if let SExpr::Assign(_, v, _) = &last
+                {
+                    let v = v.clone();
+                    ir.sexprs.push(last);
+                    SExpr::Application(SExprMetadata {
+                        span: span.clone(),
+                        span2: Span { start: 0, end: 0 },
+                        _type: Type::Error,
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false
+                    }, Box::new(SExpr::Symbol(SExprMetadata {
+                        span: span.clone(),
+                        span2: Span { start: 0, end: 0 },
+                        _type: Type::Error,
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false
+                    }, String::from("debug"))), Box::new(SExpr::Symbol(SExprMetadata {
+                        span: span.clone(),
+                        span2: Span { start: 0, end: 0 },
+                        _type: Type::Error,
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false
+                    }, v)))
+                } else
+                {
+                    SExpr::Application(SExprMetadata {
+                        span: span.clone(),
+                        span2: Span { start: 0, end: 0 },
+                        _type: Type::Error,
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false
+                    }, Box::new(SExpr::Symbol(SExprMetadata {
+                        span: span.clone(),
+                        span2: Span { start: 0, end: 0 },
+                        _type: Type::Error,
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false
+                    }, String::from("debug"))), Box::new(last))
+                };
+                ir.sexprs.push(called);
+            } else
+            {
+                panic!("unsupported annotation!");
+            }
+        } else
+        {
+            ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs, &mut ir.types));
+        }
     }
 }
 

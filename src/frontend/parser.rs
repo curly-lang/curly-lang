@@ -96,6 +96,10 @@ pub enum Token
     #[regex(r"[$a-zA-Z_][a-zA-Z0-9_']*")]
     Symbol,
 
+    // Annotations
+    #[regex(r"@[a-z_]+")]
+    Annotation,
+
     // Strings
     #[regex(r#""([^\\"]|\\.)*""#)]
     String,
@@ -307,6 +311,9 @@ pub enum AST
     // Symbol (variables and stuff)
     Symbol(Span, String),
 
+    // Annotations (@debug, @pure, @impure, @memoize, etc)
+    Annotation(Span, String),
+
     // Lists
     List(Span, Vec<AST>),
 
@@ -360,6 +367,7 @@ impl AST
                 | Self::String(s, _)
                 | Self::List(s, _)
                 | Self::Symbol(s, _)
+                | Self::Annotation(s, _)
                 | Self::Application(s, _, _)
                 | Self::Prefix(s, _, _)
                 | Self::Infix(s, _, _, _)
@@ -1031,6 +1039,15 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// annotation(&mut Parser) -> Result<AST, ParseError>
+// Parses an annotation.
+fn annotation(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let (annotation, span) = consume_save!(parser, Annotation, state, false, false, "");
+    Ok(AST::Annotation(span, annotation))
+}
+
 // assignment_raw(&mut Parser) -> Result<AST, ParseError>
 // Parses an assignment without any types or arguments.
 fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
@@ -1427,7 +1444,10 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
     {
         // Parse one line
         let p = &mut parser;
-        if let Ok(assign) = call_optional!(assignment, p)
+        if let Ok(annotation) = call_optional!(annotation, p)
+        {
+            lines.push(annotation);
+        } else if let Ok(assign) = call_optional!(assignment, p)
         {
             lines.push(assign);
         } else if let Ok(_type) = call_optional!(type_assignment, p)

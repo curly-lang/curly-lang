@@ -366,6 +366,9 @@ impl CurlyREPLHelper
                 Symbol =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().cyan())),
 
+                Annotation =>
+                    new_line.push_str(&format!("{}", line[t.1].to_owned().blue())),
+
                 With
                     | For
                     | Some
