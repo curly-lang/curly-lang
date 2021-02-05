@@ -1,9 +1,16 @@
 # List of things to do
 ## Bug fixes and features for 0.2.1
-- Real sum types (not union types) (this means making the `a: Int` syntax work and making `Int | Int` error instead of reduce)
+- Real sum types (not union types) (this means making the `a: Int` syntax work)
 - Improved debug function that outputs line number and the call to debug
-- `--debug-lines` flag that takes in a comma separated list and inserts `debug`s after them
-- New syntax for match expressions
+- `@debug` annotation that calls debug on the last value
+- New syntax for match expressions, specifically:
+```
+match 2: Int | Float | Bool | (Int -> Int)
+to i: Int => debug i
+to Float => 0 # $ is no longer valid
+# implement this when generics are a thing:
+to o: '_ => debug o
+```
 
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
@@ -33,6 +40,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Function composition operator
 - Iterators
 - For loops
+- Memoization with `@memoize`
 
 ## Things in the far future
 These things are goals that will take months, if not years, to even start due to either their complexity or dependencies.
