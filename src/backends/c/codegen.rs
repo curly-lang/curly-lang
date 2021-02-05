@@ -1849,6 +1849,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     let mut code_string = format!("
 typedef {} int_t;
 typedef {} float_t;
+typedef {} size_t;
 ",
     match ptr_size
     {
@@ -1860,6 +1861,12 @@ typedef {} float_t;
     {
         4 => "float",
         8 => "double",
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    },
+    match ptr_size
+    {
+        4 => "unsigned int",
+        8 => "unsigned long",
         _ => panic!("unsupported architecture with pointer size {}", ptr_size)
     });
     code_string.push_str("
@@ -1880,9 +1887,9 @@ typedef union {
 
 int printf(const char*, ...);
 
-void* calloc(long unsigned int, long unsigned int);
+void* calloc(size_t, size_t);
 
-void* malloc(long unsigned int);
+void* malloc(size_t);
 
 void free(void*);
 
