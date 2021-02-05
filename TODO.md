@@ -1,7 +1,6 @@
 # List of things to do
 ## Bug fixes and features for 0.2.1
 - Real sum types (not union types) (this means making the `a: Int` syntax work)
-- Improved debug function that outputs line number and the call to debug
 - `@debug` annotation that calls debug on the last value
 
 ## Third official release
@@ -11,6 +10,8 @@ These things are features and fixes I'd like to get completed for the third majo
 - Bindings with C
 - Tagged system for side effects
 - Fix memory leaks
+- Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
+- Remove hacky `putch` function and replace it with an actual C function
 - See github issues
 
 ## Fourth official release:
