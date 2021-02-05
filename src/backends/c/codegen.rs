@@ -1247,6 +1247,15 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             for a in a.iter()
             {
                 let mut _type = &a.0;
+                let varname = if let Type::Tag(s, t) = _type
+                {
+                    _type = &**t;
+                    Some(sanitise_symbol(s))
+                } else
+                {
+                    None
+                };
+
                 while let Type::Symbol(s) = _type
                 {
                     _type = root.types.get(s).unwrap();
@@ -1264,7 +1273,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
                     func.code.push_str("{\n");
                     func.code.push_str(subtype.get_c_name());
-                    func.code.push_str(" $$;\nswitch (");
+                    func.code.push_str(" $$MATCHTEMP$$;\nswitch (");
                     func.code.push_str(&value);
                     func.code.push_str(".tag) {\n");
 
@@ -1272,9 +1281,9 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     {
                         func.code.push_str("case ");
                         func.code.push_str(&format!("{}:\n", map.get(s.0).unwrap()));
-                        func.code.push_str("$$.tag = ");
+                        func.code.push_str("$$MATCHTEMP$$.tag = ");
                         func.code.push_str(&format!("{};\n", s.1));
-                        func.code.push_str("$$.values.$$");
+                        func.code.push_str("$$MATCHTEMP$$.values.$$");
                         func.code.push_str(&format!("{}", s.1));
                         func.code.push_str(" = ");
                         func.code.push_str(&value);
@@ -1283,7 +1292,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                         func.code.push_str(";\nbreak;\n");
                     }
                     func.code.push_str("}\n");
-                    if let SExpr::Symbol(_, s) = &**v
+                    if let Some(s) = &varname
                     {
                         func.code.push_str(subtype.get_c_name());
                         func.code.push(' ');
@@ -1300,24 +1309,21 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     let id = map.get(_type).unwrap();
                     func.code.push_str("case ");
                     func.code.push_str(&format!("{}: {{\n", id));
-                    func.code.push_str(get_c_type(&a.0, types));
+
+                    func.code.push_str(get_c_type(_type, types));
                     func.code.push_str(" $$MATCHTEMP$$ = ");
-                    let name = if let SExpr::Symbol(_, s) = &**v
-                    {
-                        s
-                    } else
-                    {
-                        "$"
-                    };
-                    let name = &sanitise_symbol(name);
                     func.code.push_str(&value);
                     func.code.push_str(".values.$$");
                     func.code.push_str(&format!("{}", id));
                     func.code.push_str(";\n");
-                    func.code.push_str(get_c_type(&a.0, types));
-                    func.code.push(' ');
-                    func.code.push_str(name);
-                    func.code.push_str(" = $$MATCHTEMP$$;\n");
+
+                    if let Some(s) = &varname
+                    {
+                        func.code.push_str(get_c_type(_type, types));
+                        func.code.push(' ');
+                        func.code.push_str(s);
+                        func.code.push_str(" = $$MATCHTEMP$$;\n");
+                    }
                 }
 
                 let arm = convert_sexpr(&a.1, root, func, types);

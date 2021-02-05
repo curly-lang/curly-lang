@@ -3,14 +3,6 @@
 - Real sum types (not union types) (this means making the `a: Int` syntax work)
 - Improved debug function that outputs line number and the call to debug
 - `@debug` annotation that calls debug on the last value
-- New syntax for match expressions, specifically:
-```
-match 2: Int | Float | Bool | (Int -> Int)
-to i: Int => debug i
-to Float => 0 # $ is no longer valid
-# implement this when generics are a thing:
-to o: '_ => debug o
-```
 
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.

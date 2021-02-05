@@ -514,20 +514,21 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 return;
             }
 
-            // Get name of symbol
-            let name = if let SExpr::Symbol(_, s) = &**value
-            {
-                s
-            } else
-            {
-                "$"
-            };
-
             // Check match arms
             root.scope.push_scope(false);
             let mut set = Vec::with_capacity(0);
             for arm in arms.iter_mut()
             {
+                // Get name of symbol
+                let (name, atype) = if let Type::Tag(s, t) = &arm.0
+                {
+                    root.scope.put_var(s, t, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    (Some(s), &**t)
+                } else
+                {
+                    (None, &arm.0)
+                };
+
                 if let Type::UndeclaredTypeError(s) = &arm.0
                 {
                     errors.push(CorrectnessError::InvalidType(
@@ -538,7 +539,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
 
                 // Nonsubtypes are errors
-                if !arm.0.is_subtype(&_type, &root.types)
+                if !atype.is_subtype(&_type, &root.types)
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().span.clone(),
@@ -551,26 +552,29 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
 
                 // Check body of match arm
-                if let Type::Enum(_) = arm.0
-                {
-                } else
-                {
-                    root.scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
-                }
                 check_sexpr(&mut arm.1, root, errors);
 
+                // Remove variable
+                if let Some(s) = name
+                {
+                    root.scope.variables.remove(s);
+                }
+
+                // Check for error
                 if arm.1.get_metadata()._type == Type::Error
                 {
                     set.push(Type::Error);
                     continue;
                 }
 
+                // Unwrap symbol
                 let mut _type = arm.1.get_metadata()._type.clone();
                 while let Type::Symbol(s) = _type
                 {
                     _type = root.types.get(&s).unwrap().clone();
                 }
 
+                // Add types
                 if let Type::Sum(v) = _type
                 {
                     for v in v.0
@@ -962,24 +966,28 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             bt
         }
 
-        SExpr::Match(_, value, arms) => {
-            // Get name of symbol
-            let name = if let SExpr::Symbol(_, s) = &**value
-            {
-                s
-            } else
-            {
-                "$"
-            };
-
+        SExpr::Match(_, _, arms) => {
             // Check match arms
             scope.push_scope(false);
             let mut set = Vec::with_capacity(0);
             for arm in arms.iter()
             {
                 // Check body of match arm
-                scope.put_var(name, &arm.0, 0, None, arm.1.get_metadata().span2.clone(), true);
+                let name = if let Type::Tag(s, t) = &arm.0
+                {
+                    scope.put_var(s, t, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    Some(s)
+                } else
+                {
+                    None
+                };
+
                 let mut _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names, types);
+
+                if let Some(s) = name
+                {
+                    scope.variables.remove(s);
+                }
 
                 if _type == Type::Unknown
                 {
@@ -1265,9 +1273,17 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
             save_types(v, types, id);
             for a in a
             {
-                if let Type::Sum(_) = a.0
+                let _type = if let Type::Tag(_, t) = &a.0
                 {
-                    save_single_type(id, &a.0, types);
+                    t
+                } else
+                {
+                    &a.0
+                };
+
+                if let Type::Sum(_) = _type
+                {
+                    save_single_type(id, _type, types);
                 }
                 save_types(&a.1, types, id);
             }
