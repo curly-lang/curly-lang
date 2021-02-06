@@ -339,9 +339,16 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
         }
 
         AST::Infix(_, op, l, r) if op == ":" => {
+            let s = r.get_span().clone();
             let r = convert_ast_to_type(*r, types);
 
             if let Type::UndeclaredTypeError(s) = r
+            {
+                Type::UndeclaredTypeError(s)
+            } else if let Type::DuplicateTypeError(a, b, c) = r
+            {
+                Type::DuplicateTypeError(a, b, c)
+            } else if let Type::Enum(_) = r
             {
                 Type::UndeclaredTypeError(s)
             } else if let AST::Symbol(_, s) = *l
