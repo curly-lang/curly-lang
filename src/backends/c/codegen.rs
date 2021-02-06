@@ -162,103 +162,115 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             func.last_reference += 1;
 
             // Generate code
-            let f = root.funcs.get(s).unwrap();
-            let s = sanitise_symbol(s);
-            func.code.push_str("func_t ");
-            func.code.push_str(&name);
-            func.code.push_str(" = { 0, (void*) ");
-            func.code.push_str(&s);
-            func.code.push_str("$FUNC$$, (void*) ");
-            func.code.push_str(&s);
-            func.code.push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
-            func.code.push_str(", 0, ");
-            if f.captured.len() > 0
+            if let Some(f) = root.funcs.get(s)
             {
-                let count = f.args.len() + f.captured.len();
-                func.code.push_str("calloc(");
-                func.code.push_str(&format!("{}", count));
-                func.code.push_str(", sizeof(void*)), calloc(");
-                func.code.push_str(&format!("{}", count));
-                func.code.push_str(", sizeof(void*)) };\n");
-            } else
-            {
-                func.code.push_str("(void*) 0, (void*) 0 };\n");
-            }
-
-            // Save captured variables
-            for c in f.captured_names.iter()
-            {
-                // Get type
-                let mut v = sanitise_symbol(c);
-                let mut _type = f.captured.get(c).unwrap();
-                while let Type::Symbol(s) = _type
+                let s = sanitise_symbol(s);
+                func.code.push_str("func_t ");
+                func.code.push_str(&name);
+                func.code.push_str(" = { 0, (void*) ");
+                func.code.push_str(&s);
+                func.code.push_str("$FUNC$$, (void*) ");
+                func.code.push_str(&s);
+                func.code.push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
+                func.code.push_str(", 0, ");
+                if f.captured.len() > 0
                 {
-                    _type = root.types.get(s).unwrap();
+                    let count = f.args.len() + f.captured.len();
+                    func.code.push_str("calloc(");
+                    func.code.push_str(&format!("{}", count));
+                    func.code.push_str(", sizeof(void*)), calloc(");
+                    func.code.push_str(&format!("{}", count));
+                    func.code.push_str(", sizeof(void*)) };\n");
+                } else
+                {
+                    func.code.push_str("(void*) 0, (void*) 0 };\n");
                 }
 
-                // Fix functions, floats, and sum types
-                match _type
+                // Save captured variables
+                for c in f.captured_names.iter()
                 {
-                    Type::Float => {
-                        let name = format!("$${}", func.last_reference);
-                        func.last_reference += 1;
-                        func.code.push_str("double_wrapper_t ");
-                        func.code.push_str(&name);
-                        func.code.push_str(";\n");
-                        func.code.push_str(&name);
-                        func.code.push_str(".d = ");
-                        func.code.push_str(&v);
-                        func.code.push_str(";\nvoid* ");
-                        v = format!("$${}", func.last_reference);
-                        func.last_reference += 1;
-                        func.code.push_str(&v);
-                        func.code.push_str(" = ");
-                        func.code.push_str(&name);
-                        func.code.push_str(".v;\n");
+                    // Get type
+                    let mut v = sanitise_symbol(c);
+                    let mut _type = f.captured.get(c).unwrap();
+                    while let Type::Symbol(s) = _type
+                    {
+                        _type = root.types.get(s).unwrap();
                     }
 
-                    Type::Func(_, _) => {
-                        v = {
+                    // Fix functions, floats, and sum types
+                    match _type
+                    {
+                        Type::Float => {
                             let name = format!("$${}", func.last_reference);
                             func.last_reference += 1;
-                            func.code.push_str("func_t* ");
+                            func.code.push_str("double_wrapper_t ");
                             func.code.push_str(&name);
-                            func.code.push_str(" = copy_func_arg(&");
+                            func.code.push_str(";\n");
+                            func.code.push_str(&name);
+                            func.code.push_str(".d = ");
                             func.code.push_str(&v);
-                            func.code.push_str(");\n");
-                            name
-                        };
-                        func.code.push_str(&name);
-                        func.code.push_str(".args[");
-                        func.code.push_str(&name);
-                        func.code.push_str(".argc] = (void*) force_free_func;\n");
+                            func.code.push_str(";\nvoid* ");
+                            v = format!("$${}", func.last_reference);
+                            func.last_reference += 1;
+                            func.code.push_str(&v);
+                            func.code.push_str(" = ");
+                            func.code.push_str(&name);
+                            func.code.push_str(".v;\n");
+                        }
+
+                        Type::Func(_, _) => {
+                            v = {
+                                let name = format!("$${}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str("func_t* ");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = copy_func_arg(&");
+                                func.code.push_str(&v);
+                                func.code.push_str(");\n");
+                                name
+                            };
+                            func.code.push_str(&name);
+                            func.code.push_str(".args[");
+                            func.code.push_str(&name);
+                            func.code.push_str(".argc] = (void*) force_free_func;\n");
+                        }
+
+                        Type::Sum(_) => {
+                            let name = format!("$${}", func.last_reference);
+                            func.last_reference += 1;
+                            func.code.push_str(get_c_type(&_type, types));
+                            func.code.push_str("* ");
+                            func.code.push_str(&name);
+                            func.code.push_str(" = malloc(sizeof(");
+                            func.code.push_str(get_c_type(&_type, types));
+                            func.code.push_str("));\n*");
+                            func.code.push_str(&name);
+                            func.code.push_str(" = ");
+                            func.code.push_str(&v);
+                            func.code.push_str(";\n");
+                            v = name;
+                        }
+
+                        _ => ()
                     }
 
-                    Type::Sum(_) => {
-                        let name = format!("$${}", func.last_reference);
-                        func.last_reference += 1;
-                        func.code.push_str(get_c_type(&_type, types));
-                        func.code.push_str("* ");
-                        func.code.push_str(&name);
-                        func.code.push_str(" = malloc(sizeof(");
-                        func.code.push_str(get_c_type(&_type, types));
-                        func.code.push_str("));\n*");
-                        func.code.push_str(&name);
-                        func.code.push_str(" = ");
-                        func.code.push_str(&v);
-                        func.code.push_str(";\n");
-                        v = name;
-                    }
-
-                    _ => ()
+                    func.code.push_str(&name);
+                    func.code.push_str(".args[");
+                    func.code.push_str(&name);
+                    func.code.push_str(".argc++] = (void*) ");
+                    func.code.push_str(&v);
+                    func.code.push_str(";\n");
                 }
-
+            } else
+            {
+                let s = sanitise_symbol(s);
+                func.code.push_str("func_t ");
                 func.code.push_str(&name);
-                func.code.push_str(".args[");
-                func.code.push_str(&name);
-                func.code.push_str(".argc++] = (void*) ");
-                func.code.push_str(&v);
-                func.code.push_str(";\n");
+                func.code.push_str(" = { 0, (void*) ");
+                func.code.push_str(&s);
+                func.code.push_str("$FUNC$$, (void*) ");
+                func.code.push_str(&s);
+                func.code.push_str("$WRAPPER$$, 1, 0, (void*) 0, (void*) 0 };\n");
             }
 
             name

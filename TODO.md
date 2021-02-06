@@ -1,7 +1,4 @@
 # List of things to do
-## Bug fixes and features for 0.2.1
-- Real sum types (not union types) (this means making the `a: Int` syntax work)
-
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
 - Standard library
