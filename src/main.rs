@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use libloading::{Library, Symbol};
 use logos::{Lexer, Span};
 
@@ -126,23 +126,22 @@ fn main() -> Result<(), ()>
                 let mut ir = IR::new();
                 let c = compile(&options.input, &contents, &mut ir, None)?;
 
-                let mut echo = Command::new("echo")
-                        .arg(&c)
-                        .stdout(Stdio::piped())
-                        .spawn()
-                        .expect("Failed to execute echo");
-                echo.wait().expect("Failed to wait for echo");
+                match fs::write(".curly_temp_0.c", &c)
+                {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("error writing file: {}", e);
+                        return Err(());
+                    }
+                }
 
                 match options.compiler
                 {
                     CBackendCompiler::GCC => {
                         Command::new("gcc")
-                                .arg("-x")
-                                .arg("c")
                                 .arg("-o")
                                 .arg(&options.output)
-                                .arg("-")
-                                .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+                                .arg(".curly_temp_0.c")
                                 .spawn()
                                 .expect("Failed to execute gcc")
                                 .wait()
@@ -152,16 +151,22 @@ fn main() -> Result<(), ()>
 
                     CBackendCompiler::Clang => {
                         Command::new("clang")
-                                .arg("-x")
-                                .arg("c")
                                 .arg("-o")
                                 .arg(&options.output)
-                                .arg("-")
-                                .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+                                .arg(".curly_temp_0.c")
                                 .spawn()
                                 .expect("Failed to execute clang")
                                 .wait()
                                 .expect("Failed to wait for clang");
+                    }
+                }
+
+                match fs::remove_file(".curly_temp_0.c")
+                {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("error deleting file: {}", e);
+                        return Err(());
                     }
                 }
             }
@@ -777,23 +782,23 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
     };
 
     // Compile the C code
-    let mut echo = Command::new("echo")
-                    .arg(&c)
-                    .stdout(Stdio::piped())
-                    .spawn()
-                    .expect("Failed to execute echo");
-    echo.wait().expect("Failed to wait for echo");
-
+    let c_file = format!("./.curly_temp_{}.c", n);
     let so_file = format!("./.curly_temp_{}.so", n);
+    match fs::write(&c_file, c)
+    {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("Error writing temporary file: {}", e);
+            return None;
+        }
+    }
+
     Command::new("clang")
         .arg("-shared")
         .arg("-fPIC")
         .arg("-o")
         .arg(&so_file)
-        .arg("-x")
-        .arg("c")
-        .arg("-")
-        .stdin(Stdio::from(echo.stdout.expect("Failed to get stdout")))
+        .arg(&c_file)
         .spawn()
         .expect("Failed to execute clang")
         .wait()
@@ -882,7 +887,8 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
     }
 
     // Remove .curly_repl_temp.so
-    std::fs::remove_file(&so_file).expect("unable to remove temporary file");
+    fs::remove_file(&c_file).expect("unable to remove temporary file");
+    fs::remove_file(&so_file).expect("unable to remove temporary file");
 
     Some(lib)
 }
