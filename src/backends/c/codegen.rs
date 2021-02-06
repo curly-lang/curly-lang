@@ -1816,35 +1816,96 @@ fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &
                     if let Type::Tag(fname, t2) = v
                     {
                         let sanitised = sanitise_symbol(&format!("{}::{}", tname, fname));
-                        let name = format!("{}$FUNC$$", sanitised);
+                        let aname = String::from("arg");
+                        let cf = CFunction {
+                            name: sanitised,
+                            args: vec![(&aname, &**t2)],
+                            ret_type: t.0,
+                            code: String::with_capacity(0),
+                            last_reference: 0
+                        };
+                        put_fn_declaration(types_string, &cf, types);
+                        let mut last_reference = 0;
 
                         // Build function
-                        types_string.push_str(get_c_type(t.0, types));
-                        types_string.push(' ');
-                        types_string.push_str(&name);
-                        types_string.push('(');
-                        types_string.push_str(get_c_type(&**t2, types));
-                        types_string.push_str(" arg) {\n");
+                        types_string.push_str(" {\n");
+                        fix_argument(&(&aname, &**t2), ir, types_string, types, &mut last_reference);
                         types_string.push_str(get_c_type(t.0, types));
                         types_string.push_str(" result;\nresult.tag = ");
                         let id = *types.get(t.0).unwrap().get_hashmap().unwrap().get(v).unwrap();
                         types_string.push_str(&format!("{}", id));
                         types_string.push_str(";\nresult.values.$$");
                         types_string.push_str(&format!("{}", id));
-                        types_string.push_str(" = arg;\nreturn result;\n}\n");
+                        types_string.push_str(" = arg$;\nreturn result;\n}\n");
 
                         // Build wrapper
-                        put_fn_wrapper(types_string, &CFunction {
-                            name: sanitised,
-                            args: vec![(&String::with_capacity(0), &**t2)],
-                            ret_type: t.0,
-                            code: String::with_capacity(0),
-                            last_reference: 0
-                        }, types)
+                        put_fn_wrapper(types_string, &cf, types)
                     }
                 }
             }
         }
+    }
+}
+
+// fix_argument(&(String, &Type), &IR, &mut String, &HashMap<Type, CType>, &mut usize) -> ()
+// Fixes an argument where necessary.
+fn fix_argument(a: &(&String, &Type), ir: &IR, code: &mut String, types: &HashMap<Type, CType>, last_reference: &mut usize)
+{
+    let mut _type = a.1;
+    while let Type::Symbol(s) = _type
+    {
+        _type = ir.types.get(s).unwrap();
+    }
+
+    match _type
+    {
+        Type::Float => {
+            // Get name
+            let name = format!("$${}", last_reference);
+            *last_reference += 1;
+            let arg_name = sanitise_symbol(&a.0);
+
+            // Convert pointer to double
+            code.push_str("double_wrapper_t ");
+            code.push_str(&name);
+            code.push_str(";\n");
+            code.push_str(&name);
+            code.push_str(".v = $$");
+            code.push_str(&arg_name);
+            code.push_str(";\nfloat_t ");
+            code.push_str(&arg_name);
+            code.push_str(" = ");
+            code.push_str(&name);
+            code.push_str(".d;\n");
+        }
+
+        Type::Func(_, _) => {
+            // Copy
+            let arg_name = sanitise_symbol(&a.0);
+            code.push_str("func_t ");
+            code.push_str(&arg_name);
+            code.push_str(";\ncopy_func(&");
+            code.push_str(&arg_name);
+            code.push_str(", $$");
+            code.push_str(&arg_name);
+            code.push_str(");\n");
+            code.push_str(&arg_name);
+            code.push_str(".refc++;\n");
+        }
+
+        Type::Sum(_) => {
+            // Copy
+            let arg_name = sanitise_symbol(&a.0);
+            let type_name = types.get(&a.1).unwrap().get_c_name();
+            code.push_str(type_name);
+            code.push(' ');
+            code.push_str(&arg_name);
+            code.push_str(" = *$$");
+            code.push_str(&arg_name);
+            code.push_str(";\n");
+        }
+
+        _ => ()
     }
 }
 
@@ -1873,62 +1934,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         // Fix doubles and functions
         for a in cf.args.iter()
         {
-            let mut _type = a.1;
-            while let Type::Symbol(s) = _type
-            {
-                _type = ir.types.get(s).unwrap();
-            }
-
-            match _type
-            {
-                Type::Float => {
-                    // Get name
-                    let name = format!("$${}", cf.last_reference);
-                    cf.last_reference += 1;
-                    let arg_name = sanitise_symbol(&a.0);
-
-                    // Convert pointer to double
-                    cf.code.push_str("double_wrapper_t ");
-                    cf.code.push_str(&name);
-                    cf.code.push_str(";\n");
-                    cf.code.push_str(&name);
-                    cf.code.push_str(".v = $$");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(";\nfloat_t ");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(" = ");
-                    cf.code.push_str(&name);
-                    cf.code.push_str(".d;\n");
-                }
-
-                Type::Func(_, _) => {
-                    // Copy
-                    let arg_name = sanitise_symbol(&a.0);
-                    cf.code.push_str("func_t ");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(";\ncopy_func(&");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(", $$");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(");\n");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(".refc++;\n");
-                }
-
-                Type::Sum(_) => {
-                    // Copy
-                    let arg_name = sanitise_symbol(&a.0);
-                    let type_name = types.get(&a.1).unwrap().get_c_name();
-                    cf.code.push_str(type_name);
-                    cf.code.push(' ');
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(" = *$$");
-                    cf.code.push_str(&arg_name);
-                    cf.code.push_str(";\n");
-                }
-
-                _ => ()
-            }
+            fix_argument(a, ir, &mut cf.code, &types, &mut cf.last_reference);
         }
 
         if f.1.body.get_metadata().tailrec

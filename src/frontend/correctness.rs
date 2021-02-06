@@ -1058,10 +1058,59 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                         {
                             t.clone()
                         }
+                    } else if let Some(v) = f.0.iter().filter(|v| if let Type::Tag(t, _) = v { t == &a[1] } else { false }).next()
+                    {
+                        if a.len() != 2
+                        {
+                            Type::Unknown
+                        } else if let Type::Tag(_, t2) = v
+                        {
+                            Type::Func(t2.clone(), Box::new(t.clone()))
+                        } else
+                        {
+                            unreachable!("always a tag type");
+                        }
                     } else
                     {
                         Type::Unknown
                     }
+
+
+
+                    /*
+                     *
+                     *                    } else if let Some(v) = f.0.iter().filter(|v| if let Type::Tag(t, _) = v { t == &a[1] } else { false }).next()
+                    {
+                        if a.len() != 2
+                        {
+                            errors.push(CorrectnessError::NonmemberAccess(
+                                m.span.clone(),
+                                format!("{}::{}", a[0], a[1]),
+                                a[2].clone()
+                            ));
+                        } else if let Type::Tag(_, t) = v
+                        {
+                            let mut temp = SExprMetadata {
+                                span: Span { start: 0, end: 0 },
+                                span2: Span { start: 0, end: 0 },
+                                _type: Type::Error,
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false
+                            };
+
+                            swap(&mut temp, m);
+                            temp.arity = 1;
+                            temp.saved_argc = Some(0);
+                            temp._type = Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
+
+                            *sexpr = SExpr::Function(temp, a.join("::").to_string());
+                        }
+
+                     *
+                     *
+                     *
+                     * */
                 } else
                 {
                     Type::Unknown
