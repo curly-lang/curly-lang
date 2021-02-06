@@ -80,7 +80,7 @@ fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 // Sanitises a symbol.
 fn sanitise_symbol(value: &str) -> String
 {
-    let mut s = value.replace("'", "$$PRIME$$");
+    let mut s = value.replace("'", "$$PRIME$$").replace("::", "$$DOUBLECOLON$$");
     s.push_str("$");
     s
 }
@@ -1396,14 +1396,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
     }
 }
 
-// put_fn_wrapper(&mut String, &str, &CFunction) -> ()
+// put_fn_wrapper(&mut String, &CFunction) -> ()
 // Puts the wrapper for a given function in the built string.
-fn put_fn_wrapper(s: &mut String, name: &str, func: &CFunction, types: &HashMap<Type, CType>)
+fn put_fn_wrapper(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>)
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
-    s.push_str(&name);
-    s.push_str("$$WRAPPER$$");
+    s.push_str(&func.name);
+    s.push_str("$WRAPPER$$");
     s.push_str("(func_t* f) {\nreturn ((");
     s.push_str(get_c_type(func.ret_type, types));
     s.push_str(" (*) (");
@@ -1550,6 +1550,14 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
             code.push_str("\");\n");
         }
 
+        Type::Tag(s, t) => {
+            code.push_str("printf(\"{ ");
+            code.push_str(s);
+            code.push_str(" = \");\n");
+            put_debug_fn(code, v, t, ir, types, false);
+            code.push_str("printf(\" }\");\n");
+        }
+
         _ => panic!("uwu")
     }
 
@@ -1677,6 +1685,64 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
     }
 }
 
+// collect_type_functions(&IR, &HashMap<Type, CType>, &mut String) -> ()
+// Collect type functions (ie, in type Option 'a = Some: 'a | enum None, Option::Some is a type
+// function).
+fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &mut String)
+{
+    for t in types
+    {
+        // Find symbols
+        if let Type::Symbol(tname) = t.0
+        {
+            // Get type
+            let mut t = t;
+            while let Type::Symbol(s) = t.0
+            {
+                t.0 = ir.types.get(s).unwrap();
+            }
+
+            // Find sum types
+            if let Type::Sum(f) = t.0
+            {
+                for v in f.0.iter()
+                {
+                    // Find tags
+                    if let Type::Tag(fname, t2) = v
+                    {
+                        let sanitised = sanitise_symbol(&format!("{}::{}", tname, fname));
+                        let name = format!("{}$FUNC$$", sanitised);
+
+                        // Build function
+                        types_string.push_str(get_c_type(t.0, types));
+                        types_string.push(' ');
+                        types_string.push_str(&name);
+                        types_string.push('(');
+                        types_string.push_str(get_c_type(&**t2, types));
+                        types_string.push_str(" arg) {\n");
+                        types_string.push_str(get_c_type(t.0, types));
+                        types_string.push_str(" result;\nresult.tag = ");
+                        let id = *types.get(t.0).unwrap().get_hashmap().unwrap().get(v).unwrap();
+                        types_string.push_str(&format!("{}", id));
+                        types_string.push_str(";\nresult.values.$$");
+                        types_string.push_str(&format!("{}", id));
+                        types_string.push_str(" = arg;\nreturn result;\n}\n");
+
+                        // Build wrapper
+                        put_fn_wrapper(types_string, &CFunction {
+                            name: sanitised,
+                            args: vec![(&String::with_capacity(0), &**t2)],
+                            ret_type: t.0,
+                            code: String::with_capacity(0),
+                            last_reference: 0
+                        }, types)
+                    }
+                }
+            }
+        }
+    }
+}
+
 // convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
 // Converts Curly IR to C code.
 pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
@@ -1685,6 +1751,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     let mut types = HashMap::new();
     let mut types_string = String::with_capacity(0);
     collect_types(ir, &mut types, &mut types_string);
+    collect_type_functions(ir, &types, &mut types_string);
 
     // Create and populate functions
     let mut funcs = HashMap::new();
@@ -1992,7 +2059,7 @@ typedef struct {
     {
         put_fn_declaration(&mut code_string, &f.1, &types);
         code_string.push_str(";\n");
-        put_fn_wrapper(&mut code_string, f.0, &f.1, &types);
+        put_fn_wrapper(&mut code_string, &f.1, &types);
     }
 
     // Put all function definitions

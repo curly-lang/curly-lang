@@ -630,7 +630,21 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                             ));
                         } else if let Type::Tag(_, t) = v
                         {
-                            m._type = Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
+                            let mut temp = SExprMetadata {
+                                span: Span { start: 0, end: 0 },
+                                span2: Span { start: 0, end: 0 },
+                                _type: Type::Error,
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false
+                            };
+
+                            swap(&mut temp, m);
+                            temp.arity = 1;
+                            temp.saved_argc = Some(0);
+                            temp._type = Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
+
+                            *sexpr = SExpr::Function(temp, a.join("::").to_string());
                         }
                     } else
                     {
