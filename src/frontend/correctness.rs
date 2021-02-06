@@ -522,7 +522,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Get name of symbol
                 let (name, atype) = if let Type::Tag(s, t) = &arm.0
                 {
-                    root.scope.put_var(s, t, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    let vtype = if let Type::Tag(_, t) = &**t
+                    {
+                        t
+                    } else
+                    {
+                        t
+                    };
+                    root.scope.put_var(s, vtype, 0, None, arm.1.get_metadata().span2.clone(), true);
                     (Some(s), &**t)
                 } else
                 {

@@ -482,6 +482,38 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                 func.code.push_str(&name);
                 func.code.push_str(" = ");
                 func.code.push_str(&body);
+            } else if let Type::Sum(_) = btype
+            {
+                let map = types.get(mtype).unwrap().get_hashmap().unwrap();
+                let subtype = types.get(btype).unwrap();
+                let submap = subtype.get_hashmap().unwrap();
+                func.code.push_str("switch (");
+                func.code.push_str(&body);
+                func.code.push_str(".tag) {\n");
+
+                for s in submap
+                {
+                    func.code.push_str("case ");
+                    func.code.push_str(&format!("{}:\n", s.1));
+                    func.code.push_str(&name);
+                    func.code.push_str(".tag = ");
+                    func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+
+                    if let Type::Enum(_) = s.0
+                    {
+                    } else
+                    {
+                        func.code.push_str(&name);
+                        func.code.push_str(".values.$$");
+                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                        func.code.push_str(" = ");
+                        func.code.push_str(&body);
+                        func.code.push_str(".values.$$");
+                        func.code.push_str(&format!("{};\n", s.1));
+                    }
+                    func.code.push_str("break;\n");
+                }
+                func.code.push_str("}\n");
             } else
             {
                 let id = types.get(mtype).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
@@ -522,14 +554,20 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
                     func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
-                    func.code.push_str(&name);
-                    func.code.push_str(".values.$$");
-                    func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
-                    func.code.push_str(" = ");
-                    func.code.push_str(&elsy);
-                    func.code.push_str(".values.$$");
-                    func.code.push_str(&format!("{}", s.1));
-                    func.code.push_str(";\nbreak;\n");
+
+                    if let Type::Enum(_) = s.0
+                    {
+                    } else
+                    {
+                        func.code.push_str(&name);
+                        func.code.push_str(".values.$$");
+                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                        func.code.push_str(" = ");
+                        func.code.push_str(&elsy);
+                        func.code.push_str(".values.$$");
+                        func.code.push_str(&format!("{};\n", s.1));
+                    }
+                    func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
             } else
@@ -1262,9 +1300,22 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     _type = root.types.get(s).unwrap();
                 }
 
-                if let Type::Sum(_) = _type
+                let mut vtype = if let Type::Tag(_, t) = _type
                 {
-                    let subtype = types.get(_type).unwrap();
+                    &**t
+                } else
+                {
+                    _type
+                };
+
+                while let Type::Symbol(s) = vtype
+                {
+                    vtype = root.types.get(s).unwrap();
+                }
+
+                if let Type::Sum(_) = vtype
+                {
+                    let subtype = types.get(vtype).unwrap();
                     let submap = subtype.get_hashmap().unwrap();
                     for s in submap
                     {
@@ -1311,7 +1362,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     func.code.push_str("case ");
                     func.code.push_str(&format!("{}: {{\n", id));
 
-                    func.code.push_str(get_c_type(_type, types));
+                    func.code.push_str(get_c_type(vtype, types));
                     func.code.push_str(" $$MATCHTEMP$$ = ");
                     func.code.push_str(&value);
                     func.code.push_str(".values.$$");
@@ -1320,7 +1371,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
                     if let Some(s) = &varname
                     {
-                        func.code.push_str(get_c_type(_type, types));
+                        func.code.push_str(get_c_type(vtype, types));
                         func.code.push(' ');
                         func.code.push_str(s);
                         func.code.push_str(" = $$MATCHTEMP$$;\n");
@@ -1341,6 +1392,41 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     func.code.push_str(" = ");
                     func.code.push_str(&arm);
                     func.code.push_str(";\n");
+                } else if let Type::Sum(_) = atype
+                {
+                    let _type = types.get(&m._type).unwrap();
+                    let map = _type.get_hashmap().unwrap();
+                    let subtype = types.get(atype).unwrap();
+                    let submap = subtype.get_hashmap().unwrap();
+
+                    func.code.push_str("switch (");
+                    func.code.push_str(&arm);
+                    func.code.push_str(".tag) {\n");
+
+                    for s in submap
+                    {
+                        let id = map.get(s.0).unwrap();
+                        func.code.push_str("case ");
+                        func.code.push_str(&format!("{}:\n", s.1));
+                        func.code.push_str(&name);
+                        func.code.push_str(".tag = ");
+                        func.code.push_str(&format!("{};\n", id));
+
+                        if let Type::Enum(_) = s.0
+                        {
+                        } else
+                        {
+                            func.code.push_str(&name);
+                            func.code.push_str(".values.$$");
+                            func.code.push_str(&format!("{}", id));
+                            func.code.push_str(" = ");
+                            func.code.push_str(&arm);
+                            func.code.push_str(".values.$$");
+                            func.code.push_str(&format!("{};\n", s.1));
+                        }
+                        func.code.push_str("break;\n");
+                    }
+                    func.code.push_str("}\n");
                 } else
                 {
                     let _type = types.get(&m._type).unwrap();
@@ -1696,6 +1782,12 @@ fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &
         // Find symbols
         if let Type::Symbol(tname) = t.0
         {
+            // Skip if the first character is a digit
+            if "0123456789".contains(tname.chars().next().unwrap())
+            {
+                continue;
+            }
+
             // Get type
             let mut t = t;
             while let Type::Symbol(s) = t.0
