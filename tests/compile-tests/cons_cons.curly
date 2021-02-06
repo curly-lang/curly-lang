@@ -12,10 +12,10 @@ truefn x: ListItem, y: ListItem = x
 falsefn x: ListItem, y: ListItem = y
 car list: ListItem =
     match list
-    to List => list truefn
+    to list: List => list truefn
 cdr list: ListItem =
     match list
-    to List => list falsefn
+    to list: List => list falsefn
 
 
 Listcons x: ListListItem, y: ListListItem, f: ListListItem -> ListListItem -> ListListItem = f x y
@@ -23,10 +23,10 @@ Listtruefn x: ListListItem, y: ListListItem = x
 Listfalsefn x: ListListItem, y: ListListItem = y
 Listcar list: ListListItem =
     match list
-    to ListList => list Listtruefn
+    to list: ListList => list Listtruefn
 Listcdr list: ListListItem =
     match list
-    to ListList => list Listfalsefn
+    to list: ListList => list Listfalsefn
 
 
 flag = cons 0x46 (cons 0x6c (cons 0x61 (cons 0x67 (cons 0x3a (cons 0x20 (cons 0xf0 (cons 0x9f (cons 0x8f (cons 0x81 0)))))))))
@@ -36,12 +36,12 @@ asdf = Listcons flag (Listcons exc 0)
 
 
 _print_char item: ListItem = match item
-    to Int => putch item
+    to item: Int => putch item
 
 print str: ListItem = match str
-    to List => with _ = _print_char (car str), print (cdr str)
+    to str: List => with _ = _print_char (car str), print (cdr str)
     to Int => 0
 
 
 match (Listcar asdf)
-to ListItem => print $
+to list: ListItem => print list

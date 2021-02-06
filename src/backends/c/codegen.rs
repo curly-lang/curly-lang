@@ -1361,7 +1361,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                         func.code.push_str(subtype.get_c_name());
                         func.code.push(' ');
                         func.code.push_str(s);
-                        func.code.push_str(" = $$;\n");
+                        func.code.push_str(" = $$MATCHTEMP$$;\n");
                     }
                 } else if let Type::Enum(_) = _type
                 {

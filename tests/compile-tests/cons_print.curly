@@ -6,27 +6,27 @@ truefn x: ListItem, y: ListItem = x
 falsefn x: ListItem, y: ListItem = y
 car list: ListItem =
     match list
-    to List => list truefn
+    to l: List => l truefn
 cdr list: ListItem =
     match list
-    to List => list falsefn
+    to l: List => l falsefn
 
 list = cons 0x46 (cons 0x6c (cons 0x61 (cons 0x67 (cons 0x3a (cons 0x20 (cons 0xf0 (cons 0x9f (cons 0x8f (cons 0x81 0)))))))))
 
 _string_isutf8startchar x: ListItem = match x 
-    to Int => if (x < 128) or (x >= 191) then 1 else 0
+    to x: Int => if (x < 128) or (x >= 191) then 1 else 0
 
 string_len str: ListItem = match str
-    to List => string_len (cdr str) + _string_isutf8startchar (car str)
+    to str: List => string_len (cdr str) + _string_isutf8startchar (car str)
     to Int => 0
 
 debug (string_len list)
 
 _print_char item: ListItem = match item
-    to Int => putch item
+    to item: Int => putch item
 
 print str: ListItem = match str
-    to List => with _ = _print_char (car str), print (cdr str)
+    to str: List => with _ = _print_char (car str), print (cdr str)
     to Int => 0
 
 print list

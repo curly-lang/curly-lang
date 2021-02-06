@@ -6,10 +6,10 @@ truefn x: ListItem, y: ListItem = x
 falsefn x: ListItem, y: ListItem = y
 car list: ListItem =
 	match list
-	to List => list truefn
+	to list: List => list truefn
 cdr list: ListItem =
 	match list
-	to List => list falsefn
+	to list: List => list falsefn
 
 list = cons 1 (cons 2 3)
 debug (car list)
@@ -18,15 +18,15 @@ debug (car (cdr list))
 debug (cdr (cdr list))
 
 concat a: ListItem, b: ListItem = match a
-    to List => cons (car a) (concat (cdr a) b)
-    to Int => b as ListItem
+    to a: List => cons (car a) (concat (cdr a) b)
+    to Int => b : ListItem
 
 _map_item f: Int -> Int, item: ListItem = match item
-    to Int => f item
+    to x: Int => f x
 
 map f: Int -> Int, list: ListItem = match list
-    to List => cons (_map_item f (car list)) (map f (cdr list))
-    to Int => list
+    to list: List => cons (_map_item f (car list)) (map f (cdr list))
+    to x: Int => x
 
 debug (car (map (lambda x: Int = x+2) (cons 2 0)))
 
