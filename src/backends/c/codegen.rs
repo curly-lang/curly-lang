@@ -163,13 +163,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
             // Generate code
             let f = root.funcs.get(s).unwrap();
+            let s = sanitise_symbol(s);
             func.code.push_str("func_t ");
             func.code.push_str(&name);
             func.code.push_str(" = { 0, (void*) ");
-            func.code.push_str(s);
-            func.code.push_str("$$FUNC$$, (void*) ");
-            func.code.push_str(s);
-            func.code.push_str(&format!("$$WRAPPER$$, {}", f.args.len() + f.captured.len()));
+            func.code.push_str(&s);
+            func.code.push_str("$FUNC$$, (void*) ");
+            func.code.push_str(&s);
+            func.code.push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
             func.code.push_str(", 0, ");
             if f.captured.len() > 0
             {
