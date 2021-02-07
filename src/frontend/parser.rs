@@ -87,6 +87,16 @@ pub enum Token
     #[regex(r"[0-9]+", |lex| lex.slice().parse())]
     #[regex(r"0x[0-9a-fA-F]+", |lex| i64::from_str_radix(&lex.slice()[2..], 16))]
     #[regex(r"0b[01]+", |lex| i64::from_str_radix(&lex.slice()[2..], 2))]
+    #[regex(r#"'([^\\']|\\[nrt'"])'"#, |lex| match lex.slice()
+            {
+                "'\\\\'" => '\\' as i64,
+                "'\\\"'" => '\"' as i64,
+                "'\\\''" => '\'' as i64,
+                "'\\n'" => '\n' as i64,
+                "'\\r'" => '\r' as i64,
+                "'\\t'" => '\t' as i64,
+                _ => lex.slice().chars().skip(1).next().unwrap() as i64
+            })]
     Int(i64),
     
     #[regex(r"[0-9]+(\.[0-9]*([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)", |lex| lex.slice().parse())]
