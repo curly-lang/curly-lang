@@ -1,0 +1,31 @@
+type ListItem = Int | ((ListItem -> ListItem -> ListItem) -> ListItem)
+type List = (ListItem -> ListItem -> ListItem) -> ListItem
+
+cons x: ListItem, y: ListItem, f: ListItem -> ListItem -> ListItem = f x y
+truefn x: ListItem, y: ListItem = x
+falsefn x: ListItem, y: ListItem = y
+car list: ListItem =
+	match list
+	to list: List => list truefn
+cdr list: ListItem =
+	match list
+	to list: List => list falsefn
+
+putList list: ListItem =
+    match list
+    to list: List =>
+        with _ = debug (car list),
+            putList (cdr list)
+    to Int => 0
+
+# This does an oopsie
+reverse_tail acc: ListItem, list: ListItem =
+    match list
+    to list: List => reverse_tail (cons acc (car list)) (cdr list)
+    to Int => acc
+reverse list: ListItem = reverse_tail (car list) (cdr list)
+
+list = cons 1 (cons 2 (cons 3 0))
+putList list
+putList (reverse list)
+
