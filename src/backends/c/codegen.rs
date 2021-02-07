@@ -656,14 +656,34 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                     {
                         if m.arity == 0 || m.saved_argc.is_none() || m.saved_argc.unwrap() != 0
                         {
-                            convert_sexpr(f, root, func, types)
+                            let v = convert_sexpr(f, root, func, types);
+                            let name = format!("$${}", func.last_reference);
+                            func.last_reference += 1;
+                            func.code.push_str("func_t ");
+                            func.code.push_str(&name);
+                            func.code.push_str(";\ncopy_func(&");
+                            func.code.push_str(&name);
+                            func.code.push_str(", &");
+                            func.code.push_str(&v);
+                            func.code.push_str(");\n");
+                            name
                         } else
                         {
                             String::with_capacity(0)
                         }
                     } else
                     {
-                        convert_sexpr(f, root, func, types)
+                        let v = convert_sexpr(f, root, func, types);
+                        let name = format!("$${}", func.last_reference);
+                        func.last_reference += 1;
+                        func.code.push_str("func_t ");
+                        func.code.push_str(&name);
+                        func.code.push_str(";\ncopy_func(&");
+                        func.code.push_str(&name);
+                        func.code.push_str(", &");
+                        func.code.push_str(&v);
+                        func.code.push_str(");\n");
+                        name
                     };
 
                     let mut astrs = vec![];
