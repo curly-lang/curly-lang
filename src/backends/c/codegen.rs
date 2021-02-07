@@ -1765,6 +1765,11 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                         t = ir.types.get(s).unwrap();
                     }
 
+                    if &t != iter.get(field_ref).unwrap()
+                    {
+                        iter[field_ref] = t;
+                    }
+
                     match t
                     {
                         Type::Int => types_string.push_str("        int_t"),

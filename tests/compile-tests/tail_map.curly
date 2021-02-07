@@ -24,7 +24,15 @@ reverse_tail acc: ListItem, list: ListItem =
     to Int => acc
 reverse list: ListItem = reverse_tail (cons (car list) 0) (cdr list)
 
+map_tail acc: ListItem, f: Int -> Int, list: ListItem =
+    match list
+    to l: List => map_tail (cons (match car l to i: Int => debug (f i)) acc) f (cdr l)
+    to Int => acc
+
+map f: Int -> Int, list: ListItem = reverse (map_tail 0 f list)
+
 list = cons 1 (cons 2 (cons 3 0))
 putList list
 putList (reverse list)
+putList (map (lambda x: Int = x) list)
 
