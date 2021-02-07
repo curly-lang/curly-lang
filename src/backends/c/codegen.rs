@@ -782,6 +782,64 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
                                 _ => ()
                             }
+                        } else if let Type::Sum(_) = arg_type
+                        {
+                            // Autocast argument if not already done so
+                            if _type == arg_type
+                            {
+                            } else if let Type::Sum(_) = _type
+                            {
+                                let name = format!("$${}", func.last_reference);
+                                func.last_reference += 1;
+                                let map = types.get(arg_type).unwrap().get_hashmap().unwrap();
+                                let subtype = types.get(_type).unwrap();
+                                let submap = subtype.get_hashmap().unwrap();
+                                func.code.push_str(types.get(arg_type).unwrap().get_c_name());
+                                func.code.push(' ');
+                                func.code.push_str(&name);
+                                func.code.push_str(";\n");
+                                func.code.push_str("switch (");
+                                func.code.push_str(&v);
+                                func.code.push_str(".tag) {\n");
+
+                                for s in submap
+                                {
+                                    func.code.push_str("case ");
+                                    func.code.push_str(&format!("{}:\n", s.1));
+                                    func.code.push_str(&name);
+                                    func.code.push_str(".tag = ");
+                                    func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                                    func.code.push_str(&name);
+                                    func.code.push_str(".values.$$");
+                                    func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                                    func.code.push_str(" = ");
+                                    func.code.push_str(&v);
+                                    func.code.push_str(".values.$$");
+                                    func.code.push_str(&format!("{}", s.1));
+                                    func.code.push_str(";\nbreak;\n");
+                                }
+                                func.code.push_str("}\n");
+                                v = name;
+                            } else
+                            {
+                                let name = format!("$${}", func.last_reference);
+                                func.last_reference += 1;
+                                let arg_ctype = types.get(arg_type).unwrap();
+                                func.code.push_str(arg_ctype.get_c_name());
+                                func.code.push(' ');
+                                func.code.push_str(&name);
+                                func.code.push_str(";\n");
+                                func.code.push_str(&name);
+                                func.code.push_str(".tag = ");
+                                func.code.push_str(&format!("{};\n", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
+                                func.code.push_str(&name);
+                                func.code.push_str(".values.");
+                                func.code.push_str(&format!("$${}", arg_ctype.get_hashmap().unwrap().get(_type).unwrap()));
+                                func.code.push_str(" = ");
+                                func.code.push_str(&v);
+                                func.code.push_str(";\n");
+                                v = name;
+                            }
                         }
 
                         // Functions with unknown arity

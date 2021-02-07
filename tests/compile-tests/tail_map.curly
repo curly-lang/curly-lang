@@ -18,12 +18,11 @@ putList list: ListItem =
             putList (cdr list)
     to Int => 0
 
-# This does an oopsie
 reverse_tail acc: ListItem, list: ListItem =
     match list
-    to list: List => reverse_tail (cons acc (car list)) (cdr list)
+    to l: List => reverse_tail (cons (car l) acc) (cdr l)
     to Int => acc
-reverse list: ListItem = reverse_tail (car list) (cdr list)
+reverse list: ListItem = reverse_tail (cons (car list) 0) (cdr list)
 
 list = cons 1 (cons 2 (cons 3 0))
 putList list
