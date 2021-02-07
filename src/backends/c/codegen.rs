@@ -971,7 +971,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 for a in func.args.iter().enumerate()
                                 {
                                     func.code.push_str(&sanitise_symbol(a.1.0));
-                                    func.code.push_str(" = ");
+                                    func.code.push_str("$PARAM$$ = ");
                                     func.code.push_str(&astrs[a.0].0);
                                     func.code.push_str(";\n");
                                 }
@@ -2002,6 +2002,14 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
         if f.1.body.get_metadata().tailrec
         {
+            for a in cf.args.iter()
+            {
+                cf.code.push_str(get_c_type(a.1, &types));
+                cf.code.push(' ');
+                cf.code.push_str(&sanitise_symbol(a.0));
+                cf.code.push_str("$PARAM$$;\n");
+            }
+
             cf.code.push_str("char $$LOOP$$ = 1;\n");
             cf.code.push_str(get_c_type(&f.1.body.get_metadata()._type, &types));
             cf.code.push_str(" $$RET$$;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
@@ -2011,6 +2019,15 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
         if f.1.body.get_metadata().tailrec
         {
+            for a in cf.args.iter()
+            {
+                cf.code.push_str(&sanitise_symbol(a.0));
+                cf.code.push_str(" = ");
+                cf.code.push_str(&sanitise_symbol(a.0));
+                cf.code.push_str("$PARAM$$");
+                cf.code.push_str(";\n");
+            }
+
             cf.code.push_str("$$RET$$ = ");
             cf.code.push_str(&last);
             cf.code.push_str(";\n}\n");
