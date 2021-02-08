@@ -13,7 +13,7 @@ These things are features and fixes I'd like to get completed for the third majo
 ## Fourth official release:
 These things are features and fixes I'd like to get completed for the fourth major release (v0.4.0) of Curly.
 - Product types
-- Span
+- Span (`**`) for product types
 - Overridable operators
 - Associated functions
 
@@ -24,6 +24,13 @@ These things are features and fixes I'd like to get completed in some point in t
 - Mutability
 - Laziness
 - Lists
+- Span (`**`) for lists
+- `@map` (example:
+```
+@map
+increment x: Int = x + 1
+debug (increment 1 2) # [2, 3]
+```
 - Strings (which are basically just lists of chars)
 - `?`/`!` operators
 - Function composition operator
