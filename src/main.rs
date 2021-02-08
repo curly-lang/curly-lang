@@ -469,12 +469,12 @@ impl Validator for CurlyREPLHelper
     {
         use ValidationResult::*;
 
-        match parser::parse(ctx.input())
+        if ctx.input().ends_with("\n")
         {
-            Ok(_) => Ok(Valid(None)),
-            Err(e) if e.continuable => Ok(Incomplete),
-            Err(_) if ctx.input().ends_with("\\") => Ok(Incomplete),
-            Err(_) => Ok(Valid(None))
+            Ok(Valid(None))
+        } else
+        {
+            Ok(Incomplete)
         }
     }
 }
