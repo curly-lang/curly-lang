@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::mem::swap;
 
-use super::ir::{BindMode, BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::{HashSetWrapper, Type};
 
@@ -1551,137 +1551,6 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
     }
 }
 
-// write_bindings(&mut SExpr, &HashMap<String, IRFunction>, &mut Vec<HashMap<String, BindMode>>) -> BindMode
-// Writes correctly binded applications to sexpressions.
-fn write_bindings(sexpr: &mut SExpr, funcs: &HashMap<String, IRFunction>, symbols: &mut Vec<HashMap<String, BindMode>>) -> BindMode
-{
-    match sexpr
-    {
-        SExpr::Symbol(_, s) => {
-            if let Some(v) = symbols.last().unwrap().get(s)
-            {
-                *v
-            } else
-            {
-                BindMode::NoBinding
-            }
-        }
-
-        SExpr::Function(_, f) => {
-            funcs.get(f).unwrap().bind_mode
-        }
-
-        SExpr::Prefix(_, _, v) => {
-            write_bindings(v, funcs, symbols);
-            BindMode::NoBinding
-        }
-
-        SExpr::Infix(_, _, l, r)
-            | SExpr::And(_, l, r)
-            | SExpr::Or(_, l, r) => {
-            write_bindings(l, funcs, symbols);
-            write_bindings(r, funcs, symbols);
-            BindMode::NoBinding
-        }
-
-        SExpr::If(_, c, b, e) => {
-            write_bindings(c, funcs, symbols);
-            write_bindings(b, funcs, symbols);
-            write_bindings(e, funcs, symbols);
-            BindMode::NoBinding
-        }
-
-        SExpr::Application(m, f, a) => {
-            let v = write_bindings(f, funcs, symbols);
-            match v
-            {
-                BindMode::NoBinding => (),
-
-                BindMode::BindLeft => {
-                    let mut ff = SExpr::True(SExprMetadata {
-                        span: Span { start: 0, end: 0 },
-                        span2: Span { start: 0, end: 0 },
-                        _type: Type::Error,
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false
-                    });
-                    swap(&mut ff, f);
-                    if let SExpr::Application(m0, f0, a0) = ff
-                    {
-                        if let SExpr::Application(m1, f1, a1) = *f0
-                        {
-                            *f = Box::new(SExpr::Application(
-                                m.clone(),
-                                f1.clone(),
-                                Box::new(SExpr::Application(
-                                    m0,
-                                    Box::new(SExpr::Application(
-                                        m1,
-                                        f1,
-                                        a1
-                                    )),
-                                    a0
-                                ))
-                            ));
-                        } else
-                        {
-                            let mut ff = SExpr::Application(m0, f0, a0);
-                            swap(&mut ff, f);
-                        }
-                    } else
-                    {
-                        swap(&mut ff, f);
-                    }
-                }
-
-                BindMode::BindRight => {
-                    unimplemented!("binding right is hard :(");
-                }
-            }
-            write_bindings(a, funcs, symbols);
-            v
-        }
-
-        SExpr::As(_, v) => {
-            write_bindings(v, funcs, symbols);
-            BindMode::NoBinding
-        }
-
-        SExpr::Assign(_, a, v) => {
-            let v = write_bindings(v, funcs, symbols);
-            if let BindMode::NoBinding = v {} 
-            else
-            {
-                symbols.last_mut().unwrap().insert(a.clone(), v);
-            }
-            v
-        }
-
-        SExpr::With(_, a, v) => {
-            symbols.push(HashMap::with_capacity(0));
-            for a in a
-            {
-                write_bindings(a, funcs, symbols);
-            }
-            let v = write_bindings(v, funcs, symbols);
-            symbols.pop();
-            v
-        }
-
-        SExpr::Match(_, v, a) => {
-            write_bindings(v, funcs, symbols);
-            for a in a
-            {
-                write_bindings(&mut a.1, funcs, symbols);
-            }
-            BindMode::NoBinding
-        }
-
-        _ => BindMode::NoBinding
-    }
-}
-
 // check_correctness(&mut IR) -> ()
 // Checks the correctness of ir.
 pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
@@ -1691,33 +1560,12 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     // Check types
     check_type_validity(ir, &mut errors);
 
-    // Write bindings to body
-    let mut symbols = vec![HashMap::from_iter(ir.funcs.iter().filter_map(
-        |v| if v.1.global
-            {
-                if let BindMode::NoBinding = v.1.bind_mode
-                {
-                    None
-                } else
-                {
-                    Some((v.0.clone(), v.1.bind_mode))
-                }
-            } else
-            {
-                None
-            }
-    ))];
-    let mut sexprs = Vec::with_capacity(0);
-    swap(&mut ir.sexprs, &mut sexprs);
-    for sexpr in sexprs.iter_mut()
-    {
-        write_bindings(sexpr, &ir.funcs, &mut symbols);
-    }
-
     // Check functions
     check_functions(ir, &mut errors);
 
     // Check sexpressions
+    let mut sexprs = Vec::with_capacity(0);
+    swap(&mut ir.sexprs, &mut sexprs);
     for sexpr in sexprs.iter_mut()
     {
         check_sexpr(sexpr, ir, &mut errors);
