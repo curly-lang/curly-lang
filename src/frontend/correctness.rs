@@ -1692,7 +1692,21 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     check_type_validity(ir, &mut errors);
 
     // Write bindings to body
-    let mut symbols = vec![HashMap::new()];
+    let mut symbols = vec![HashMap::from_iter(ir.funcs.iter().filter_map(
+        |v| if v.1.global
+            {
+                if let BindMode::NoBinding = v.1.bind_mode
+                {
+                    None
+                } else
+                {
+                    Some((v.0.clone(), v.1.bind_mode))
+                }
+            } else
+            {
+                None
+            }
+    ))];
     let mut sexprs = Vec::with_capacity(0);
     swap(&mut ir.sexprs, &mut sexprs);
     for sexpr in sexprs.iter_mut()

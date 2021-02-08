@@ -195,7 +195,8 @@ pub struct IRFunction
     pub global: bool,
     pub span: Span,
     pub checked: bool,
-    pub bind_mode: BindMode
+    pub bind_mode: BindMode,
+    pub written: bool
 }
 
 // Represents the ir.
@@ -229,7 +230,13 @@ impl IR
         use std::mem::swap;
 
         self.sexprs.clear();
-        self.funcs.clear();
+        let mut funcs = HashMap::with_capacity(0);
+        swap(&mut funcs, &mut self.funcs);
+        self.funcs = HashMap::from_iter(funcs.into_iter().filter(|v| v.1.global));
+        for f in self.funcs.iter_mut()
+        {
+            f.1.written = true;
+        }
         let mut vars = HashMap::with_capacity(0);
         swap(&mut vars, &mut self.scope.variables);
         self.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
@@ -530,7 +537,8 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                     end: func_id.get_metadata().span.start - 1
                 },
                 checked: false,
-                bind_mode
+                bind_mode,
+                written: false
             };
 
             let mut _type = Type::Error;
@@ -586,7 +594,8 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 global: false,
                 span,
                 checked: false,
-                bind_mode
+                bind_mode,
+                written: false
             };
 
             let mut _type = Type::Error;

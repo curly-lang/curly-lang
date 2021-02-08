@@ -2006,6 +2006,11 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     let mut funcs = HashMap::new();
     for f in ir.funcs.iter()
     {
+        if f.1.written
+        {
+            continue;
+        }
+
         let mut cf = CFunction {
             name: sanitise_symbol(&f.0),
             args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
