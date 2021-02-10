@@ -3,29 +3,29 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::mem::swap;
 
-use super::ir::{BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IR, IRFunction, Location, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::{HashSetWrapper, Type};
 
 #[derive(Debug)]
 pub enum CorrectnessError
 {
-    UndefinedPrefixOp(Span, PrefixOp, Type),
-    UndefinedInfixOp(Span, BinOp, Type, Type),
-    NonboolInBoolExpr(Span, Type),
-    NonboolInIfCond(Span, Type),
-    NonmatchingAssignTypes(Span, Type, Span, Type),
-    SymbolNotFound(Span, String),
-    Reassignment(Span, Span, String),
-    InvalidType(Span),
-    DuplicateTypeInUnion(Span, Span, Type),
-    UnknownFunctionReturnType(Span, String),
-    MismatchedFunctionArgType(Span, Type, Type),
-    InvalidApplication(Span, Type),
-    InvalidCast(Span, Type, Span, Type),
-    NonSubtypeOnMatch(Span, Type, Span, Type),
-    InfiniteSizedType(Span, Type),
-    NonmemberAccess(Span, String, String)
+    UndefinedPrefixOp(Location, PrefixOp, Type),
+    UndefinedInfixOp(Location, BinOp, Type, Type),
+    NonboolInBoolExpr(Location, Type),
+    NonboolInIfCond(Location, Type),
+    NonmatchingAssignTypes(Location, Type, Location, Type),
+    SymbolNotFound(Location, String),
+    Reassignment(Location, Location, String),
+    InvalidType(Location),
+    DuplicateTypeInUnion(Location, Location, Type),
+    UnknownFunctionReturnType(Location, String),
+    MismatchedFunctionArgType(Location, Type, Type),
+    InvalidApplication(Location, Type),
+    InvalidCast(Location, Type, Location, Type),
+    NonSubtypeOnMatch(Location, Type, Location, Type),
+    InfiniteSizedType(Location, Type),
+    NonmemberAccess(Location, String, String)
 }
 
 // check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
@@ -80,7 +80,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         root.scope.push_scope(true);
                         for a in func.args.iter()
                         {
-                            root.scope.put_var(&a.0, &a.1, 0, None, Span { start: 0, end: 0 }, true);
+                            root.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
                         }
                         check_sexpr(&mut func.body, root, errors);
                         root.scope.pop_scope();
@@ -100,7 +100,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     root.scope.push_scope(true);
                     for a in func.args.iter()
                     {
-                        root.scope.put_var(&a.0, &a.1, 0, None, Span { start: 0, end: 0 }, true);
+                        root.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
                     }
                     check_sexpr(&mut func.body, root, errors);
                     root.scope.pop_scope();
@@ -124,7 +124,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
 
                 None => errors.push(CorrectnessError::SymbolNotFound(
-                    m.span.clone(),
+                    m.loc.clone(),
                     s.clone()
                 ))
             }
@@ -152,7 +152,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     } else
                     {
                         errors.push(CorrectnessError::UndefinedPrefixOp(
-                            m.span.clone(),
+                            m.loc.clone(),
                             PrefixOp::Neg,
                             v.get_metadata()._type.clone()
                         ));
@@ -186,7 +186,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             } else
             {
                 errors.push(CorrectnessError::UndefinedInfixOp(
-                    m.span.clone(),
+                    m.loc.clone(),
                     *op,
                     left.get_metadata()._type.clone(),
                     right.get_metadata()._type.clone()
@@ -208,9 +208,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if !v.get_metadata()._type.is_subtype(&m._type, &root.types)
             {
                 errors.push(CorrectnessError::InvalidCast(
-                    v.get_metadata().span.clone(),
+                    v.get_metadata().loc.clone(),
                     v.get_metadata()._type.clone(),
-                    m.span2.clone(),
+                    m.loc2.clone(),
                     m._type.clone()
                 ));
                 m._type = Type::Error;
@@ -233,7 +233,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if left.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
-                    left.get_metadata().span.clone(),
+                    left.get_metadata().loc.clone(),
                     left.get_metadata()._type.clone(),
                 ));
             }
@@ -241,7 +241,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if right.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
-                    right.get_metadata().span.clone(),
+                    right.get_metadata().loc.clone(),
                     right.get_metadata()._type.clone(),
                 ));
             }
@@ -269,7 +269,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if cond.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInIfCond(
-                    cond.get_metadata().span.clone(),
+                    cond.get_metadata().loc.clone(),
                     cond.get_metadata()._type.clone()
                 ));
             }
@@ -370,7 +370,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     } else
                     {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
-                            arg.get_metadata().span.clone(),
+                            arg.get_metadata().loc.clone(),
                             *l.clone(),
                             arg.get_metadata()._type.clone()
                         ));
@@ -380,7 +380,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Everything else is invalid
                 _ => {
                     errors.push(CorrectnessError::InvalidApplication(
-                        func.get_metadata().span.clone(),
+                        func.get_metadata().loc.clone(),
                         func.get_metadata()._type.clone()
                     ));
                 }
@@ -401,7 +401,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 if v.4
                 {
                     errors.push(CorrectnessError::Reassignment(
-                        m.span.clone(),
+                        m.loc.clone(),
                         v.3.clone(),
                         name.clone()
                     ));
@@ -445,9 +445,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     if !value.get_metadata()._type.is_subtype(&m._type, &root.types)
                     {
                         errors.push(CorrectnessError::NonmatchingAssignTypes(
-                            m.span2.clone(),
+                            m.loc2.clone(),
                             m._type.clone(),
-                            value.get_metadata().span.clone(),
+                            value.get_metadata().loc.clone(),
                             value.get_metadata()._type.clone()
                         ));
                         m._type = Type::Error;
@@ -458,7 +458,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             // Add variable to scope if no error occured
             if m._type != Type::Error
             {
-                root.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start }, true);
+                root.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true);
             }
         }
 
@@ -529,7 +529,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     {
                         t
                     };
-                    root.scope.put_var(s, vtype, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    root.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true);
                     (Some(s), &**t)
                 } else
                 {
@@ -549,9 +549,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 if !atype.is_subtype(&_type, &root.types)
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
-                        value.get_metadata().span.clone(),
+                        value.get_metadata().loc.clone(),
                         _type.clone(),
-                        arm.1.get_metadata().span2.clone(),
+                        arm.1.get_metadata().loc2.clone(),
                         arm.0.clone()
                     ));
                     root.scope.pop_scope();
@@ -618,7 +618,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         if a.len() != 2
                         {
                             errors.push(CorrectnessError::NonmemberAccess(
-                                m.span.clone(),
+                                m.loc.clone(),
                                 format!("{}::{}", a[0], a[1]),
                                 a[2].clone()
                             ));
@@ -631,20 +631,13 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         if a.len() != 2
                         {
                             errors.push(CorrectnessError::NonmemberAccess(
-                                m.span.clone(),
+                                m.loc.clone(),
                                 format!("{}::{}", a[0], a[1]),
                                 a[2].clone()
                             ));
                         } else if let Type::Tag(_, t) = v
                         {
-                            let mut temp = SExprMetadata {
-                                span: Span { start: 0, end: 0 },
-                                span2: Span { start: 0, end: 0 },
-                                _type: Type::Error,
-                                arity: 0,
-                                saved_argc: None,
-                                tailrec: false
-                            };
+                            let mut temp = SExprMetadata::empty();
 
                             swap(&mut temp, m);
                             temp.arity = 1;
@@ -656,7 +649,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     } else
                     {
                         errors.push(CorrectnessError::NonmemberAccess(
-                            m.span.clone(),
+                            m.loc.clone(),
                             a[0].clone(),
                             a[1].clone()
                         ));
@@ -664,7 +657,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 } else
                 {
                     errors.push(CorrectnessError::NonmemberAccess(
-                        m.span.clone(),
+                        m.loc.clone(),
                         a[0].clone(),
                         a[1].clone()
                     ));
@@ -672,7 +665,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             } else
             {
                 errors.push(CorrectnessError::SymbolNotFound(
-                    m.span.clone(),
+                    m.loc.clone(),
                     a[0].clone(),
                 ));
             }
@@ -690,20 +683,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
         SExpr::Symbol(m, s) => {
             if funcs.contains(s)
             {
-                let mut meta = SExprMetadata {
-                    span: Span {
-                        start: 0,
-                        end: 0
-                    },
-                    span2: Span {
-                        start: 0,
-                        end: 0
-                    },
-                    _type: Type::Error,
-                    arity: 0,
-                    saved_argc: None,
-                    tailrec: false
-                };
+                let mut meta = SExprMetadata::empty();
 
                 swap(&mut meta, m);
                 let mut id = String::with_capacity(0);
@@ -964,7 +944,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 get_function_type(value, scope, funcs, errors, captured, captured_names, types)
             };
-            scope.put_var(&name, &t, 0, None, Span { start: 0, end: 0 }, true);
+            scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true);
             t
         }
 
@@ -996,7 +976,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Check body of match arm
                 let name = if let Type::Tag(s, t) = &arm.0
                 {
-                    scope.put_var(s, t, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    scope.put_var(s, t, 0, None, &arm.1.get_metadata().loc2, true);
                     Some(s)
                 } else
                 {
@@ -1074,43 +1054,6 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                     {
                         Type::Unknown
                     }
-
-
-
-                    /*
-                     *
-                     *                    } else if let Some(v) = f.0.iter().filter(|v| if let Type::Tag(t, _) = v { t == &a[1] } else { false }).next()
-                    {
-                        if a.len() != 2
-                        {
-                            errors.push(CorrectnessError::NonmemberAccess(
-                                m.span.clone(),
-                                format!("{}::{}", a[0], a[1]),
-                                a[2].clone()
-                            ));
-                        } else if let Type::Tag(_, t) = v
-                        {
-                            let mut temp = SExprMetadata {
-                                span: Span { start: 0, end: 0 },
-                                span2: Span { start: 0, end: 0 },
-                                _type: Type::Error,
-                                arity: 0,
-                                saved_argc: None,
-                                tailrec: false
-                            };
-
-                            swap(&mut temp, m);
-                            temp.arity = 1;
-                            temp.saved_argc = Some(0);
-                            temp._type = Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
-
-                            *sexpr = SExpr::Function(temp, a.join("::").to_string());
-                        }
-
-                     *
-                     *
-                     *
-                     * */
                 } else
                 {
                     Type::Unknown
@@ -1130,17 +1073,17 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
     if let None = scope.get_var(name)
     {
         // Put function in scope
-        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
+        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false);
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
+            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false);
         }
 
         // Put arguments into scope
         scope.push_scope(true);
         for arg in func.args.iter()
         {
-            scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+            scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
         }
 
         // Get the type
@@ -1155,7 +1098,7 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
         if _type == Type::Unknown
         {
             errors.push(CorrectnessError::UnknownFunctionReturnType(
-                func.body.get_metadata().span.clone(),
+                func.body.get_metadata().loc.clone(),
                 String::from(name)
             ));
         } else
@@ -1186,9 +1129,9 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
             // Put function type in global scope
             if name != refr
             {
-                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.span.clone(), false);
+                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
             }
-            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.span.clone(), false);
+            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
         }
     }
 }
@@ -1216,7 +1159,7 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
             ir.scope.push_scope(false);
             for arg in &func.args
             {
-                ir.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+                ir.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
             }
 
             // Check body
@@ -1367,27 +1310,30 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
 // Checks whether the given types are valid or not.
 fn check_type_validity(ir: &IR, errors: &mut Vec<CorrectnessError>)
 {
-    for s in ir.sexprs.iter()
+    for f in ir.sexprs.iter()
     {
-        if let SExpr::TypeAlias(m, n) = s
+        for s in f.1.iter()
         {
-            match &m._type
+            if let SExpr::TypeAlias(m, n) = s
             {
-                Type::Symbol(s) if s == n => {
-                    errors.push(CorrectnessError::InfiniteSizedType(
-                        m.span2.clone(),
-                        m._type.clone()
-                    ));
-                }
+                match &m._type
+                {
+                    Type::Symbol(s) if s == n => {
+                        errors.push(CorrectnessError::InfiniteSizedType(
+                            m.loc2.clone(),
+                            m._type.clone()
+                        ));
+                    }
 
-                Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
-                    errors.push(CorrectnessError::InfiniteSizedType(
-                        m.span2.clone(),
-                        m._type.clone()
-                    ));
-                }
+                    Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
+                        errors.push(CorrectnessError::InfiniteSizedType(
+                            m.loc2.clone(),
+                            m._type.clone()
+                        ));
+                    }
 
-                _ => ()
+                    _ => ()
+                }
             }
         }
     }
@@ -1564,11 +1510,14 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     check_functions(ir, &mut errors);
 
     // Check sexpressions
-    let mut sexprs = Vec::with_capacity(0);
+    let mut sexprs = HashMap::with_capacity(0);
     swap(&mut ir.sexprs, &mut sexprs);
-    for sexpr in sexprs.iter_mut()
+    for file in sexprs.iter_mut()
     {
-        check_sexpr(sexpr, ir, &mut errors);
+        for sexpr in file.1.iter_mut()
+        {
+            check_sexpr(sexpr, ir, &mut errors);
+        }
     }
     swap(&mut ir.sexprs, &mut sexprs);
 
@@ -1582,9 +1531,12 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
             id += 1;
         }
 
-        for sexpr in ir.sexprs.iter()
+        for file in ir.sexprs.iter()
         {
-            save_types(sexpr, &mut ir.types, &mut id);
+            for sexpr in file.1.iter()
+            {
+                save_types(sexpr, &mut ir.types, &mut id);
+            }
         }
 
         for f in ir.funcs.iter()

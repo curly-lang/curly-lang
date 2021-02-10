@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::process::Command;
+#[allow(unused_imports)]
 use libloading::{Library, Symbol};
 use logos::{Lexer, Span};
 
@@ -38,7 +39,7 @@ struct CommandlineBuildOptions
 {
     compiler: CBackendCompiler,
     output: String,
-    input: String
+    inputs: Vec<String>
 }
 
 fn main() -> Result<(), ()>
@@ -60,7 +61,7 @@ fn main() -> Result<(), ()>
                 let mut options = CommandlineBuildOptions {
                     compiler: CBackendCompiler::Clang,
                     output: String::with_capacity(0),
-                    input: String::with_capacity(0)
+                    inputs: Vec::with_capacity(0)
                 };
 
                 while let Some(a) = args.next()
@@ -75,7 +76,7 @@ fn main() -> Result<(), ()>
                                     "gcc" => options.compiler = CBackendCompiler::GCC,
                                     "clang" => options.compiler = CBackendCompiler::Clang,
                                     _ => {
-                                        println!("Supported C compilers are gcc, tcc, and clang");
+                                        println!("Supported C compilers are gcc and clang");
                                         return Err(());
                                     }
                                 }
@@ -98,12 +99,12 @@ fn main() -> Result<(), ()>
                         }
 
                         _ => {
-                            options.input = a;
+                            options.inputs.push(a);
                         }
                     }
                 }
 
-                if options.input == ""
+                if options.inputs.len() == 0
                 {
                     println!("usage:\n{} build [options] [file]\noptions:\n--compiler - Sets the C compiler for the backend; supported compilers are gcc, tcc, and clang\n-o - Sets the output file", &name);
                     return Err(());
@@ -111,20 +112,22 @@ fn main() -> Result<(), ()>
 
                 if options.output == ""
                 {
-                    options.output = String::from(options.input.split(".").into_iter().next().unwrap());
+                    options.output = String::from(options.inputs[0].split(".").into_iter().next().unwrap());
                 }
 
-                let contents = match fs::read_to_string(&options.input)
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("Error reading file: {}", e);
-                        return Err(());
-                    }
-                };
+                let contents: Vec<String> = options.inputs.iter().map(
+                    |v| match fs::read_to_string(v)
+                        {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Error reading file: {}", e);
+                                std::process::exit(1);
+                            }
+                        }
+                ).collect();
 
                 let mut ir = IR::new();
-                let c = compile(&options.input, &contents, &mut ir, None)?;
+                let c = compile(&options.inputs, &contents, &mut ir, None)?;
 
                 match fs::write(".curly_temp_0.c", &c)
                 {
@@ -187,7 +190,7 @@ fn main() -> Result<(), ()>
 
                         // Execute file
                         let mut ir = IR::new();
-                        match check(&file, &contents, &mut ir)
+                        match check(&vec![file], &vec![contents], &mut ir)
                         {
                             Ok(_) => println!("No errors found"),
                             Err(_) => return Err(())
@@ -205,7 +208,7 @@ fn main() -> Result<(), ()>
                 {
                     Some(file) => {
                         // Get file contents
-                        let contents = match fs::read_to_string(&file)
+                        let _contents = match fs::read_to_string(&file)
                         {
                             Ok(v) => v,
                             Err(e) => {
@@ -215,8 +218,8 @@ fn main() -> Result<(), ()>
                         };
 
                         // Execute file
-                        let mut ir = IR::new();
-                        execute(&file, &contents, &mut ir, None, 0);
+                        //let mut ir = IR::new();
+                        //execute(vec![file], vec![contents], &mut ir, None, 0);
                     }
 
                     None => {
@@ -268,6 +271,7 @@ struct REPLSumFunc
 
 #[derive(Debug)]
 #[repr(C)]
+#[allow(dead_code)]
 enum REPLValue
 {
     Int(i64),
@@ -278,6 +282,7 @@ enum REPLValue
     SumFunc(REPLSumFunc)
 }
 
+#[allow(dead_code)]
 struct CurlyREPLHelper
 {
     libs: Vec<Library>,
@@ -494,7 +499,7 @@ fn repl()
         .build();
     let mut rl = Editor::with_config(config);
     let helper = CurlyREPLHelper::new();
-    let mut n = 0;
+    let mut _n = 0;
     rl.set_helper(Some(helper));
     if rl.load_history("history.txt").is_err()
     {
@@ -515,12 +520,12 @@ fn repl()
                 }
 
                 rl.add_history_entry(line.as_str());
-                let helper = rl.helper_mut().unwrap();
-                if let Some(lib) = execute("<stdin>", &line, &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), n)
+                /*let helper = rl.helper_mut().unwrap();
+                if let Some(lib) = execute(&vec![String::from("<stdin>")], &vec![line], &mut helper.ir, Some((&mut helper.var_names, &mut helper.vars)), n)
                 {
                     helper.libs.push(lib);
-                }
-                n += 1;
+                }*/
+                //n += 1;
             }
 
             // Errors
@@ -546,34 +551,46 @@ fn repl()
 
 // check(&str, &str, &mut IR) -> Result<(), ()>
 // Checks whether given code is valid.
-fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
+fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<(), ()>
 {
     // Set up codespan
     let mut files = SimpleFiles::new();
-    let file_id = files.add(filename, code);
+    let mut file_hash = HashMap::new();
+    for file in filenames.iter().enumerate()
+    {
+        file_hash.insert(file.1, files.add(file.1, codes[file.0].clone()));
+    }
+    let file_hash = file_hash;
+
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
-    // Generate the ast
-    let ast = match parser::parse(code)
+    for file in filenames.iter().enumerate()
     {
-        Ok(v) => v,
-        Err(e) => {
-            let diagnostic = Diagnostic::error()
-                                .with_message(&e.msg)
-                                .with_labels(vec![
-                                    Label::primary(file_id, e.span)
-                                ]);
-            term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
-            return Err(());
-        }
-    };
+        let code = &codes[file.0];
+        let file_id = *file_hash.get(file.1).unwrap();
 
-    // Print out the ast
-    if DEBUG { println!("{:#?}", &ast); }
-    ir.clear();
-    ir::convert_ast_to_ir(ast, ir);
-    if DEBUG { dbg!(&ir); }
+        // Generate the ast
+        let ast = match parser::parse(code)
+        {
+            Ok(v) => v,
+            Err(e) => {
+                let diagnostic = Diagnostic::error()
+                                    .with_message(&e.msg)
+                                    .with_labels(vec![
+                                        Label::primary(file_id, e.span)
+                                    ]);
+                term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                return Err(());
+            }
+        };
+
+        // Print out the ast
+        if DEBUG { println!("{:#?}", &ast); }
+        ir.clear();
+        ir::convert_ast_to_ir(&file.1, ast, ir);
+        if DEBUG { dbg!(&ir); }
+    }
 
     // Check correctness
     let err = correctness::check_correctness(ir);
@@ -598,7 +615,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Undefined prefix operator")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("`-` is undefined on `{}`", t))
                             ]),
 
@@ -606,7 +623,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Undefined infix operator")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("`{:?}` is undefined on `{}` and `{}`", op, l, r))
                             ]),
 
@@ -614,7 +631,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Nonboolean in boolean expression")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Expected `Bool`, got `{}`", t))
                             ]),
 
@@ -622,7 +639,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Nonboolean in if condition")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Expected `Bool`, got `{}`", t))
                             ]),
 
@@ -630,9 +647,9 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Nonmatching types in assignment")
                             .with_labels(vec![
-                                Label::secondary(file_id, s1)
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
                                 .with_message(format!("Assignment is declared with type `{}`", t1)),
-                                Label::primary(file_id, s2)
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
                                 .with_message(format!("Expected `{}`, got `{}`", t1, t2))
                             ]),
 
@@ -640,7 +657,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Symbol not found")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Could not find symbol `{}`", v))
                             ]),
 
@@ -648,9 +665,9 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Redefinition of previously declared variable")
                             .with_labels(vec![
-                                Label::primary(file_id, s1)
+                                Label::primary(*file_hash.get(&s1.filename).unwrap(), s1.span)
                                 .with_message(format!("`{}` is already defined and not declared as mutable", v)),
-                                Label::secondary(file_id, s2)
+                                Label::secondary(*file_hash.get(&s2.filename).unwrap(), s2.span)
                                 .with_message(format!("`{}` previously defined here", v))
                             ]),
 
@@ -658,7 +675,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Invalid type used")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message("Undeclared type")
                             ]),
 
@@ -666,9 +683,9 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Duplicate type in union type declaration")
                             .with_labels(vec![
-                                Label::secondary(file_id, s1)
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
                                 .with_message("Type used here first"),
-                                Label::primary(file_id, s2)
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
                                 .with_message(format!("Type `{}` used a second time here", t))
                             ]),
 
@@ -676,7 +693,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Could not determine the return type of the function")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Could not determine return type for `{}`", v))
                             ]),
 
@@ -684,7 +701,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Wrong type passed as an argument")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Expected `{}`, got `{}`", t1, t2))
                             ]),
 
@@ -692,7 +709,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Invalid application")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Expected function, got `{}`", t))
                             ]);
 
@@ -707,9 +724,9 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Invalid cast")
                             .with_labels(vec![
-                                Label::secondary(file_id, s1)
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
                                 .with_message(format!("Value has type `{}`", t1)),
-                                Label::primary(file_id, s2)
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
                                 .with_message(format!("Cannot convert `{}` to `{}`", t1, t2))
                             ]);
                     }
@@ -718,9 +735,9 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Nonsubtype checked for in match arm")
                             .with_labels(vec![
-                                Label::secondary(file_id, s1)
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
                                 .with_message(format!("Value has type `{}`", t1)),
-                                Label::primary(file_id, s2)
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
                                 .with_message(format!("`{}` is not a subtype of `{}`", t2, t1))
                             ]);
                     }
@@ -729,7 +746,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Type has infinite size")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Type `{}` has infinite size", t))
                             ]);
                     }
@@ -738,7 +755,7 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
                         diagnostic = diagnostic
                             .with_message("Attempted to access a member that does not exist")
                             .with_labels(vec![
-                                Label::primary(file_id, s)
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("`{}` has no member `{}`", a, b))
                             ])
                     }
@@ -752,16 +769,16 @@ fn check(filename: &str, code: &str, ir: &mut IR) -> Result<(), ()>
 
 // compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
 // Compiles curly into C code.
-fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
+fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
 {
     // Check the file
-    check(filename, code, ir)?;
+    check(filenames, codes, ir)?;
 
     // Remove empty sexpressions
     use std::mem::swap;
-    let mut sexprs = Vec::with_capacity(0);
+    let mut sexprs = HashMap::with_capacity(0);
     swap(&mut sexprs, &mut ir.sexprs);
-    ir.sexprs = sexprs.into_iter().filter(|v| if let SExpr::TypeAlias(_, _) = v { false } else { true }).collect();
+    ir.sexprs = sexprs.into_iter().map(|v| (v.0, v.1.into_iter().filter(|v| if let SExpr::TypeAlias(_, _) = v { false } else { true }).collect())).collect();
 
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir, repl_vars);
@@ -772,10 +789,11 @@ fn compile(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<&Vec<Strin
 
 // execute(&str, &str, &mut IR, Option<(&mut Vec<String>, &mut HashMap<String, REPLType>)>, &mut Guard) -> Option<Library>
 // Executes Curly code.
-fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<String>, &mut HashMap<String, REPLValue>)>, n: usize) -> Option<Library>
+/*
+fn execute(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<(&mut Vec<String>, &mut HashMap<String, REPLValue>)>, n: usize) -> Option<Library>
 {
     // Compile code
-    let c = match compile(filename, code, ir, if let Some((v, _)) = &repl_vars { Some(v) } else { None })
+    let c = match compile(filenames, codes, ir, if let Some((v, _)) = &repl_vars { Some(v) } else { None })
     {
         Ok(v) => v,
         Err(_) => return None
@@ -892,4 +910,4 @@ fn execute(filename: &str, code: &str, ir: &mut IR, repl_vars: Option<(&mut Vec<
 
     Some(lib)
 }
-
+*/

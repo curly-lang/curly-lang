@@ -2092,7 +2092,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     let mut main_func = CFunction {
         name: String::from(""),
         args: Vec::with_capacity(0),
-        ret_type: if let Some(v) = ir.sexprs.last()
+        ret_type: if let Some(v) = ir.sexprs.iter().next().unwrap().1.iter().last()
         {
             &v.get_metadata()._type
         } else
@@ -2105,7 +2105,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
     // Populate the main function
     let mut cleanup = vec![];
-    for s in ir.sexprs.iter()
+    for s in ir.sexprs.iter().next().unwrap().1.iter()
     {
         let v = convert_sexpr(s, ir, &mut main_func, &types);
 
@@ -2333,7 +2333,7 @@ typedef struct {
     code_string.push_str(&main_func.code);
 
     // Deallocate everything
-    for v in ir.sexprs.iter().enumerate()
+    for v in ir.sexprs.iter().next().unwrap().1.iter().enumerate()
     {
         if let SExpr::Assign(m, _, _) = v.1
         {
