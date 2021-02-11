@@ -246,7 +246,7 @@ pub struct IR
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub types: HashMap<String, Type>,
-    pub sexprs: HashMap<String, Vec<SExpr>>
+    pub sexprs: HashMap<String, Vec<SExpr>>,
 }
 
 impl IR
@@ -259,7 +259,7 @@ impl IR
             scope: Scope::new().init_builtins(),
             funcs: HashMap::with_capacity(0),
             types: HashMap::with_capacity(0),
-            sexprs: HashMap::with_capacity(0)
+            sexprs: HashMap::with_capacity(0),
         }
     }
 
@@ -718,13 +718,18 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
     {
         if let AST::Header(_, name, exports, imports) = ast
         {
-            if let AST::Symbol(_, v) = *name
+            let mut full_name = vec![];
+            let mut top = *name;
+            while let AST::Infix(_, _, l, r) = top
             {
-                module_name = v;
-            } else
-            {
-                unreachable!("header module name is always a symbol");
+                if let AST::Symbol(_, v) = *r
+                {
+                    full_name.push(v);
+                }
+
+                top = *l;
             }
+            module_name = full_name.join("::");
         } else if let AST::Annotation(_span, a) = ast
         {
             if a == "@debug"

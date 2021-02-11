@@ -1,4 +1,4 @@
-module Funcs ( sum product )
+module Modules::Funcs ( sum product )
 
 sum x: Float, y: Float = x + y
 product x: Float, y: Float = x * y
