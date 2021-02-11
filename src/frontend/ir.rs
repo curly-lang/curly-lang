@@ -573,7 +573,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             let func = IRFunction {
                 loc: Location::new(Span {
                     start: span.start,
-                    end: func_id.get_metadata().loc.span.start - 1
+                    end: func_id.get_metadata().loc.span.start
                 }, filename),
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types))).collect(),
                 captured: HashMap::with_capacity(0),

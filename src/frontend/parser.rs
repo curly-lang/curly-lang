@@ -1630,6 +1630,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
     let mut lines = vec![];
     let p = &mut parser;
 
+    newline(p);
     if let Ok(header) = call_optional!(header, p)
     {
         lines.push(header);
@@ -1666,14 +1667,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
         }
 
         // Skip newlines
-        loop
-        {
-            match p.peek()
-            {
-                Some((Token::Newline, _)) => { p.next(); }
-                _ => break
-            }
-        }
+        newline(p);
     }
 
     Ok(lines)
