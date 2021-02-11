@@ -2,7 +2,7 @@ module Name::Of::Module (things that i export)
 
 import qualified Some::Other::Importable
 import qualified Thing::To::Import as Imported
-# import Other::Imported::Thing::SomeImportedType
-# import Another::Imported::Thing (func1 func2 func3)
+import Other::Imported::Thing::SomeImportedType
+import Another::Imported::Thing (func1 func2 func3)
 
 # Imported::do_something SomeImportedType::SomeOption 2

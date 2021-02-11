@@ -1497,7 +1497,53 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
         Ok(AST::QualifiedImport(Span { start, end }, Box::new(name), alias))
     } else
     {
-        ParseError::empty()
+        let mut imports = vec![];
+        match parser.peek()
+        {
+            Some((Token::LParen, _)) => {
+                parser.next();
+
+                loop
+                {
+                    newline(parser);
+                    if let None = parser.peek()
+                    {
+                        parser.return_state(state);
+                        return Err(ParseError {
+                            span: parser.span(),
+                            msg: String::from("Expected imported item or right parenthesis, got end of file"),
+                            continuable: true,
+                            fatal: true
+                        });
+                    }
+
+                    let (token, span) = parser.peek().unwrap();
+                    end = span.end;
+
+                    match token
+                    {
+                        Token::RParen => break,
+                        Token::Symbol => imports.push(parser.slice()),
+                        _ => {
+                            parser.return_state(state);
+                            return Err(ParseError {
+                                span: parser.span(),
+                                msg: String::from("Expected imported item or right parenthesis"),
+                                continuable: true,
+                                fatal: true
+                            });
+                        }
+                    }
+
+                    parser.next();
+                }
+
+                parser.next();
+            }
+
+            _ => ()
+        }
+        Ok(AST::Import(Span { start, end }, Box::new(name), imports))
     }
 }
 
@@ -1543,7 +1589,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                         parser.return_state(state);
                         return Err(ParseError {
                             span: parser.span(),
-                            msg: String::from("Expected exported item or right parenthesis, got end of file"),
+                            msg: String::from("Expected exported item or right parenthesis"),
                             continuable: true,
                             fatal: true
                         });
