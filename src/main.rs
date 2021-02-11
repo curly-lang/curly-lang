@@ -569,6 +569,7 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
+    ir.clear();
     for file in filenames.iter().enumerate()
     {
         let code = &codes[file.0];
@@ -591,7 +592,6 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
 
         // Print out the ast
         if DEBUG { println!("{:#?}", &ast); }
-        ir.clear();
         ir::convert_ast_to_ir(&file.1, ast, ir);
         if DEBUG { dbg!(&ir); }
     }

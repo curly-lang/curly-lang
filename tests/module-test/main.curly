@@ -1,0 +1,6 @@
+module Main
+import qualified Funcs
+
+debug (Funcs::sum 2.7 3.3)
+debug (Funcs::product 43.3 24.2)
+

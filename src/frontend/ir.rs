@@ -713,9 +713,19 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
     let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
     seen_funcs.insert(String::with_capacity(0), 0);
     let mut sexprs = vec![];
+    let mut module_name = String::with_capacity(0);
     for ast in asts
     {
-        if let AST::Annotation(_span, a) = ast
+        if let AST::Header(_, name, exports, imports) = ast
+        {
+            if let AST::Symbol(_, v) = *name
+            {
+                module_name = v;
+            } else
+            {
+                unreachable!("header module name is always a symbol");
+            }
+        } else if let AST::Annotation(_span, a) = ast
         {
             if a == "@debug"
             {
@@ -757,6 +767,11 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
         }
     }
 
-    ir.sexprs.insert(String::from(filename), sexprs);
+    if module_name == ""
+    {
+        module_name = String::from(filename);
+    }
+
+    ir.sexprs.insert(module_name, sexprs);
 }
 
