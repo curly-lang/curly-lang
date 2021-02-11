@@ -1467,9 +1467,38 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
 
 // import(&mut Parser) -> Result<AST, ParseError>
 // Parses an import statement.
-fn import(_parser: &mut Parser) -> Result<AST, ParseError>
+fn import(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    ParseError::empty()
+    let state = parser.save_state();
+    let (_, span) = consume_save!(parser, Import, state, false, false, "");
+    let start = span.start;
+    let qualified = if let Some((Token::Qualified, _)) = parser.peek()
+    {
+        parser.next();
+        true
+    } else
+    {
+        false
+    };
+    let name = call_func_fatal!(access_member, parser, false, "Expected module name after `import`");
+    let mut end = name.get_span().end;
+
+    if qualified
+    {
+        let mut alias = String::with_capacity(0);
+        if let Some((Token::As, _)) = parser.peek()
+        {
+            parser.next();
+            let (a, s) = consume_save!(parser, Symbol, state, true, false, "Expected alias after `as`");
+            end = s.end;
+            alias = a
+        }
+
+        Ok(AST::QualifiedImport(Span { start, end }, Box::new(name), alias))
+    } else
+    {
+        ParseError::empty()
+    }
 }
 
 // header(&mut Parser) -> Result<AST, ParseError>
@@ -1477,8 +1506,8 @@ fn import(_parser: &mut Parser) -> Result<AST, ParseError>
 fn header(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let start = parser.span().start;
-    consume_nosave!(parser, Module, state, false, false, "");
+    let (_, span) = consume_save!(parser, Module, state, false, false, "");
+    let start = span.start;
     let name = call_func_fatal!(access_member, parser, false, "Expected module name after `module`");
     let mut end = name.get_span().end;
 
@@ -1494,6 +1523,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                 newline(parser);
                 if let None = parser.peek()
                 {
+                    parser.return_state(state);
                     return Err(ParseError {
                         span: parser.span(),
                         msg: String::from("Expected exported item or right parenthesis, got end of file"),
@@ -1509,12 +1539,15 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                 {
                     Token::RParen => break,
                     Token::Symbol => exports.push(parser.slice()),
-                    _ => return Err(ParseError {
-                        span: parser.span(),
-                        msg: String::from("Expected exported item or right parenthesis, got end of file"),
-                        continuable: true,
-                        fatal: true
-                    })
+                    _ => {
+                        parser.return_state(state);
+                        return Err(ParseError {
+                            span: parser.span(),
+                            msg: String::from("Expected exported item or right parenthesis, got end of file"),
+                            continuable: true,
+                            fatal: true
+                        });
+                    }
                 }
 
                 parser.next();
@@ -1532,6 +1565,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
     while let Ok(v) = call_optional!(import, parser)
     {
         imports.push(v);
+        newline(parser);
     }
 
     Ok(AST::Header(
