@@ -1,0 +1,11 @@
+module Name::Of::Module
+  ( things
+    that
+    i
+    export
+  )
+
+# use Thing::To::Import as Imported
+# use Other::Imported::Thing::SomeImportedType
+
+# Imported::do_something SomeImportedType::SomeOption 2

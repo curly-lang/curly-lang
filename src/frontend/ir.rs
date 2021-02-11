@@ -348,8 +348,12 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             tailrec: false
         }, s),
 
-        AST::Annotation(_, _) => {
-            unreachable!("unhandled annotation!");
+        AST::Annotation(_, _)
+            | AST::Import(_, _, _)
+            | AST::QualifiedImport(_, _, _)
+            | AST::Header(_, _, _, _)
+            => {
+            unreachable!("annotations, imports, and headers are already handled!");
         }
 
         // String

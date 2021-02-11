@@ -27,7 +27,7 @@ use curlyc::frontend::ir::{IR, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 enum CBackendCompiler
 {
@@ -388,6 +388,10 @@ impl CurlyREPLHelper
                     | Else
                     | Where
                     | Pass
+                    | Module
+                    | Import
+                    | Qualified
+                    | As
                     | Stop
                     | Type
                     | Enum
@@ -484,7 +488,7 @@ impl Validator for CurlyREPLHelper
     }
 }
 
-impl Helper for CurlyREPLHelper {}
+impl Helper for CurlyREPLHelper { }
 
 // repl() -> ()
 // Executes the REPL.

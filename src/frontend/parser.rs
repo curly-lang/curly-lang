@@ -152,10 +152,22 @@ pub enum Token
     
     #[token("where")]
     Where,
-    
+
+    #[token("import")]
+    Import,
+
+    #[token("qualified")]
+    Qualified,
+
+    #[token("as")]
+    As,
+
+    #[token("module")]
+    Module,
+
     #[token("pass")]
     Pass,
-    
+
     #[token("stop")]
     Stop,
     
@@ -170,19 +182,19 @@ pub enum Token
 
     #[token("lambda")]
     Lambda,
-    
+
     #[token("match")]
     Match,
-    
+ 
     #[token("to")]
     To,
-    
+
     #[token("and")]
     And,
-    
+
     #[token("or")]
     Or,
-    
+
     #[token("xor")]
     Xor,
 
@@ -361,7 +373,14 @@ pub enum AST
     Match(Span, Box<AST>, Vec<(AST, AST)>),
 
     // Scoping
-    With(Span, Vec<AST>, Box<AST>)
+    With(Span, Vec<AST>, Box<AST>),
+
+    // Imports
+    Import(Span, Box<AST>, Vec<String>),
+    QualifiedImport(Span, Box<AST>, String),
+
+    // Header
+    Header(Span, Box<AST>, Vec<String>, Vec<AST>)
 }
 
 impl AST
@@ -390,6 +409,9 @@ impl AST
                 | Self::Match(s, _, _)
                 | Self::Lambda(s, _, _)
                 | Self::With(s, _, _)
+                | Self::Import(s, _, _)
+                | Self::QualifiedImport(s, _, _)
+                | Self::Header(s, _, _, _)
                 => s.clone(),
         }
     }
@@ -1443,17 +1465,99 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
     }, assigns, Box::new(body)))
 }
 
+// import(&mut Parser) -> Result<AST, ParseError>
+// Parses an import statement.
+fn import(_parser: &mut Parser) -> Result<AST, ParseError>
+{
+    ParseError::empty()
+}
+
+// header(&mut Parser) -> Result<AST, ParseError>
+// Parses a header entry.
+fn header(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    let start = parser.span().start;
+    consume_nosave!(parser, Module, state, false, false, "");
+    let name = call_func_fatal!(access_member, parser, false, "Expected module name after `module`");
+    let mut end = name.get_span().end;
+
+    let mut exports = vec![];
+    newline(parser);
+    match parser.peek()
+    {
+        Some((Token::LParen, _)) => {
+            parser.next();
+
+            loop
+            {
+                newline(parser);
+                if let None = parser.peek()
+                {
+                    return Err(ParseError {
+                        span: parser.span(),
+                        msg: String::from("Expected exported item or right parenthesis, got end of file"),
+                        continuable: true,
+                        fatal: true
+                    });
+                }
+
+                let (token, span) = parser.peek().unwrap();
+                end = span.end;
+
+                match token
+                {
+                    Token::RParen => break,
+                    Token::Symbol => exports.push(parser.slice()),
+                    _ => return Err(ParseError {
+                        span: parser.span(),
+                        msg: String::from("Expected exported item or right parenthesis, got end of file"),
+                        continuable: true,
+                        fatal: true
+                    })
+                }
+
+                parser.next();
+            }
+
+            parser.next();
+        }
+
+        _ => ()
+    }
+
+    newline(parser);
+
+    let mut imports = vec![];
+    while let Ok(v) = call_optional!(import, parser)
+    {
+        imports.push(v);
+    }
+
+    Ok(AST::Header(
+        Span { start, end },
+        Box::new(name),
+        exports,
+        imports
+    ))
+}
+
 // parse(&str) -> Result<AST, ParseError>
 // Parses curly code.
 pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
 {
     let mut parser = Parser::new(s);
     let mut lines = vec![];
+    let p = &mut parser;
 
-    while let Some(_) = parser.peek()
+    if let Ok(header) = call_optional!(header, p)
+    {
+        lines.push(header);
+    }
+
+    while let Some(_) = p.peek()
     {
         // Parse one line
-        let p = &mut parser;
         if let Ok(annotation) = call_optional!(annotation, p)
         {
             lines.push(annotation);
@@ -1465,14 +1569,14 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
             lines.push(_type);
         } else
         {
-            lines.push(match expression(&mut parser)
+            lines.push(match expression(p)
             {
                 Ok(v) => v,
                 Err(e) if e.fatal => return Err(e),
                 Err(_) => {
-                    let peeked = if let Some(_) = parser.peek() { parser.slice() } else { String::from("eof") };
+                    let peeked = if let Some(_) = p.peek() { p.slice() } else { String::from("eof") };
                     return Err(ParseError {
-                        span: parser.span(),
+                        span: p.span(),
                         msg: format!("Unexpected `{}`", peeked),
                         continuable: false,
                         fatal: true
@@ -1484,9 +1588,9 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
         // Skip newlines
         loop
         {
-            match parser.peek()
+            match p.peek()
             {
-                Some((Token::Newline, _)) => { parser.next(); }
+                Some((Token::Newline, _)) => { p.next(); }
                 _ => break
             }
         }
