@@ -14,16 +14,19 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+#[allow(unused_imports)]
 use std::process::Command;
 #[allow(unused_imports)]
 use libloading::{Library, Symbol};
 use logos::{Lexer, Span};
 
+#[allow(unused_imports)]
 use curlyc::backends::c::codegen;
 use curlyc::frontend::correctness;
 use curlyc::frontend::correctness::CorrectnessError;
 use curlyc::frontend::ir;
-use curlyc::frontend::ir::{IR, SExpr};
+#[allow(unused_imports)]
+use curlyc::frontend::ir::{IR, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
@@ -126,9 +129,12 @@ fn main() -> Result<(), ()>
                         }
                 ).collect();
 
-                let mut ir = IR::new();
-                let c = compile(&options.inputs, &contents, &mut ir, None)?;
+                let mut ir = IR {
+                    modules: HashMap::with_capacity(0)
+                };
+                let _c = check(&options.inputs, &contents, &mut ir); // compile(&options.inputs, &contents, &mut ir, None)?;
 
+                /*
                 match fs::write(".curly_temp_0.c", &c)
                 {
                     Ok(_) => (),
@@ -172,6 +178,7 @@ fn main() -> Result<(), ()>
                         return Err(());
                     }
                 }
+                */
             }
 
             "check" => {
@@ -189,7 +196,9 @@ fn main() -> Result<(), ()>
                         };
 
                         // Execute file
-                        let mut ir = IR::new();
+                        let mut ir = IR {
+                            modules: HashMap::with_capacity(0)
+                        };
                         match check(&vec![file], &vec![contents], &mut ir)
                         {
                             Ok(_) => println!("No errors found"),
@@ -297,7 +306,9 @@ impl CurlyREPLHelper
     {
         CurlyREPLHelper {
             libs: vec![],
-            ir: IR::new(),
+            ir: IR {
+                modules: HashMap::with_capacity(0)
+            },
             var_names: vec![],
             vars: HashMap::new()
         }
@@ -569,7 +580,6 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
-    ir.clear();
     for file in filenames.iter().enumerate()
     {
         let code = &codes[file.0];
@@ -596,183 +606,195 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
         if DEBUG { dbg!(&ir); }
     }
 
-    // Check correctness
-    let err = correctness::check_correctness(ir);
-
-    // Print out the ir or the error
-    match err
+    let mut fail = false;
+    for module in ir.modules.iter_mut()
     {
-        Ok(_) if DEBUG => {
-            dbg!(&ir);
-            Ok(())
-        }
+        // Check correctness
+        let err = correctness::check_correctness(module.1);
 
-        Ok(_) => Ok(()),
+        // Print out the ir or the error
+        match err
+        {
+            Ok(_) if DEBUG => {
+                dbg!(module);
+            }
 
-        Err(e) => {
-            for e in e
-            {
-                let mut diagnostic = Diagnostic::error();
-                match e
+            Ok(_) => (),
+
+            Err(e) => {
+                for e in e
                 {
-                    CorrectnessError::UndefinedPrefixOp(s, _, t) =>
-                        diagnostic = diagnostic
-                            .with_message("Undefined prefix operator")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("`-` is undefined on `{}`", t))
-                            ]),
-
-                    CorrectnessError::UndefinedInfixOp(s, op, l, r) =>
-                        diagnostic = diagnostic
-                            .with_message("Undefined infix operator")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("`{:?}` is undefined on `{}` and `{}`", op, l, r))
-                            ]),
-
-                    CorrectnessError::NonboolInBoolExpr(s, t) =>
-                        diagnostic = diagnostic
-                            .with_message("Nonboolean in boolean expression")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Expected `Bool`, got `{}`", t))
-                            ]),
-
-                    CorrectnessError::NonboolInIfCond(s, t) =>
-                        diagnostic = diagnostic
-                            .with_message("Nonboolean in if condition")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Expected `Bool`, got `{}`", t))
-                            ]),
-
-                    CorrectnessError::NonmatchingAssignTypes(s1, t1, s2, t2) =>
-                        diagnostic = diagnostic
-                            .with_message("Nonmatching types in assignment")
-                            .with_labels(vec![
-                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                .with_message(format!("Assignment is declared with type `{}`", t1)),
-                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                .with_message(format!("Expected `{}`, got `{}`", t1, t2))
-                            ]),
-
-                    CorrectnessError::SymbolNotFound(s, v) =>
-                        diagnostic = diagnostic
-                            .with_message("Symbol not found")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Could not find symbol `{}`", v))
-                            ]),
-
-                    CorrectnessError::Reassignment(s1, s2, v) =>
-                        diagnostic = diagnostic
-                            .with_message("Redefinition of previously declared variable")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                .with_message(format!("`{}` is already defined and not declared as mutable", v)),
-                                Label::secondary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                .with_message(format!("`{}` previously defined here", v))
-                            ]),
-
-                    CorrectnessError::InvalidType(s) =>
-                        diagnostic = diagnostic
-                            .with_message("Invalid type used")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message("Undeclared type")
-                            ]),
-
-                    CorrectnessError::DuplicateTypeInUnion(s1, s2, t) =>
-                        diagnostic = diagnostic
-                            .with_message("Duplicate type in union type declaration")
-                            .with_labels(vec![
-                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                .with_message("Type used here first"),
-                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                .with_message(format!("Type `{}` used a second time here", t))
-                            ]),
-
-                    CorrectnessError::UnknownFunctionReturnType(s, v) =>
-                        diagnostic = diagnostic
-                            .with_message("Could not determine the return type of the function")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Could not determine return type for `{}`", v))
-                            ]),
-
-                    CorrectnessError::MismatchedFunctionArgType(s, t1, t2) =>
-                        diagnostic = diagnostic
-                            .with_message("Wrong type passed as an argument")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Expected `{}`, got `{}`", t1, t2))
-                            ]),
-
-                    CorrectnessError::InvalidApplication(s, t) => {
-                        diagnostic = diagnostic
-                            .with_message("Invalid application")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Expected function, got `{}`", t))
-                            ]);
-
-                        if t == Type::String
-                        {
+                    let mut diagnostic = Diagnostic::error();
+                    match e
+                    {
+                        CorrectnessError::UndefinedPrefixOp(s, _, t) =>
                             diagnostic = diagnostic
-                                .with_notes(vec![String::from("String concatenation is not yet implemented")]);
+                                .with_message("Undefined prefix operator")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("`-` is undefined on `{}`", t))
+                                ]),
+
+                        CorrectnessError::UndefinedInfixOp(s, op, l, r) =>
+                            diagnostic = diagnostic
+                                .with_message("Undefined infix operator")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("`{:?}` is undefined on `{}` and `{}`", op, l, r))
+                                ]),
+
+                        CorrectnessError::NonboolInBoolExpr(s, t) =>
+                            diagnostic = diagnostic
+                                .with_message("Nonboolean in boolean expression")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Expected `Bool`, got `{}`", t))
+                                ]),
+
+                        CorrectnessError::NonboolInIfCond(s, t) =>
+                            diagnostic = diagnostic
+                                .with_message("Nonboolean in if condition")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Expected `Bool`, got `{}`", t))
+                                ]),
+
+                        CorrectnessError::NonmatchingAssignTypes(s1, t1, s2, t2) =>
+                            diagnostic = diagnostic
+                                .with_message("Nonmatching types in assignment")
+                                .with_labels(vec![
+                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                    .with_message(format!("Assignment is declared with type `{}`", t1)),
+                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                    .with_message(format!("Expected `{}`, got `{}`", t1, t2))
+                                ]),
+
+                        CorrectnessError::SymbolNotFound(s, v) =>
+                            diagnostic = diagnostic
+                                .with_message("Symbol not found")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Could not find symbol `{}`", v))
+                                ]),
+
+                        CorrectnessError::Reassignment(s1, s2, v) =>
+                            diagnostic = diagnostic
+                                .with_message("Redefinition of previously declared variable")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                    .with_message(format!("`{}` is already defined and not declared as mutable", v)),
+                                    Label::secondary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                    .with_message(format!("`{}` previously defined here", v))
+                                ]),
+
+                        CorrectnessError::InvalidType(s) =>
+                            diagnostic = diagnostic
+                                .with_message("Invalid type used")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message("Undeclared type")
+                                ]),
+
+                        CorrectnessError::DuplicateTypeInUnion(s1, s2, t) =>
+                            diagnostic = diagnostic
+                                .with_message("Duplicate type in union type declaration")
+                                .with_labels(vec![
+                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                    .with_message("Type used here first"),
+                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                    .with_message(format!("Type `{}` used a second time here", t))
+                                ]),
+
+                        CorrectnessError::UnknownFunctionReturnType(s, v) =>
+                            diagnostic = diagnostic
+                                .with_message("Could not determine the return type of the function")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Could not determine return type for `{}`", v))
+                                ]),
+
+                        CorrectnessError::MismatchedFunctionArgType(s, t1, t2) =>
+                            diagnostic = diagnostic
+                                .with_message("Wrong type passed as an argument")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Expected `{}`, got `{}`", t1, t2))
+                                ]),
+
+                        CorrectnessError::InvalidApplication(s, t) => {
+                            diagnostic = diagnostic
+                                .with_message("Invalid application")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Expected function, got `{}`", t))
+                                ]);
+
+                            if t == Type::String
+                            {
+                                diagnostic = diagnostic
+                                    .with_notes(vec![String::from("String concatenation is not yet implemented")]);
+                            }
+                        }
+
+                        CorrectnessError::InvalidCast(s1, t1, s2, t2) => {
+                            diagnostic = diagnostic
+                                .with_message("Invalid cast")
+                                .with_labels(vec![
+                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                    .with_message(format!("Value has type `{}`", t1)),
+                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                    .with_message(format!("Cannot convert `{}` to `{}`", t1, t2))
+                                ]);
+                        }
+
+                        CorrectnessError::NonSubtypeOnMatch(s1, t1, s2, t2) => {
+                            diagnostic = diagnostic
+                                .with_message("Nonsubtype checked for in match arm")
+                                .with_labels(vec![
+                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                    .with_message(format!("Value has type `{}`", t1)),
+                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                    .with_message(format!("`{}` is not a subtype of `{}`", t2, t1))
+                                ]);
+                        }
+
+                        CorrectnessError::InfiniteSizedType(s, t) => {
+                            diagnostic = diagnostic
+                                .with_message("Type has infinite size")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Type `{}` has infinite size", t))
+                                ]);
+                        }
+
+                        CorrectnessError::NonmemberAccess(s, a, b) => {
+                            diagnostic = diagnostic
+                                .with_message("Attempted to access a member that does not exist")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("`{}` has no member `{}`", a, b))
+                                ])
                         }
                     }
-
-                    CorrectnessError::InvalidCast(s1, t1, s2, t2) => {
-                        diagnostic = diagnostic
-                            .with_message("Invalid cast")
-                            .with_labels(vec![
-                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                .with_message(format!("Value has type `{}`", t1)),
-                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                .with_message(format!("Cannot convert `{}` to `{}`", t1, t2))
-                            ]);
-                    }
-
-                    CorrectnessError::NonSubtypeOnMatch(s1, t1, s2, t2) => {
-                        diagnostic = diagnostic
-                            .with_message("Nonsubtype checked for in match arm")
-                            .with_labels(vec![
-                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                .with_message(format!("Value has type `{}`", t1)),
-                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                .with_message(format!("`{}` is not a subtype of `{}`", t2, t1))
-                            ]);
-                    }
-
-                    CorrectnessError::InfiniteSizedType(s, t) => {
-                        diagnostic = diagnostic
-                            .with_message("Type has infinite size")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("Type `{}` has infinite size", t))
-                            ]);
-                    }
-
-                    CorrectnessError::NonmemberAccess(s, a, b) => {
-                        diagnostic = diagnostic
-                            .with_message("Attempted to access a member that does not exist")
-                            .with_labels(vec![
-                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                .with_message(format!("`{}` has no member `{}`", a, b))
-                            ])
-                    }
+                    fail = true;
+                    term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
                 }
-                term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }
-            return Err(());
         }
+    }
+
+    if fail
+    {
+        Err(())
+    } else
+    {
+        Ok(())
     }
 }
 
 // compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
 // Compiles curly into C code.
+/*
 fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
 {
     // Check the file
@@ -790,6 +812,7 @@ fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars:
 
     Ok(c)
 }
+*/
 
 // execute(&str, &str, &mut IR, Option<(&mut Vec<String>, &mut HashMap<String, REPLType>)>, &mut Guard) -> Option<Library>
 // Executes Curly code.

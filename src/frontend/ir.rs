@@ -1,6 +1,5 @@
 use logos::Span;
 use std::collections::HashMap;
-use std::iter::FromIterator;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -239,30 +238,39 @@ pub struct IRFunction
     pub written: bool
 }
 
-// Represents the ir.
+// Represents a module of the ir.
 #[derive(Debug)]
-pub struct IR
+pub struct IRModule
 {
+    pub filename: String,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub types: HashMap<String, Type>,
-    pub sexprs: HashMap<String, Vec<SExpr>>,
+    pub sexprs: Vec<SExpr>
 }
 
-impl IR
+#[derive(Debug)]
+pub struct IR
 {
-    // new() -> IR
-    // Creates a new root IR.
-    pub fn new() -> IR
+    pub modules: HashMap<String, IRModule>
+}
+
+impl IRModule
+{
+    // new() -> IRModule
+    // Creates a new IRModule.
+    pub fn new(filename: &str) -> IRModule
     {
-        IR {
-            scope: Scope::new().init_builtins(),
+        IRModule {
+            filename: String::from(filename),
+            scope: Scope::new(),
             funcs: HashMap::with_capacity(0),
             types: HashMap::with_capacity(0),
-            sexprs: HashMap::with_capacity(0),
+            sexprs: Vec::with_capacity(0)
         }
     }
 
+    /*
     // clear(&mut self) -> ()
     // Clears the root of any sexpressions.
     pub fn clear(&mut self)
@@ -281,6 +289,7 @@ impl IR
         swap(&mut vars, &mut self.scope.variables);
         self.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
     }
+    */
 }
 
 // convert_node(AST, &str, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
@@ -709,15 +718,15 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
     }
 }
 
-// extract_types_to_ir(&Vec<AST>, &mut IR) -> ()
+// extract_types_to_ir(&Vec<AST>, &mut IRModule) -> ()
 // Extracts types and inserts them into the IR's list of types.
-fn extract_types_to_ir(asts: &Vec<AST>, ir: &mut IR)
+fn extract_types_to_ir(asts: &Vec<AST>, module: &mut IRModule)
 {
     for ast in asts
     {
         if let AST::AssignType(_, v, _) = ast
         {
-            ir.types.insert(v.clone(), Type::Unknown);
+            module.types.insert(v.clone(), Type::Unknown);
         }
     }
 }
@@ -726,8 +735,9 @@ fn extract_types_to_ir(asts: &Vec<AST>, ir: &mut IR)
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
 {
-    extract_types_to_ir(&asts, ir);
-    let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
+    let mut module = IRModule::new(filename);
+    extract_types_to_ir(&asts, &mut module);
+    let mut seen_funcs = HashMap::with_capacity(1);
     seen_funcs.insert(String::with_capacity(0), 0);
     let mut sexprs = vec![];
     let mut module_name = String::with_capacity(0);
@@ -785,7 +795,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
             }
         } else
         {
-            sexprs.push(convert_node(ast, filename, &mut ir.funcs, true, &mut seen_funcs, &mut ir.types));
+            sexprs.push(convert_node(ast, filename, &mut module.funcs, true, &mut seen_funcs, &mut module.types));
         }
     }
 
@@ -793,7 +803,8 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
     {
         module_name = String::from(filename);
     }
+    module.sexprs = sexprs;
 
-    ir.sexprs.insert(module_name, sexprs);
+    ir.modules.insert(module_name, module);
 }
 

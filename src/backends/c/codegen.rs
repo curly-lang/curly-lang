@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
-use crate::frontend::ir::{BinOp, IR, PrefixOp, SExpr};
+use crate::frontend::ir::{BinOp, IRModule, PrefixOp, SExpr};
 use crate::frontend::types::Type;
 
 // Represents a function in C.
@@ -37,7 +37,7 @@ impl CType
     }
 
     // get_curly_type(&self) -> &Type
-    // Returns the Curly IR type.
+    // Returns the Curly IRModule type.
     fn get_curly_type(&self) -> &Type
     {
         match self
@@ -61,7 +61,7 @@ impl CType
 }
 
 // get_c_type(&Type, &HashMap<Type, String>) -> &str
-// Converts an IR type into a C type.
+// Converts an IRModule type into a C type.
 fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 {
     match _type
@@ -85,9 +85,9 @@ fn sanitise_symbol(value: &str) -> String
     s
 }
 
-// convert_sexpr(&SExpr, &IR, &mut CFunction, &HashMap<Type, String>) -> String
+// convert_sexpr(&SExpr, &IRModule, &mut CFunction, &HashMap<Type, String>) -> String
 // Converts a s expression into C code.
-fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap<Type, CType>) -> String
+fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &HashMap<Type, CType>) -> String
 {
     match sexpr
     {
@@ -1656,9 +1656,9 @@ fn put_fn_declaration(s: &mut String, func: &CFunction, types: &HashMap<Type, CT
     s.push(')');
 }
 
-// put_debug_fn(&mut String, &str, &Type, &IR, &HashMap<Type, CType>, bool) -> ()
+// put_debug_fn(&mut String, &str, &Type, &IRModule, &HashMap<Type, CType>, bool) -> ()
 // Puts a debug function in the built string.
-fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>, newline: bool)
+fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: &HashMap<Type, CType>, newline: bool)
 {
     let original_type = _type;
     let mut _type = _type;
@@ -1744,9 +1744,9 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
     }
 }
 
-// collect_types(&IR, &mut HashMap<Type, String>, &mut String) -> ()
+// collect_types(&IRModule, &mut HashMap<Type, String>, &mut String) -> ()
 // Collects user defined types into a string containing all type definitions.
-fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut String)
+fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: &mut String)
 {
     // Iterate over every type
     let mut last_reference = 0;
@@ -1867,10 +1867,10 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
     }
 }
 
-// collect_type_functions(&IR, &HashMap<Type, CType>, &mut String) -> ()
+// collect_type_functions(&IRModule, &HashMap<Type, CType>, &mut String) -> ()
 // Collect type functions (ie, in type Option 'a = Some: 'a | enum None, Option::Some is a type
 // function).
-fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &mut String)
+fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_string: &mut String)
 {
     for t in types
     {
@@ -1930,9 +1930,9 @@ fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &
     }
 }
 
-// fix_argument(&(String, &Type), &IR, &mut String, &HashMap<Type, CType>, &mut usize) -> ()
+// fix_argument(&(String, &Type), &IRModule, &mut String, &HashMap<Type, CType>, &mut usize) -> ()
 // Fixes an argument where necessary.
-fn fix_argument(a: &(&String, &Type), ir: &IR, code: &mut String, types: &HashMap<Type, CType>, last_reference: &mut usize)
+fn fix_argument(a: &(&String, &Type), ir: &IRModule, code: &mut String, types: &HashMap<Type, CType>, last_reference: &mut usize)
 {
     let mut _type = a.1;
     while let Type::Symbol(s) = _type
@@ -1992,9 +1992,9 @@ fn fix_argument(a: &(&String, &Type), ir: &IR, code: &mut String, types: &HashMa
     }
 }
 
-// convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
-// Converts Curly IR to C code.
-pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
+// convert_ir_to_c(&IRModule, Option<&mut Vec<String>>) -> String
+// Converts Curly IRModule to C code.
+pub fn convert_ir_to_c(ir: &IRModule, repl_vars: Option<&Vec<String>>) -> String
 {
     // Create and populate types
     let mut types = HashMap::new();
@@ -2092,7 +2092,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
     let mut main_func = CFunction {
         name: String::from(""),
         args: Vec::with_capacity(0),
-        ret_type: if let Some(v) = ir.sexprs.iter().next().unwrap().1.iter().last()
+        ret_type: if let Some(v) = ir.sexprs.iter().last()
         {
             &v.get_metadata()._type
         } else
@@ -2105,7 +2105,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
     // Populate the main function
     let mut cleanup = vec![];
-    for s in ir.sexprs.iter().next().unwrap().1.iter()
+    for s in ir.sexprs.iter()
     {
         let v = convert_sexpr(s, ir, &mut main_func, &types);
 
@@ -2333,7 +2333,7 @@ typedef struct {
     code_string.push_str(&main_func.code);
 
     // Deallocate everything
-    for v in ir.sexprs.iter().next().unwrap().1.iter().enumerate()
+    for v in ir.sexprs.iter().enumerate()
     {
         if let SExpr::Assign(m, _, _) = v.1
         {

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::mem::swap;
 
-use super::ir::{BinOp, IR, IRFunction, Location, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IRFunction, IRModule, Location, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::{HashSetWrapper, Type};
 
@@ -28,9 +28,9 @@ pub enum CorrectnessError
     NonmemberAccess(Location, String, String)
 }
 
-// check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
+// check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
-fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessError>)
+fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     if let Type::UndeclaredTypeError(s) = &sexpr.get_metadata()._type
     {
@@ -352,7 +352,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
-                    if arg.get_metadata()._type.is_subtype(&**l, &root.types)
+                    if arg.get_metadata()._type.is_subtype(l, &root.types)
                     {
                         m._type = *r.clone();
                         m.arity = if func.get_metadata().arity > 0
@@ -524,10 +524,10 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 {
                     let vtype = if let Type::Tag(_, t) = &**t
                     {
-                        t
+                        &**t
                     } else
                     {
-                        t
+                        &**t
                     };
                     root.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true);
                     (Some(s), &**t)
@@ -790,7 +790,6 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
                 // Check child function
                 None => {
-                    println!("{}", f);
                     let mut func = funcs.remove(f).unwrap();
                     check_function_body(f, f, &mut func, scope, funcs, errors, types);
                     funcs.insert(f.clone(), func);
@@ -926,7 +925,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Strings concatenate to other strings
                 // Type::String => Type::String,
 
-                // Functions apply their arguments
+                // Functions apply themodule arguments
                 Type::Func(_, r) => {
                     *r.clone()
                 }
@@ -981,7 +980,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Check body of match arm
                 let name = if let Type::Tag(s, t) = &arm.0
                 {
-                    scope.put_var(s, t, 0, None, &arm.1.get_metadata().loc2, true);
+                    scope.put_var(&s, &t, 0, None, &arm.1.get_metadata().loc2, true);
                     Some(s)
                 } else
                 {
@@ -1144,19 +1143,19 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
     }
 }
 
-// check_function_group(T, &HashMap<String, IRFunction>, &mut IR, &mut Vec<CorrectnessError>) -> ()
+// check_function_group(T, &HashMap<String, IRFunction>, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
 // Checks the group of functions for return types.
-fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessError>)
+fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
     where T: Iterator<Item = (String, String)> + Clone
 {
     // Generate function types
     for name in names.clone()
     {
         // Handle functions
-        if let Some(mut func) = ir.funcs.remove(&name.0)
+        if let Some(mut func) = module.funcs.remove(&name.0)
         {
-            check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors, &ir.types);
-            ir.funcs.insert(name.0, func);
+            check_function_body(&name.0, &name.1, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
+            module.funcs.insert(name.0, func);
 
         } else
         {
@@ -1168,37 +1167,37 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     for name in names
     {
         // Remove function
-        if let Some(mut func) = ir.funcs.remove(&name.0)
+        if let Some(mut func) = module.funcs.remove(&name.0)
         {
             // Push scope and add arguments
-            ir.scope.push_scope(false);
+            module.scope.push_scope(false);
             for arg in &func.args
             {
                 if arg.0 != "_"
                 {
-                    ir.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+                    module.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
                 }
             }
 
             // Check body
-            check_sexpr(&mut func.body, ir, errors);
+            check_sexpr(&mut func.body, module, errors);
             func.checked = true;
 
             // Pop scope
-            ir.scope.pop_scope();
+            module.scope.pop_scope();
 
             // Reinsert function
-            ir.funcs.insert(name.0, func);
+            module.funcs.insert(name.0, func);
         }
     }
 }
 
-// check_globals(&mut IR, Vec<String>, &mut Vec<CorrectnessError>) -> ()
+// check_globals(&mut IRModule, Vec<String>, &mut Vec<CorrectnessError>) -> ()
 // Checks global function return types.
-fn check_globals(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
+fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     // Get the set of all global functions and globals
-    let mut globals = HashSet::from_iter(ir.funcs.iter().filter_map(|v| {
+    let mut globals = HashSet::from_iter(module.funcs.iter().filter_map(|v| {
         if v.1.global && v.0 != "_"
         {
             Some(v.0.clone())
@@ -1209,7 +1208,7 @@ fn check_globals(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     }));
 
     // Iterate over every function
-    for func in ir.funcs.iter_mut()
+    for func in module.funcs.iter_mut()
     {
         // Remove arguments
         let mut removed = HashSet::with_capacity(0);
@@ -1227,14 +1226,14 @@ fn check_globals(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     }
 
     // Check all globals
-    let v: Vec<(String, String)> = ir.funcs.iter().filter_map(
+    let v: Vec<(String, String)> = module.funcs.iter().filter_map(
         |v| match v.1.global
         {
             true => Some((v.0.clone(), v.0.clone())),
             false => None
         }
     ).collect();
-    check_function_group(v.into_iter(), ir, errors);
+    check_function_group(v.into_iter(), module, errors);
 }
 
 // save_single_type(&mut usize, &Type, &mut HashMap) -> ()
@@ -1302,7 +1301,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
 
         SExpr::Match(_, v, a) => {
             save_types(v, types, id);
-            for a in a
+            for a in a.iter()
             {
                 let _type = if let Type::Tag(_, t) = &a.0
                 {
@@ -1314,7 +1313,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
 
                 if let Type::Sum(_) = _type
                 {
-                    save_single_type(id, _type, types);
+                    save_single_type(id, &_type, types);
                 }
                 save_types(&a.1, types, id);
             }
@@ -1324,34 +1323,31 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
     }
 }
 
-// check_type_validity(&IR) -> ()
+// check_type_validity(&IRModule) -> ()
 // Checks whether the given types are valid or not.
-fn check_type_validity(ir: &IR, errors: &mut Vec<CorrectnessError>)
+fn check_type_validity(module: &IRModule, errors: &mut Vec<CorrectnessError>)
 {
-    for f in ir.sexprs.iter()
+    for s in module.sexprs.iter()
     {
-        for s in f.1.iter()
+        if let SExpr::TypeAlias(m, n) = s
         {
-            if let SExpr::TypeAlias(m, n) = s
+            match &m._type
             {
-                match &m._type
-                {
-                    Type::Symbol(s) if s == n => {
-                        errors.push(CorrectnessError::InfiniteSizedType(
-                            m.loc2.clone(),
-                            m._type.clone()
-                        ));
-                    }
-
-                    Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
-                        errors.push(CorrectnessError::InfiniteSizedType(
-                            m.loc2.clone(),
-                            m._type.clone()
-                        ));
-                    }
-
-                    _ => ()
+                Type::Symbol(s) if s == n => {
+                    errors.push(CorrectnessError::InfiniteSizedType(
+                        m.loc2.clone(),
+                        m._type.clone()
+                    ));
                 }
+
+                Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
+                    errors.push(CorrectnessError::InfiniteSizedType(
+                        m.loc2.clone(),
+                        m._type.clone()
+                    ));
+                }
+
+                _ => ()
             }
         }
     }
@@ -1515,70 +1511,61 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
     }
 }
 
-// check_correctness(&mut IR) -> ()
-// Checks the correctness of ir.
-pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
+// check_correctness(&mut IRModule) -> ()
+// Checks the correctness of module.
+pub fn check_correctness(module: &mut IRModule) -> Result<(), Vec<CorrectnessError>>
 {
     let mut errors = Vec::with_capacity(0);
 
     // Check types
-    check_type_validity(ir, &mut errors);
+    check_type_validity(module, &mut errors);
 
     // Collect globals
-    for file in ir.sexprs.iter()
+    for sexpr in module.sexprs.iter()
     {
-        for sexpr in file.1.iter()
+        if let SExpr::Assign(m, a, _) = sexpr
         {
-            if let SExpr::Assign(m, a, _) = sexpr
+            if m._type != Type::Error
             {
-                if m._type != Type::Error
-                {
-                    ir.scope.put_var(a, &m._type, 0, None, &m.loc, false);
-                }
+                module.scope.put_var(a, &m._type, 0, None, &m.loc, false);
             }
         }
     }
 
     // Check globals
-    check_globals(ir, &mut errors);
+    check_globals(module, &mut errors);
 
     // Check sexpressions
-    let mut sexprs = HashMap::with_capacity(0);
-    swap(&mut ir.sexprs, &mut sexprs);
-    for file in sexprs.iter_mut()
+    let mut sexprs = Vec::with_capacity(0);
+    swap(&mut module.sexprs, &mut sexprs);
+    for sexpr in sexprs.iter_mut()
     {
-        for sexpr in file.1.iter_mut()
-        {
-            check_sexpr(sexpr, ir, &mut errors);
-        }
+        check_sexpr(sexpr, module, &mut errors);
     }
-    swap(&mut ir.sexprs, &mut sexprs);
+    swap(&mut module.sexprs, &mut sexprs);
 
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
         // Save types
         let mut id = 0;
-        while let Some(_) = ir.types.get(&format!("{}", id))
+        while let Some(_) = module.types.get(&format!("{}", id))
         {
             id += 1;
         }
 
-        for file in ir.sexprs.iter()
+        for sexpr in module.sexprs.iter()
         {
-            for sexpr in file.1.iter()
-            {
-                save_types(sexpr, &mut ir.types, &mut id);
-            }
+            save_types(sexpr, &mut module.types, &mut id);
         }
 
-        for f in ir.funcs.iter()
+        for f in module.funcs.iter()
         {
-            save_types(&f.1.body, &mut ir.types, &mut id);
+            save_types(&f.1.body, &mut module.types, &mut id);
         }
 
         // Check for tail recursion
-        for f in ir.funcs.iter_mut()
+        for f in module.funcs.iter_mut()
         {
             check_tailrec(&mut f.1.body, &f.0, true);
         }
