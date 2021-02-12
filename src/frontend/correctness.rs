@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::mem::swap;
 
-use super::ir::{BinOp, IRFunction, IRModule, Location, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IR, IRFunction, IRModule, Location, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::{HashSetWrapper, Type};
 
@@ -1511,63 +1511,123 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
     }
 }
 
-// check_correctness(&mut IRModule) -> ()
-// Checks the correctness of module.
-pub fn check_correctness(module: &mut IRModule) -> Result<(), Vec<CorrectnessError>>
+// check_imports(&IRModule, &IR, &mut Vec<CorrectnessError>) -> ()
+// Checks the validity of imported and exported items in a module.
+fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessError>)
 {
-    let mut errors = Vec::with_capacity(0);
-
-    // Check types
-    check_type_validity(module, &mut errors);
-
-    // Collect globals
-    for sexpr in module.sexprs.iter()
+    // Put export types
+    for export in module.exports.iter()
     {
-        if let SExpr::Assign(m, a, _) = sexpr
+        module.scope.put_var(export.0, &export.1.1, 0, None, &export.1.0, false);
+    }
+
+    // Put unqualified imports in scope
+    for import in module.imports.iter()
+    {
+        if !import.1.qualified
         {
-            if m._type != Type::Error
+            if import.1.imports.len() != 0
             {
-                module.scope.put_var(a, &m._type, 0, None, &m.loc, false);
+                for i in import.1.imports.iter()
+                {
+                    if module.scope.variables.contains_key(i.0)
+                    {
+                        panic!("redeclaring a variable");
+                    } else
+                    {
+                        module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true);
+                    }
+                }
+            } else
+            {
+                println!("{} vs {:?}", import.1.name, ir.modules);
+                for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
+                {
+                    if module.scope.variables.contains_key(i.0)
+                    {
+                        panic!("redeclaring a variable");
+                    } else
+                    {
+                        module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true);
+                    }
+                }
             }
         }
     }
+}
 
-    // Check globals
-    check_globals(module, &mut errors);
+// check_correctness(&mut IR) -> ()
+// Checks the correctness of module.
+pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
+{
+    // Set up
+    let mut errors = Vec::with_capacity(0);
+    let keys: Vec<String> = ir.modules.iter().map(|v| v.0.clone()).collect();
 
-    // Check sexpressions
-    let mut sexprs = Vec::with_capacity(0);
-    swap(&mut module.sexprs, &mut sexprs);
-    for sexpr in sexprs.iter_mut()
+    for name in keys
     {
-        check_sexpr(sexpr, module, &mut errors);
+        // Get module
+        let mut module = ir.modules.remove(&name).unwrap();
+
+        // Check the module
+        check_module(&mut module, ir, &mut errors);
+
+        // Check types
+        check_type_validity(&mut module, &mut errors);
+
+        // Collect globals
+        for sexpr in module.sexprs.iter()
+        {
+            if let SExpr::Assign(m, a, _) = sexpr
+            {
+                if m._type != Type::Error
+                {
+                    module.scope.put_var(a, &m._type, 0, None, &m.loc, false);
+                }
+            }
+        }
+
+        // Check globals
+        check_globals(&mut module, &mut errors);
+
+        // Check sexpressions
+        let mut sexprs = Vec::with_capacity(0);
+        swap(&mut module.sexprs, &mut sexprs);
+        for sexpr in sexprs.iter_mut()
+        {
+            check_sexpr(sexpr, &mut module, &mut errors);
+        }
+        swap(&mut module.sexprs, &mut sexprs);
+        ir.modules.insert(name, module);
     }
-    swap(&mut module.sexprs, &mut sexprs);
 
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
-        // Save types
-        let mut id = 0;
-        while let Some(_) = module.types.get(&format!("{}", id))
+        for (_, module) in ir.modules.iter_mut()
         {
-            id += 1;
-        }
+            // Save types
+            let mut id = 0;
+            while let Some(_) = module.types.get(&format!("{}", id))
+            {
+                id += 1;
+            }
 
-        for sexpr in module.sexprs.iter()
-        {
-            save_types(sexpr, &mut module.types, &mut id);
-        }
+            for sexpr in module.sexprs.iter()
+            {
+                save_types(sexpr, &mut module.types, &mut id);
+            }
 
-        for f in module.funcs.iter()
-        {
-            save_types(&f.1.body, &mut module.types, &mut id);
-        }
+            for f in module.funcs.iter()
+            {
+                save_types(&f.1.body, &mut module.types, &mut id);
+            }
 
-        // Check for tail recursion
-        for f in module.funcs.iter_mut()
-        {
-            check_tailrec(&mut f.1.body, &f.0, true);
+            // Check for tail recursion
+            for f in module.funcs.iter_mut()
+            {
+                check_tailrec(&mut f.1.body, &f.0, true);
+            }
         }
 
         Ok(())

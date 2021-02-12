@@ -242,6 +242,7 @@ pub struct IRFunction
 pub struct IRImport
 {
     pub name: String,
+    pub loc: Location,
     pub qualified: bool,
     pub imports: HashMap<String, Type>
 }
@@ -253,7 +254,7 @@ pub struct IRModule
     pub name: String,
     pub filename: String,
     pub imports: HashMap<String, IRImport>,
-    pub exports: HashMap<String, Type>,
+    pub exports: HashMap<String, (Location, Type)>,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub types: HashMap<String, Type>,
@@ -803,7 +804,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
                 } else
                 {
                     // Add export to list of exports
-                    module.exports.insert(export.1, _type);
+                    module.exports.insert(export.1, (Location::new(export.0, filename), _type));
                 }
             }
 
@@ -812,7 +813,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
             {
                 let imp_mod;
                 let alias;
-                if let AST::QualifiedImport(_, m, a) = import
+                if let AST::QualifiedImport(s, m, a) = import
                 {
                     let mut name = vec![];
                     let mut m = m;
@@ -843,10 +844,11 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
 
                     imp_mod = IRImport {
                         name: name.join("::"),
+                        loc: Location::new(s, filename),
                         qualified: true,
                         imports: HashMap::with_capacity(0)
                     };
-                } else if let AST::Import(_, m, imports) = import
+                } else if let AST::Import(s, m, imports) = import
                 {
                     let mut name = vec![];
                     let mut m = m;
@@ -870,12 +872,18 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
                     alias = name.join("::");
                     imp_mod = IRImport {
                         name: name.join("::"),
+                        loc: Location::new(s, filename),
                         qualified: false,
                         imports: HashMap::from_iter(imports.into_iter().map(|v| (v, Type::Unknown)))
                     };
                 } else
                 {
                     unreachable!("always either a QualifiedImport or an Import");
+                }
+
+                if module.imports.contains_key(&alias)
+                {
+                    panic!("redefinition of import alias");
                 }
 
                 module.imports.insert(alias, imp_mod);
