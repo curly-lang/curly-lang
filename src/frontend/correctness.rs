@@ -456,7 +456,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             // Add variable to scope if no error occured
-            if m._type != Type::Error
+            if m._type != Type::Error && name != "_"
             {
                 root.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true);
             }
@@ -945,7 +945,11 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 get_function_type(value, scope, funcs, errors, captured, captured_names, types)
             };
-            scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true);
+
+            if name != "_"
+            {
+                scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true);
+            }
             t
         }
 
@@ -1084,7 +1088,10 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
         scope.push_scope(true);
         for arg in func.args.iter()
         {
-            scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+            if arg.0 != "_"
+            {
+                scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+            }
         }
 
         // Get the type
@@ -1167,7 +1174,10 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
             ir.scope.push_scope(false);
             for arg in &func.args
             {
-                ir.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+                if arg.0 != "_"
+                {
+                    ir.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+                }
             }
 
             // Check body
@@ -1189,7 +1199,7 @@ fn check_globals(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
 {
     // Get the set of all global functions and globals
     let mut globals = HashSet::from_iter(ir.funcs.iter().filter_map(|v| {
-        if v.1.global
+        if v.1.global && v.0 != "_"
         {
             Some(v.0.clone())
         } else

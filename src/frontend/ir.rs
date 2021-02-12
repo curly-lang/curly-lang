@@ -512,7 +512,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         // Assignment
         AST::Assign(span, name, val) => {
             let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
-            if global
+            if global && name != "_"
             {
                 funcs.insert(name.clone(), IRFunction {
                     loc: Location::new(span.clone(), filename),
