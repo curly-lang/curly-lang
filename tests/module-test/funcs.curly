@@ -1,5 +1,5 @@
 module Modules::Funcs
-    ( sum: Float -> Float -> Float
+    ( sum    : Float -> Float -> Float
     , product: Float -> Float -> Float
     )
 

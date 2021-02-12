@@ -286,27 +286,6 @@ impl IRModule
             sexprs: Vec::with_capacity(0)
         }
     }
-
-    /*
-    // clear(&mut self) -> ()
-    // Clears the root of any sexpressions.
-    pub fn clear(&mut self)
-    {
-        use std::mem::swap;
-
-        self.sexprs.clear();
-        let mut funcs = HashMap::with_capacity(0);
-        swap(&mut funcs, &mut self.funcs);
-        self.funcs = HashMap::from_iter(funcs.into_iter().filter(|v| v.1.global));
-        for f in self.funcs.iter_mut()
-        {
-            f.1.written = true;
-        }
-        let mut vars = HashMap::with_capacity(0);
-        swap(&mut vars, &mut self.scope.variables);
-        self.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
-    }
-    */
 }
 
 // convert_node(AST, &str, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
@@ -564,6 +543,21 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
 
         // Assignment with types
         AST::AssignTyped(span, name, _type, val) => {
+            let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
+            if global && name != "_"
+            {
+                funcs.insert(name.clone(), IRFunction {
+                    loc: Location::new(span.clone(), filename),
+                    args: Vec::with_capacity(0),
+                    captured: HashMap::with_capacity(0),
+                    captured_names: Vec::with_capacity(0),
+                    body: sexpr.clone(),
+                    global: true,
+                    checked: false,
+                    written: false
+                });
+            }
+
             SExpr::Assign(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::new(_type.get_span().clone(), filename),
@@ -571,7 +565,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 arity: 0,
                 saved_argc: None,
                 tailrec: false
-            }, name, Box::new(convert_node(*val, filename, funcs, false, seen_funcs, types)))
+            }, name, Box::new(sexpr))
         }
 
         AST::AssignType(span, name, _type) => {

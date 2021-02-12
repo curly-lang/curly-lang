@@ -771,7 +771,18 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                             .with_labels(vec![
                                 Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("`{}` has no member `{}`", a, b))
-                            ])
+                            ]);
+                    }
+
+                    CorrectnessError::MismatchedDeclarationAssignmentTypes(s1, t1, s2, t2) => {
+                        diagnostic = diagnostic
+                            .with_message("Assignment of variable declared with incompatible type")
+                            .with_labels(vec![
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                .with_message(format!("Variable declared here with type {}", t1)),
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                .with_message(format!("Assignment of value with type {} to variable of type {}", t2, t1)),
+                            ]);
                     }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();

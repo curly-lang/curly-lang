@@ -25,7 +25,8 @@ pub enum CorrectnessError
     InvalidCast(Location, Type, Location, Type),
     NonSubtypeOnMatch(Location, Type, Location, Type),
     InfiniteSizedType(Location, Type),
-    NonmemberAccess(Location, String, String)
+    NonmemberAccess(Location, String, String),
+    MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -100,12 +101,22 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     root.scope.push_scope(true);
                     for a in func.args.iter()
                     {
-                        root.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
+                        if a.0 != "_"
+                        {
+                            root.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
+                        }
                     }
                     check_sexpr(&mut func.body, root, errors);
                     root.scope.pop_scope();
 
-                    m._type = root.scope.get_var(f).unwrap().0.clone();
+                    if let Some(v) = root.scope.get_var(f)
+                    {
+                        m._type = v.0.clone();
+                    } else
+                    {
+                        return;
+                    }
+
                     m.arity = func.args.len();
                     m.saved_argc = Some(func.captured.len());
                     root.funcs.insert(f.clone(), func);
@@ -389,15 +400,16 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
         // Assignments
         SExpr::Assign(m, name, value) => {
+            // Check child node
+            check_sexpr(value, root, errors);
+            if value.get_metadata()._type == Type::Error
+            {
+                return;
+            }
+
             // Check if variable already exists
             if let Some(v) = root.scope.variables.get(name)
             {
-                if value.get_metadata()._type == Type::Unknown
-                {
-                    root.scope.variables.remove(name);
-                    return;
-                }
-
                 if v.4
                 {
                     errors.push(CorrectnessError::Reassignment(
@@ -405,31 +417,48 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                         v.3.clone(),
                         name.clone()
                     ));
-                    if let SExpr::Function(_, v) = &**value
+                    if let SExpr::Function(_, f) = &**value
                     {
-                        if v != name
+                        if f != name
                         {
-                            root.scope.variables.remove(v);
+                            root.scope.variables.remove(f);
                         }
-                        root.funcs.remove(v);
+                        root.funcs.remove(f);
                     }
+                    m._type = Type::Error;
+                    return;
+                } else if m._type != Type::Error && !m._type.is_subtype(&v.0, &root.types)
+                {
+                    errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                        v.3.clone(),
+                        v.0.clone(),
+                        m.loc.clone(),
+                        m._type.clone()
+                    ));
+                    m._type = Type::Error;
+                    return;
+                } else if m._type == Type::Error && !value.get_metadata()._type.is_subtype(&v.0, &root.types)
+                {
+                    errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                        v.3.clone(),
+                        v.0.clone(),
+                        value.get_metadata().loc.clone(),
+                        value.get_metadata()._type.clone()
+                    ));
+                    m._type = Type::Error;
                     return;
                 }
-            }
 
-            // Check child node
-            check_sexpr(value, root, errors);
+                if m._type != v.0
+                {
+                    m._type = v.0.clone();
+                }
+            }
 
             // Check if variable value is unknown type
             if value.get_metadata()._type == Type::Unknown
             {
                 root.scope.variables.remove(name);
-                return;
-            }
-
-            // Check if an error occured or the type is unknown
-            if value.get_metadata()._type == Type::Error
-            {
                 return;
             }
 
@@ -1074,7 +1103,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 // Checks a function body and determines the return type of the function.
 fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
 {
-    if let None = scope.get_var(name)
+    if scope.get_var(name).is_none() && scope.get_var(refr).is_none()
     {
         // Put function in scope
         scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false);
@@ -1082,64 +1111,88 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
         {
             scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false);
         }
+    }
 
-        // Put arguments into scope
-        scope.push_scope(true);
-        for arg in func.args.iter()
+    // Put arguments into scope
+    scope.push_scope(true);
+    for arg in func.args.iter()
+    {
+        if arg.0 != "_"
         {
-            if arg.0 != "_"
+            scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+        }
+    }
+
+    // Get the type
+    let mut captured = HashMap::with_capacity(0);
+    let mut captured_names = Vec::with_capacity(0);
+    let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names, types);
+    func.captured = captured;
+    func.captured_names = captured_names;
+    scope.pop_scope();
+
+    // Push an error if type is unknown
+    if _type == Type::Unknown
+    {
+        errors.push(CorrectnessError::UnknownFunctionReturnType(
+            func.body.get_metadata().loc.clone(),
+            String::from(name)
+        ));
+    } else
+    {
+        // Construct the type
+        let mut acc = _type;
+        for t in func.args.iter().rev()
+        {
+            acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
+        }
+
+        if let Some(v) = scope.variables.remove(refr)
+        {
+            if v.0 != Type::Unknown && v.0 != acc
             {
-                scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+                errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                    v.3,
+                    v.0,
+                    func.loc.clone(),
+                    acc
+                ));
+                return
+            }
+        }
+        if let Some(v) = scope.variables.remove(name)
+        {
+            if v.0 != Type::Unknown && v.0 != acc
+            {
+                errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                    v.3,
+                    v.0,
+                    func.loc.clone(),
+                    acc
+                ));
+                return
             }
         }
 
-        // Get the type
-        let mut captured = HashMap::with_capacity(0);
-        let mut captured_names = Vec::with_capacity(0);
-        let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names, types);
-        func.captured = captured;
-        func.captured_names = captured_names;
-        scope.pop_scope();
-
-        // Push an error if type is unknown
-        if _type == Type::Unknown
+        // Get global scope
+        let mut scope = scope;
+        loop
         {
-            errors.push(CorrectnessError::UnknownFunctionReturnType(
-                func.body.get_metadata().loc.clone(),
-                String::from(name)
-            ));
-        } else
-        {
-            // Construct the type
-            let mut acc = _type;
-            for t in func.args.iter().rev()
+            if scope.parent.is_some()
             {
-                acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
-            }
-
-            scope.variables.remove(refr);
-            scope.variables.remove(name);
-
-            // Get global scope
-            let mut scope = scope;
-            loop
+                scope = &mut *scope.parent.as_mut().unwrap();
+            } else
             {
-                if scope.parent.is_some()
-                {
-                    scope = &mut *scope.parent.as_mut().unwrap();
-                } else
-                {
-                    break;
-                }
+                break;
             }
-
-            // Put function type in global scope
-            if name != refr
-            {
-                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
-            }
-            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
         }
+
+        // Put function type in global scope
+        if name != refr
+        {
+            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
+        }
+        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
     }
 }
 
@@ -1540,7 +1593,6 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                 }
             } else
             {
-                println!("{} vs {:?}", import.1.name, ir.modules);
                 for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
                 {
                     if module.scope.variables.contains_key(i.0)
