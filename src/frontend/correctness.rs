@@ -790,6 +790,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
                 // Check child function
                 None => {
+                    println!("{}", f);
                     let mut func = funcs.remove(f).unwrap();
                     check_function_body(f, f, &mut func, scope, funcs, errors, types);
                     funcs.insert(f.clone(), func);
@@ -1144,9 +1145,16 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     // Generate function types
     for name in names.clone()
     {
-        let mut func = ir.funcs.remove(&name.0).unwrap();
-        check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors, &ir.types);
-        ir.funcs.insert(name.0, func);
+        // Handle functions
+        if let Some(mut func) = ir.funcs.remove(&name.0)
+        {
+            check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors, &ir.types);
+            ir.funcs.insert(name.0, func);
+
+        } else
+        {
+            unreachable!("uwu");
+        }
     }
 
     // Check all function bodies
@@ -1175,11 +1183,11 @@ fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessEr
     }
 }
 
-// check_functions(&mut IR, &mut Vec<CorrectnessError>) -> ()
-// Checks function return types.
-fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
+// check_globals(&mut IR, Vec<String>, &mut Vec<CorrectnessError>) -> ()
+// Checks global function return types.
+fn check_globals(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
 {
-    // Get the set of all global functions
+    // Get the set of all global functions and globals
     let mut globals = HashSet::from_iter(ir.funcs.iter().filter_map(|v| {
         if v.1.global
         {
@@ -1193,6 +1201,7 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
     // Iterate over every function
     for func in ir.funcs.iter_mut()
     {
+        // Remove arguments
         let mut removed = HashSet::with_capacity(0);
         for a in func.1.args.iter()
         {
@@ -1205,10 +1214,9 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         convert_function_symbols(&mut func.1.body, &mut globals);
 
         globals = HashSet::from_iter(globals.union(&removed).cloned());
-
     }
 
-    // Check all global functions
+    // Check all globals
     let v: Vec<(String, String)> = ir.funcs.iter().filter_map(
         |v| match v.1.global
         {
@@ -1506,8 +1514,23 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     // Check types
     check_type_validity(ir, &mut errors);
 
-    // Check functions
-    check_functions(ir, &mut errors);
+    // Collect globals
+    for file in ir.sexprs.iter()
+    {
+        for sexpr in file.1.iter()
+        {
+            if let SExpr::Assign(m, a, _) = sexpr
+            {
+                if m._type != Type::Error
+                {
+                    ir.scope.put_var(a, &m._type, 0, None, &m.loc, false);
+                }
+            }
+        }
+    }
+
+    // Check globals
+    check_globals(ir, &mut errors);
 
     // Check sexpressions
     let mut sexprs = HashMap::with_capacity(0);

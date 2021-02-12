@@ -510,14 +510,31 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types))),
 
         // Assignment
-        AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
-            loc: Location::new(span, filename),
-            loc2: Location::empty(),
-            _type: Type::Error,
-            arity: 0,
-            saved_argc: None,
-            tailrec: false
-        }, name, Box::new(convert_node(*val, filename, funcs, global, seen_funcs, types))),
+        AST::Assign(span, name, val) => {
+            let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
+            if global
+            {
+                funcs.insert(name.clone(), IRFunction {
+                    loc: Location::new(span.clone(), filename),
+                    args: Vec::with_capacity(0),
+                    captured: HashMap::with_capacity(0),
+                    captured_names: Vec::with_capacity(0),
+                    body: sexpr.clone(),
+                    global: true,
+                    checked: false,
+                    written: false
+                });
+            }
+
+            SExpr::Assign(SExprMetadata {
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                _type: Type::Error,
+                arity: 0,
+                saved_argc: None,
+                tailrec: false
+            }, name, Box::new(sexpr))
+        }
 
         // Assignment with types
         AST::AssignTyped(span, name, _type, val) => {
@@ -528,7 +545,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 arity: 0,
                 saved_argc: None,
                 tailrec: false
-            }, name, Box::new(convert_node(*val, filename, funcs, global, seen_funcs, types)))
+            }, name, Box::new(convert_node(*val, filename, funcs, false, seen_funcs, types)))
         }
 
         AST::AssignType(span, name, _type) => {
