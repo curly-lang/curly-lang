@@ -784,6 +784,17 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                                 .with_message(format!("Assignment of value with type {} to variable of type {}", t2, t1)),
                             ]);
                     }
+
+                    CorrectnessError::VariableImportedTwice(s1, s2) => {
+                        diagnostic = diagnostic
+                            .with_message("Variable imported twice")
+                            .with_labels(vec![
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                .with_message("Variable declared here at first"),
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                .with_message("Variable redeclared here"),
+                            ]);
+                    }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }

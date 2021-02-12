@@ -26,7 +26,8 @@ pub enum CorrectnessError
     NonSubtypeOnMatch(Location, Type, Location, Type),
     InfiniteSizedType(Location, Type),
     NonmemberAccess(Location, String, String),
-    MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type)
+    MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type),
+    VariableImportedTwice(Location, Location)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1585,7 +1586,10 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                 {
                     if module.scope.variables.contains_key(i.0)
                     {
-                        panic!("redeclaring a variable");
+                        errors.push(CorrectnessError::VariableImportedTwice(
+                            module.scope.variables.get(i.0).unwrap().3.clone(),
+                            import.1.loc.clone()
+                        ));
                     } else
                     {
                         module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true);
@@ -1597,7 +1601,10 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                 {
                     if module.scope.variables.contains_key(i.0)
                     {
-                        panic!("redeclaring a variable");
+                        errors.push(CorrectnessError::VariableImportedTwice(
+                            module.scope.variables.get(i.0).unwrap().3.clone(),
+                            i.1.0.clone()
+                        ));
                     } else
                     {
                         module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true);
