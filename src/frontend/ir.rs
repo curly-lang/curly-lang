@@ -1,5 +1,6 @@
 use logos::Span;
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -35,7 +36,6 @@ impl Location
             filename: String::with_capacity(0)
         }
     }
-
 }
 
 // Represents a prefix operator.
@@ -238,11 +238,21 @@ pub struct IRFunction
     pub written: bool
 }
 
+#[derive(Debug)]
+pub struct IRImport
+{
+    pub name: String,
+    pub qualified: bool,
+    pub imports: HashMap<String, Type>
+}
+
 // Represents a module of the ir.
 #[derive(Debug)]
 pub struct IRModule
 {
+    pub name: String,
     pub filename: String,
+    pub imports: HashMap<String, IRImport>,
     pub exports: HashMap<String, Type>,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
@@ -263,9 +273,13 @@ impl IRModule
     pub fn new(filename: &str) -> IRModule
     {
         IRModule {
+            name: String::with_capacity(0),
             filename: String::from(filename),
+            imports: HashMap::with_capacity(0),
             exports: HashMap::with_capacity(0),
-            scope: Scope::new(),
+
+            // TODO: make init_builtins() be called in only a prelude
+            scope: Scope::new().init_builtins(),
             funcs: HashMap::with_capacity(0),
             types: HashMap::with_capacity(0),
             sexprs: Vec::with_capacity(0)
@@ -737,16 +751,21 @@ fn extract_types_to_ir(asts: &Vec<AST>, module: &mut IRModule)
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
 {
+    // Set up
     let mut module = IRModule::new(filename);
     extract_types_to_ir(&asts, &mut module);
-    let mut seen_funcs = HashMap::with_capacity(1);
+    let mut seen_funcs = HashMap::new();
     seen_funcs.insert(String::with_capacity(0), 0);
     let mut sexprs = vec![];
     let mut module_name = String::with_capacity(0);
+
+    // Iterate over every ast node
     for ast in asts
     {
+        // Deal with the header
         if let AST::Header(_, name, exports, imports) = ast
         {
+            // Get module name
             let mut full_name = vec![];
             let mut top = *name;
             while let AST::Infix(_, _, l, r) = top
@@ -758,14 +777,119 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
 
                 top = *l;
             }
+            if let AST::Symbol(_, v) = top
+            {
+                full_name.push(v);
+            }
+            full_name.reverse();
             module_name = full_name.join("::");
+
+            // Deal with exports
+            for export in exports
+            {
+                // Check exported variable type
+                let _type = types::convert_ast_to_type(export.2, filename, &module.types);
+                if let Type::UndeclaredTypeError(_) = _type
+                {
+                    panic!("undeclared type error: {:?}", _type);
+                } else if let Type::DuplicateTypeError(_, _, _) = _type
+                {
+                    panic!("duplicate type error: {:?}", _type);
+
+                // Check export is unique
+                } else if module.exports.contains_key(&export.1)
+                {
+                    panic!("module exports item twice");
+                } else
+                {
+                    // Add export to list of exports
+                    module.exports.insert(export.1, _type);
+                }
+            }
+
+            // Deal with imports
+            for import in imports
+            {
+                let imp_mod;
+                let alias;
+                if let AST::QualifiedImport(_, m, a) = import
+                {
+                    let mut name = vec![];
+                    let mut m = m;
+                    while let AST::Infix(_, _, l, r) = *m
+                    {
+                        if let AST::Symbol(_, v) = *r
+                        {
+                            name.push(v);
+                        } else
+                        {
+                            unreachable!("always a symbol");
+                        }
+                        m = l;
+                    }
+                    if let AST::Symbol(_, v) = *m
+                    {
+                        name.push(v);
+                    }
+                    name.reverse();
+
+                    if a != ""
+                    {
+                        alias = a;
+                    } else
+                    {
+                        alias = name.join("::");
+                    }
+
+                    imp_mod = IRImport {
+                        name: name.join("::"),
+                        qualified: true,
+                        imports: HashMap::with_capacity(0)
+                    };
+                } else if let AST::Import(_, m, imports) = import
+                {
+                    let mut name = vec![];
+                    let mut m = m;
+                    while let AST::Infix(_, _, l, r) = *m
+                    {
+                        if let AST::Symbol(_, v) = *r
+                        {
+                            name.push(v);
+                        } else
+                        {
+                            unreachable!("always a symbol");
+                        }
+                        m = l;
+                    }
+                    if let AST::Symbol(_, v) = *m
+                    {
+                        name.push(v);
+                    }
+                    name.reverse();
+
+                    alias = name.join("::");
+                    imp_mod = IRImport {
+                        name: name.join("::"),
+                        qualified: false,
+                        imports: HashMap::from_iter(imports.into_iter().map(|v| (v, Type::Unknown)))
+                    };
+                } else
+                {
+                    unreachable!("always either a QualifiedImport or an Import");
+                }
+
+                module.imports.insert(alias, imp_mod);
+            }
         } else if let AST::Annotation(_span, a) = ast
         {
+            // @debug alias
             if a == "@debug"
             {
+                // Get the last value and build a call to debug
                 let last = sexprs.pop().unwrap();
                 let called = if let SExpr::Assign(_, v, _) = &last
                 {
+                    // Build with last assignment
                     let v = v.clone();
                     sexprs.push(last);
                     SExpr::Application(
@@ -781,6 +905,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
                     )
                 } else
                 {
+                    // Build with last expression
                     SExpr::Application(
                         SExprMetadata::empty(),
                         Box::new(SExpr::Symbol(
@@ -791,6 +916,8 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
                     )
                 };
                 sexprs.push(called);
+
+            // All other aliases are not supported yet
             } else
             {
                 panic!("unsupported annotation!");
@@ -801,12 +928,15 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
         }
     }
 
+    // Check module name
     if module_name == ""
     {
-        module_name = String::from(filename);
+        module_name = filename.split('/').last().unwrap().split('.').next().unwrap().to_string();
     }
+    module.name = module_name.clone();
     module.sexprs = sexprs;
 
+    // Add module to ir root
     ir.modules.insert(module_name, module);
 }
 
