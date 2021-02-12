@@ -380,7 +380,7 @@ pub enum AST
     QualifiedImport(Span, Box<AST>, String),
 
     // Header
-    Header(Span, Box<AST>, Vec<String>, Vec<AST>)
+    Header(Span, Box<AST>, Vec<(Span, String, AST)>, Vec<AST>)
 }
 
 impl AST
@@ -1559,6 +1559,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
 
     let mut exports = vec![];
     newline(parser);
+    let mut comma = false;
     match parser.peek()
     {
         Some((Token::LParen, _)) => {
@@ -1566,6 +1567,19 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
 
             loop
             {
+                if comma
+                {
+                    match parser.peek()
+                    {
+                        Some((Token::Comma, _)) => { parser.next(); }
+                        Some((Token::RParen, _)) => break,
+                        _ => ()
+                    }
+                } else
+                {
+                    comma = true;
+                }
+
                 newline(parser);
                 if let None = parser.peek()
                 {
@@ -1584,7 +1598,15 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                 match token
                 {
                     Token::RParen => break,
-                    Token::Symbol => exports.push(parser.slice()),
+                    Token::Symbol => exports.push(match declaration(parser)
+                      {
+                          Ok(v) => v,
+                          Err(e) => {
+                              parser.return_state(state);
+                              return Err(e);
+                          }
+                      }
+                    ),
                     _ => {
                         parser.return_state(state);
                         return Err(ParseError {

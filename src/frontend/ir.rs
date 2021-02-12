@@ -243,6 +243,7 @@ pub struct IRFunction
 pub struct IRModule
 {
     pub filename: String,
+    pub exports: HashMap<String, Type>,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub types: HashMap<String, Type>,
@@ -263,6 +264,7 @@ impl IRModule
     {
         IRModule {
             filename: String::from(filename),
+            exports: HashMap::with_capacity(0),
             scope: Scope::new(),
             funcs: HashMap::with_capacity(0),
             types: HashMap::with_capacity(0),
