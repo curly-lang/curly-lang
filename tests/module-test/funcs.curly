@@ -9,6 +9,7 @@ sum x: Float, y: Float = x + y
 product x: Float, y: Float = x * y
 
 type Num = Int | Float
+type OptionInt = Some: Int | enum None
 
 id a: Num =
     match a

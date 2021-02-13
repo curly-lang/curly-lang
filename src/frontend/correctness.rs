@@ -32,7 +32,7 @@ pub enum CorrectnessError
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
-fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<CorrectnessError>)
+fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     if let Type::UndeclaredTypeError(s) = &sexpr.get_metadata()._type
     {
@@ -69,48 +69,48 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
         // Functions
         SExpr::Function(m, f) => {
-            match root.scope.get_var(f)
+            match module.scope.get_var(f)
             {
                 Some(t) => {
                     m._type = t.0.clone();
                     m.arity = t.1;
                     m.saved_argc = t.2;
 
-                    if root.funcs.get(f).is_some() && !root.funcs.get(f).unwrap().checked
+                    if module.funcs.get(f).is_some() && !module.funcs.get(f).unwrap().checked
                     {
-                        let mut func = root.funcs.remove(f).unwrap();
-                        root.scope.push_scope(true);
+                        let mut func = module.funcs.remove(f).unwrap();
+                        module.scope.push_scope(true);
                         for a in func.args.iter()
                         {
-                            root.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
+                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
                         }
-                        check_sexpr(&mut func.body, root, errors);
-                        root.scope.pop_scope();
-                        root.funcs.insert(f.clone(), func);
+                        check_sexpr(&mut func.body, module, errors);
+                        module.scope.pop_scope();
+                        module.funcs.insert(f.clone(), func);
                     }
 
                     if m._type == Type::Unknown
                     {
-                        root.funcs.remove(f);
+                        module.funcs.remove(f);
                     }
                 }
 
                 None => {
-                    let mut func = root.funcs.remove(f).unwrap();
-                    check_function_body(f, f, &mut func, &mut root.scope, &mut root.funcs, errors, &root.types);
+                    let mut func = module.funcs.remove(f).unwrap();
+                    check_function_body(f, f, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
 
-                    root.scope.push_scope(true);
+                    module.scope.push_scope(true);
                     for a in func.args.iter()
                     {
                         if a.0 != "_"
                         {
-                            root.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
+                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
                         }
                     }
-                    check_sexpr(&mut func.body, root, errors);
-                    root.scope.pop_scope();
+                    check_sexpr(&mut func.body, module, errors);
+                    module.scope.pop_scope();
 
-                    if let Some(v) = root.scope.get_var(f)
+                    if let Some(v) = module.scope.get_var(f)
                     {
                         m._type = v.0.clone();
                     } else
@@ -120,14 +120,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
                     m.arity = func.args.len();
                     m.saved_argc = Some(func.captured.len());
-                    root.funcs.insert(f.clone(), func);
+                    module.funcs.insert(f.clone(), func);
                 }
             }
         }
 
         // Symbols
         SExpr::Symbol(m, s) => {
-            match root.scope.get_var(s)
+            match module.scope.get_var(s)
             {
                 Some(t) => {
                     m._type = t.0.clone();
@@ -149,7 +149,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                 // Negative has operators defined in scope
                 PrefixOp::Neg => {
                     // Check child node
-                    check_sexpr(v, root, errors);
+                    check_sexpr(v, module, errors);
 
                     // Check if an error occured
                     if v.get_metadata()._type == Type::Error
@@ -158,7 +158,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     }
 
                     // Get type
-                    if let Some(t) = root.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
+                    if let Some(t) = module.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
                     {
                         m._type = t.clone();
                     } else
@@ -178,8 +178,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
         // Infix operators
         SExpr::Infix(m, op, left, right) => {
             // Check child nodes
-            check_sexpr(left, root, errors);
-            check_sexpr(right, root, errors);
+            check_sexpr(left, module, errors);
+            check_sexpr(right, module, errors);
 
             // Check if an error occured
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
@@ -188,7 +188,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             }
 
             // Get type
-            if let Some(t) = root.scope.get_func_ret(FunctionName::Infix(
+            if let Some(t) = module.scope.get_func_ret(FunctionName::Infix(
                 *op,
                 left.get_metadata()._type.clone(),
                 right.get_metadata()._type.clone()
@@ -208,7 +208,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
         SExpr::As(m, v) => {
             // Check child node
-            check_sexpr(v, root, errors);
+            check_sexpr(v, module, errors);
 
             // Check if an error occured
             if v.get_metadata()._type == Type::Error
@@ -217,7 +217,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             }
 
             // Assert the types are valid
-            if !v.get_metadata()._type.is_subtype(&m._type, &root.types)
+            if !v.get_metadata()._type.is_subtype(&m._type, &module.types)
             {
                 errors.push(CorrectnessError::InvalidCast(
                     v.get_metadata().loc.clone(),
@@ -232,8 +232,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
         // And and or
         SExpr::And(m, left, right) | SExpr::Or(m, left, right) => {
             // Check child nodes
-            check_sexpr(left, root, errors);
-            check_sexpr(right, root, errors);
+            check_sexpr(left, module, errors);
+            check_sexpr(right, module, errors);
 
             // Check if an error occured
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
@@ -267,9 +267,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
         // If expressions
         SExpr::If(m, cond, then, elsy) => {
             // Check child nodes
-            check_sexpr(cond, root, errors);
-            check_sexpr(then, root, errors);
-            check_sexpr(elsy, root, errors);
+            check_sexpr(cond, module, errors);
+            check_sexpr(then, module, errors);
+            check_sexpr(elsy, module, errors);
 
             // Check if an error occured
             if cond.get_metadata()._type == Type::Error || then.get_metadata()._type == Type::Error || elsy.get_metadata()._type == Type::Error
@@ -287,10 +287,10 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             }
 
             // Check that the types of the then and else blocks match
-            if then.get_metadata()._type.is_subtype(&elsy.get_metadata()._type, &root.types)
+            if then.get_metadata()._type.is_subtype(&elsy.get_metadata()._type, &module.types)
             {
                 m._type = elsy.get_metadata()._type.clone()
-            } else if elsy.get_metadata()._type.is_subtype(&then.get_metadata()._type, &root.types)
+            } else if elsy.get_metadata()._type.is_subtype(&then.get_metadata()._type, &module.types)
             {
                 m._type = then.get_metadata()._type.clone()
             } else if then.get_metadata()._type != elsy.get_metadata()._type
@@ -334,8 +334,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
         SExpr::Application(m, func, arg) => {
             // Check the function and arg types
-            check_sexpr(func, root, errors);
-            check_sexpr(arg, root, errors);
+            check_sexpr(func, module, errors);
+            check_sexpr(arg, module, errors);
 
             // Check if either the function or argument resulted in an error
             if func.get_metadata()._type == Type::Error || arg.get_metadata()._type == Type::Error
@@ -357,7 +357,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             let mut _type = &func.get_metadata()._type;
             while let Type::Symbol(s) = _type
             {
-                _type = root.types.get(s).unwrap();
+                _type = module.types.get(s).unwrap();
             }
 
             // Match the function
@@ -370,7 +370,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
-                    if arg.get_metadata()._type.is_subtype(l, &root.types)
+                    if arg.get_metadata()._type.is_subtype(l, &module.types)
                     {
                         m._type = *r.clone();
                         m.arity = if func.get_metadata().arity > 0
@@ -408,14 +408,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
         // Assignments
         SExpr::Assign(m, name, value) => {
             // Check child node
-            check_sexpr(value, root, errors);
+            check_sexpr(value, module, errors);
             if value.get_metadata()._type == Type::Error
             {
                 return;
             }
 
             // Check if variable already exists
-            if let Some(v) = root.scope.variables.get(name)
+            if let Some(v) = module.scope.variables.get(name)
             {
                 if v.4
                 {
@@ -428,13 +428,13 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     {
                         if f != name
                         {
-                            root.scope.variables.remove(f);
+                            module.scope.variables.remove(f);
                         }
-                        root.funcs.remove(f);
+                        module.funcs.remove(f);
                     }
                     m._type = Type::Error;
                     return;
-                } else if m._type != Type::Error && !m._type.is_subtype(&v.0, &root.types)
+                } else if m._type != Type::Error && !m._type.is_subtype(&v.0, &module.types)
                 {
                     errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                         v.3.clone(),
@@ -444,7 +444,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     ));
                     m._type = Type::Error;
                     return;
-                } else if m._type == Type::Error && !value.get_metadata()._type.is_subtype(&v.0, &root.types)
+                } else if m._type == Type::Error && !value.get_metadata()._type.is_subtype(&v.0, &module.types)
                 {
                     errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                         v.3.clone(),
@@ -465,7 +465,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             // Check if variable value is unknown type
             if value.get_metadata()._type == Type::Unknown
             {
-                root.scope.variables.remove(name);
+                module.scope.variables.remove(name);
                 return;
             }
 
@@ -478,7 +478,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                 // Preassigned type
                 _ => {
                     // Types do not match
-                    if !value.get_metadata()._type.is_subtype(&m._type, &root.types)
+                    if !value.get_metadata()._type.is_subtype(&m._type, &module.types)
                     {
                         errors.push(CorrectnessError::NonmatchingAssignTypes(
                             m.loc2.clone(),
@@ -494,14 +494,14 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             // Add variable to scope if no error occured
             if m._type != Type::Error && name != "_"
             {
-                root.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true);
+                module.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true);
             }
         }
 
         // With expressions
         SExpr::With(m, assigns, body) => {
             // Push a new scope
-            root.scope.push_scope(false);
+            module.scope.push_scope(false);
 
             // Function iterator
             let iter = assigns.iter().filter_map(
@@ -521,26 +521,26 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             );
 
             // Deal with functions
-            check_function_group(iter, root, errors);
+            check_function_group(iter, module, errors);
 
             // Check assignments
             for a in assigns
             {
-                check_sexpr(a, root, errors);
+                check_sexpr(a, module, errors);
             }
 
             // Check body
-            check_sexpr(body, root, errors);
+            check_sexpr(body, module, errors);
             m._type = body.get_metadata()._type.clone();
             m.arity = body.get_metadata().arity;
 
             // Pop scope
-            root.scope.pop_scope();
+            module.scope.pop_scope();
         }
 
         SExpr::Match(m, value, arms) => {
             // Check value
-            check_sexpr(value, root, errors);
+            check_sexpr(value, module, errors);
             let _type = &value.get_metadata()._type;
             if *_type == Type::Error
             {
@@ -551,7 +551,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             }
 
             // Check match arms
-            root.scope.push_scope(false);
+            module.scope.push_scope(false);
             let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
             let mut last = None;
             for arm in arms.iter_mut()
@@ -566,7 +566,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     {
                         &**t
                     };
-                    root.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true);
+                    module.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true);
                     (Some(s), &**t)
                 } else
                 {
@@ -578,12 +578,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     errors.push(CorrectnessError::InvalidType(
                         s.clone()
                     ));
-                    root.scope.pop_scope();
+                    module.scope.pop_scope();
                     continue;
                 }
 
                 // Nonsubtypes are errors
-                if !atype.is_subtype(&_type, &root.types)
+                if !atype.is_subtype(&_type, &module.types)
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().loc.clone(),
@@ -591,17 +591,17 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                         arm.1.get_metadata().loc2.clone(),
                         arm.0.clone()
                     ));
-                    root.scope.pop_scope();
+                    module.scope.pop_scope();
                     return;
                 }
 
                 // Check body of match arm
-                check_sexpr(&mut arm.1, root, errors);
+                check_sexpr(&mut arm.1, module, errors);
 
                 // Remove variable
                 if let Some(s) = name
                 {
-                    root.scope.variables.remove(s);
+                    module.scope.variables.remove(s);
                 }
 
                 // Check for error
@@ -615,7 +615,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                 let mut _type = arm.1.get_metadata()._type.clone();
 
                 // Add types
-                if returned.is_subtype(&_type, &root.types) && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, &root.types))
+                if returned.is_subtype(&_type, &module.types) && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, &module.types))
                 {
                     last = Some(_type);
                 } else if let Some(Type::Error) = last
@@ -627,7 +627,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                     {
                         while let Type::Symbol(s) = t
                         {
-                            t = root.types.get(&s).unwrap().clone();
+                            t = module.types.get(&s).unwrap().clone();
                         }
                         if let Type::Sum(v) = t
                         {
@@ -644,7 +644,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
                     while let Type::Symbol(s) = _type
                     {
-                        _type = root.types.get(&s).unwrap().clone();
+                        _type = module.types.get(&s).unwrap().clone();
                     }
                     if let Type::Sum(v) = _type
                     {
@@ -659,7 +659,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                 }
             }
 
-            root.scope.pop_scope();
+            module.scope.pop_scope();
             m._type = if let Some(v) = last
             {
                 v
@@ -679,7 +679,60 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
         }
 
         SExpr::MemberAccess(m, a) => {
-            if let Some(t) = root.types.get(&a[0])
+            // Get module
+            let mut module_name = String::new();
+            let mut pos = 0;
+            let types = &module.types;
+            for a in a.iter().enumerate()
+            {
+                if module_name.len() != 0
+                {
+                    module_name.push_str("::");
+                }
+                module_name.push_str(a.1);
+
+                if module.imports.contains_key(&module_name)
+                {
+                    pos = a.0 + 1;
+                }
+            }
+
+            if pos > 0
+            {
+                module_name.clear();
+                for a in a.iter().enumerate()
+                {
+                    if a.0 == pos
+                    {
+                        break;
+                    }
+
+                    if module_name.len() != 0
+                    {
+                        module_name.push_str("::");
+                    }
+                    module_name.push_str(a.1);
+                }
+
+                if let Some(v) = module.imports.get(&module_name).unwrap().imports.get(&a[pos])
+                {
+                    if a.len() > pos + 1
+                    {
+                        errors.push(CorrectnessError::NonmemberAccess(
+                            m.loc.clone(),
+                            module_name,
+                            a[pos + 1].clone()
+                        ));
+                    } else
+                    {
+                        m._type = v.clone();
+                    }
+                    return;
+                }
+            }
+
+            // Get type
+            if let Some(t) = types.get(&a[pos])
             {
                 if let Type::Sum(f) = t
                 {
@@ -694,7 +747,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                             ));
                         } else
                         {
-                            m._type = Type::Symbol(a[0].clone());
+                            m._type = Type::Symbol(a[pos].clone());
                         }
                     } else if let Some(v) = f.0.iter().filter(|v| if let Type::Tag(t, _) = v { t == &a[1] } else { false }).next()
                     {
@@ -732,11 +785,18 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                         a[1].clone()
                     ));
                 }
-            } else
+            } else if pos == 0
             {
                 errors.push(CorrectnessError::SymbolNotFound(
                     m.loc.clone(),
                     a[0].clone(),
+                ));
+            } else
+            {
+                errors.push(CorrectnessError::NonmemberAccess(
+                    m.loc.clone(),
+                    module_name,
+                    a[pos].clone()
                 ));
             }
         }
@@ -1660,7 +1720,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
     }
 
     // Put unqualified imports in scope
-    for import in module.imports.iter()
+    for import in module.imports.iter_mut()
     {
         if !import.1.qualified
         {
@@ -1694,6 +1754,12 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                         module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true);
                     }
                 }
+            }
+        } else if import.1.imports.len() == 0
+        {
+            for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
+            {
+                import.1.imports.insert(i.0.clone(), i.1.1.clone());
             }
         }
     }
