@@ -27,7 +27,8 @@ pub enum CorrectnessError
     InfiniteSizedType(Location, Type),
     NonmemberAccess(Location, String, String),
     MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type),
-    VariableImportedTwice(Location, Location)
+    VariableImportedTwice(Location, Location),
+    ImportedValueNotExported(Location, String, String)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1724,9 +1725,11 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
     {
         if !import.1.qualified
         {
+            // Import specific values
             if import.1.imports.len() != 0
             {
-                for i in import.1.imports.iter()
+                let exporter = &ir.modules.get(&import.1.name).unwrap().exports;
+                for i in import.1.imports.iter_mut()
                 {
                     if module.scope.variables.contains_key(i.0)
                     {
@@ -1734,11 +1737,21 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                             module.scope.variables.get(i.0).unwrap().3.clone(),
                             import.1.loc.clone()
                         ));
+                    } else if exporter.contains_key(i.0)
+                    {
+                        *i.1 = exporter.get(i.0).unwrap().1.clone();
+                        module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true);
                     } else
                     {
-                        module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true);
+                        errors.push(CorrectnessError::ImportedValueNotExported(
+                            import.1.loc.clone(),
+                            i.0.clone(),
+                            import.1.name.clone()
+                        ));
                     }
                 }
+
+            // Import everything
             } else
             {
                 for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
@@ -1755,7 +1768,9 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                     }
                 }
             }
-        } else if import.1.imports.len() == 0
+
+        // Import qualified
+        } else
         {
             for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
             {
@@ -1773,6 +1788,12 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     let mut errors = Vec::with_capacity(0);
     let keys: Vec<String> = ir.modules.iter().map(|v| v.0.clone()).collect();
 
+    // Check types
+    for module in ir.modules.iter_mut()
+    {
+        check_type_validity(module.1, &mut errors);
+    }
+
     for name in keys
     {
         // Get module
@@ -1780,9 +1801,6 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
 
         // Check the module
         check_module(&mut module, ir, &mut errors);
-
-        // Check types
-        check_type_validity(&mut module, &mut errors);
 
         // Collect globals
         for sexpr in module.sexprs.iter()

@@ -1583,9 +1583,10 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                 newline(parser);
                 if let None = parser.peek()
                 {
+                    let span = parser.span();
                     parser.return_state(state);
                     return Err(ParseError {
-                        span: parser.span(),
+                        span,
                         msg: String::from("Expected exported item or right parenthesis, got end of file"),
                         continuable: true,
                         fatal: true
@@ -1608,9 +1609,10 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                       }
                     ),
                     _ => {
+                        let span = parser.span();
                         parser.return_state(state);
                         return Err(ParseError {
-                            span: parser.span(),
+                            span,
                             msg: String::from("Expected exported item or right parenthesis"),
                             continuable: true,
                             fatal: true

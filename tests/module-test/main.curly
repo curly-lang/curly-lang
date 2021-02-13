@@ -3,6 +3,6 @@ import qualified Modules::Funcs as Funcs
 
 debug (Funcs::sum 2.7 3.3)
 debug (Funcs::product 43.3 24.2)
-debug (Funcs::OptionInt::Some 3)
-debug Funcs::OptionInt::None
+# debug (Funcs::OptionInt::Some 3)
+# debug Funcs::OptionInt::None
 

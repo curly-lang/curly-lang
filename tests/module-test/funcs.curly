@@ -3,6 +3,7 @@ module Modules::Funcs
     , product : Float -> Float -> Float
     , id      : Num -> Num
     , id'     : Num -> Num
+    # , type OptionInt
     )
 
 sum x: Float, y: Float = x + y

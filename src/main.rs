@@ -795,6 +795,15 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                                 .with_message("Variable redeclared here"),
                             ]);
                     }
+
+                    CorrectnessError::ImportedValueNotExported(s, v, i) => {
+                        diagnostic = diagnostic
+                            .with_message("Imported value not exported")
+                            .with_labels(vec![
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                .with_message(format!("{} not exported by {}", v, i))
+                            ]);
+                    }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }
