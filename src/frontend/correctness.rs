@@ -287,7 +287,13 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
             }
 
             // Check that the types of the then and else blocks match
-            if then.get_metadata()._type != elsy.get_metadata()._type
+            if then.get_metadata()._type.is_subtype(&elsy.get_metadata()._type, &root.types)
+            {
+                m._type = elsy.get_metadata()._type.clone()
+            } else if elsy.get_metadata()._type.is_subtype(&then.get_metadata()._type, &root.types)
+            {
+                m._type = then.get_metadata()._type.clone()
+            } else if then.get_metadata()._type != elsy.get_metadata()._type
             {
                 let mut set = Vec::with_capacity(0);
                 if let Type::Sum(v) = &then.get_metadata()._type
@@ -546,7 +552,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
 
             // Check match arms
             root.scope.push_scope(false);
-            let mut set = Vec::with_capacity(0);
+            let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
+            let mut last = None;
             for arm in arms.iter_mut()
             {
                 // Get name of symbol
@@ -600,41 +607,74 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IRModule, errors: &mut Vec<Correctn
                 // Check for error
                 if arm.1.get_metadata()._type == Type::Error
                 {
-                    set.push(Type::Error);
+                    last = Some(Type::Error);
                     continue;
                 }
 
                 // Unwrap symbol
                 let mut _type = arm.1.get_metadata()._type.clone();
-                while let Type::Symbol(s) = _type
-                {
-                    _type = root.types.get(&s).unwrap().clone();
-                }
 
                 // Add types
-                if let Type::Sum(v) = _type
+                if returned.is_subtype(&_type, &root.types) && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, &root.types))
                 {
-                    for v in v.0
+                    last = Some(_type);
+                } else if let Some(Type::Error) = last
+                {
+                    last = Some(Type::Error);
+                } else if let Type::Sum(set) = &mut returned
+                {
+                    if let Some(mut t) = last
                     {
-                        set.push(v);
+                        while let Type::Symbol(s) = t
+                        {
+                            t = root.types.get(&s).unwrap().clone();
+                        }
+                        if let Type::Sum(v) = t
+                        {
+                            for v in v.0
+                            {
+                                set.0.insert(v);
+                            }
+                        } else
+                        {
+                            set.0.insert(t);
+                        }
+                        last = None;
                     }
-                } else
-                {
-                    set.push(_type);
+
+                    while let Type::Symbol(s) = _type
+                    {
+                        _type = root.types.get(&s).unwrap().clone();
+                    }
+                    if let Type::Sum(v) = _type
+                    {
+                        for v in v.0
+                        {
+                            set.0.insert(v);
+                        }
+                    } else
+                    {
+                        set.0.insert(_type);
+                    }
                 }
             }
 
             root.scope.pop_scope();
-            let set = HashSet::from_iter(set.into_iter());
-            m._type = if set.len() == 1
+            m._type = if let Some(v) = last
             {
-                set.into_iter().next().unwrap()
-            } else if set.contains(&Type::Error)
+                v
+            } else if let Type::Sum(v) = returned
             {
-                Type::Error
+                if v.0.len() == 1
+                {
+                    v.0.into_iter().next().unwrap()
+                } else
+                {
+                    Type::Sum(v)
+                }
             } else
             {
-                Type::Sum(HashSetWrapper(set))
+                unreachable!("if youre here you dont deserve a single uwu");
             };
         }
 
@@ -901,6 +941,12 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             } else if bt == Type::Unknown
             {
                 et
+            } else if bt.is_subtype(&et, types)
+            {
+                et
+            } else if et.is_subtype(&bt, types)
+            {
+                bt
             } else
             {
                 let mut set = Vec::with_capacity(0);
@@ -1004,7 +1050,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
         SExpr::Match(_, _, arms) => {
             // Check match arms
             scope.push_scope(false);
-            let mut set = Vec::with_capacity(0);
+            let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
+            let mut last: Option<Type> = None;
             for arm in arms.iter()
             {
                 // Check body of match arm
@@ -1029,32 +1076,70 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                     continue;
                 }
 
-                while let Type::Symbol(s) = _type
+                if returned.is_subtype(&_type, types) && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, types))
                 {
-                    _type = types.get(&s).unwrap().clone();
-                }
+                    last = Some(_type);
+                } else if let Some(Type::Error) = last
+                {
+                    last = Some(Type::Error);
+                } else if let Type::Sum(set) = &mut returned
+                {
+                    if let Some(mut t) = last
+                    {
+                        while let Type::Symbol(s) = t
+                        {
+                            t = types.get(&s).unwrap().clone();
+                        }
+                        if let Type::Sum(v) = t
+                        {
+                            for v in v.0
+                            {
+                                set.0.insert(v);
+                            }
+                        } else
+                        {
+                            set.0.insert(t);
+                        }
+                        last = None;
+                    }
 
-                if let Type::Sum(v) = _type
-                {
-                    set.extend(v.0.into_iter());
-                } else
-                {
-                    set.push(_type);
+                    while let Type::Symbol(s) = _type
+                    {
+                        _type = types.get(&s).unwrap().clone();
+                    }
+                    if let Type::Sum(v) = _type
+                    {
+                        for v in v.0
+                        {
+                            set.0.insert(v);
+                        }
+                    } else
+                    {
+                        set.0.insert(_type);
+                    }
                 }
             }
 
             scope.pop_scope();
 
-            let set = HashSet::from_iter(set.into_iter());
-            if set.len() == 0
+            if let Some(v) = last
             {
-                Type::Unknown
-            } else if set.len() == 1
+                v
+            } else if let Type::Sum(v) = returned
             {
-                set.into_iter().next().unwrap()
+                if v.0.len() == 0
+                {
+                    Type::Unknown
+                } else if v.0.len() == 1
+                {
+                    v.0.into_iter().next().unwrap()
+                } else
+                {
+                    Type::Sum(v)
+                }
             } else
             {
-                Type::Sum(HashSetWrapper(set))
+                unreachable!("if youre here you dont deserve a single uwu");
             }
         }
 
@@ -1210,7 +1295,6 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
         {
             check_function_body(&name.0, &name.1, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
             module.funcs.insert(name.0, func);
-
         } else
         {
             unreachable!("uwu");

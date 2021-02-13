@@ -1,8 +1,22 @@
 module Modules::Funcs
-    ( sum    : Float -> Float -> Float
-    , product: Float -> Float -> Float
+    ( sum     : Float -> Float -> Float
+    , product : Float -> Float -> Float
+    , id      : Num -> Num
+    , id'     : Num -> Num
     )
 
 sum x: Float, y: Float = x + y
 product x: Float, y: Float = x * y
 
+type Num = Int | Float
+
+id a: Num =
+    match a
+    to Int => a
+    to Float => a
+
+id' a: Num =
+    if true then
+        a
+    else
+        0
