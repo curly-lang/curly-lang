@@ -38,6 +38,16 @@ impl Location
     }
 }
 
+// Represents an error in IR
+pub enum IRError
+{
+    InvalidType(Location),
+    DuplicateTypeInUnion(Location, Location, Type),
+    DoubleExport(Location, Location, String),
+    RedefineImportAlias(Location, Location, String),
+    UnsupportedAnnotation(Location, String)
+}
+
 // Represents a prefix operator.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PrefixOp
@@ -744,7 +754,7 @@ fn extract_types_to_ir(asts: &Vec<AST>, module: &mut IRModule)
 
 // convert_ast_to_ir(Vec<AST>) -> IR
 // Converts a list of asts into ir.
-pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
+pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<(), Vec<IRError>>
 {
     // Set up
     let mut module = IRModule::new(filename);
@@ -753,6 +763,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
     seen_funcs.insert(String::with_capacity(0), 0);
     let mut sexprs = vec![];
     let mut module_name = String::with_capacity(0);
+    let mut errors = vec![];
 
     // Iterate over every ast node
     for ast in asts
@@ -784,17 +795,25 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
             {
                 // Check exported variable type
                 let _type = types::convert_ast_to_type(export.2, filename, &module.types);
-                if let Type::UndeclaredTypeError(_) = _type
+                if let Type::UndeclaredTypeError(s) = _type
                 {
-                    panic!("undeclared type error: {:?}", _type);
-                } else if let Type::DuplicateTypeError(_, _, _) = _type
+                    errors.push(IRError::InvalidType(
+                        s
+                    ));
+                } else if let Type::DuplicateTypeError(s1, s2, t) = _type
                 {
-                    panic!("duplicate type error: {:?}", _type);
+                    errors.push(IRError::DuplicateTypeInUnion(
+                        s1, s2, *t
+                    ));
 
                 // Check export is unique
                 } else if module.exports.contains_key(&export.1)
                 {
-                    panic!("module exports item twice");
+                    errors.push(IRError::DoubleExport(
+                        module.exports.get(&export.1).unwrap().0.clone(),
+                        Location::new(export.0, filename),
+                        export.1
+                    ));
                 } else
                 {
                     // Add export to list of exports
@@ -877,12 +896,17 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
 
                 if module.imports.contains_key(&alias)
                 {
-                    panic!("redefinition of import alias");
+                    errors.push(IRError::RedefineImportAlias(
+                        module.imports.get(&alias).unwrap().loc.clone(),
+                        imp_mod.loc,
+                        alias
+                    ));
+                } else
+                {
+                    module.imports.insert(alias, imp_mod);
                 }
-
-                module.imports.insert(alias, imp_mod);
             }
-        } else if let AST::Annotation(_span, a) = ast
+        } else if let AST::Annotation(span, a) = ast
         {
             // @debug alias
             if a == "@debug"
@@ -922,7 +946,10 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
             // All other aliases are not supported yet
             } else
             {
-                panic!("unsupported annotation!");
+                errors.push(IRError::UnsupportedAnnotation(
+                    Location::new(span, filename),
+                    a
+                ));
             }
         } else
         {
@@ -940,5 +967,13 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR)
 
     // Add module to ir root
     ir.modules.insert(module_name, module);
+
+    if errors.len() == 0
+    {
+        Ok(())
+    } else
+    {
+        Err(errors)
+    }
 }
 
