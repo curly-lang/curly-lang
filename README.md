@@ -1,5 +1,5 @@
 # Curly
-Curly is a functional programming language that focuses on iterators. Some of its main implementation features include lazy evaluation, list comprehensions, and quantifiers.
+Curly is a functional programming language that focuses on iterators. Some of its main implementation features include sum types, iterators, list comprehensions, and quantifiers.
 
 ## Example
 <pre>
