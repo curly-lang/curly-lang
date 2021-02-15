@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
-use crate::frontend::ir::{BinOp, IRModule, PrefixOp, SExpr};
+use crate::frontend::ir::{BinOp, IR, IRModule, PrefixOp, SExpr};
 use crate::frontend::types::Type;
 
 // Represents a function in C.
@@ -1746,10 +1746,9 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: 
 
 // collect_types(&IRModule, &mut HashMap<Type, String>, &mut String) -> ()
 // Collects user defined types into a string containing all type definitions.
-fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: &mut String)
+fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: &mut String, last_reference: &mut usize)
 {
     // Iterate over every type
-    let mut last_reference = 0;
     for _type in ir.types.iter().filter(|v| if let Type::Symbol(_) = v.1 { false } else { true })
     {
         match _type.1
@@ -1838,7 +1837,7 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
                 types_string.push_str("    } values;\n};\n");
                 types.insert(_type.1.clone(), ct.clone());
                 types.insert(Type::Symbol(_type.0.clone()), ct);
-                last_reference += 1;
+                *last_reference += 1;
             }
 
             _ => ()
@@ -1872,8 +1871,9 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
 // function).
 fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_string: &mut String)
 {
-    for t in types
+    for t in ir.types.iter()
     {
+        let t = (t.1, types.get(t.1).unwrap());
         // Find symbols
         if let Type::Symbol(tname) = t.0
         {
@@ -1992,37 +1992,24 @@ fn fix_argument(a: &(&String, &Type), ir: &IRModule, code: &mut String, types: &
     }
 }
 
-// convert_ir_to_c(&IRModule, Option<&mut Vec<String>>) -> String
+// convert_module_to_c(&IRModule, Option<&mut Vec<String>>) -> String
 // Converts Curly IRModule to C code.
-pub fn convert_ir_to_c(ir: &IRModule, repl_vars: Option<&Vec<String>>) -> String
+fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>, types: &mut HashMap<Type, CType>) -> String
 {
-    // Create and populate types
-    let mut types = HashMap::new();
-    let mut types_string = String::with_capacity(0);
-    collect_types(ir, &mut types, &mut types_string);
-    collect_type_functions(ir, &types, &mut types_string);
-
     // Create and populate functions
-    let mut funcs = HashMap::new();
-    for f in ir.funcs.iter()
+    for f in module.funcs.iter()
     {
         if f.1.written
         {
             continue;
         }
 
-        let mut cf = CFunction {
-            name: sanitise_symbol(&f.0),
-            args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
-            ret_type: &f.1.body.get_metadata()._type,
-            code: String::new(),
-            last_reference: 0
-        };
+        let cf = funcs.get_mut(f.0).unwrap();
 
         // Fix doubles and functions
         for a in cf.args.iter()
         {
-            fix_argument(a, ir, &mut cf.code, &types, &mut cf.last_reference);
+            fix_argument(a, module, &mut cf.code, &types, &mut cf.last_reference);
         }
 
         if f.1.body.get_metadata().tailrec
@@ -2040,7 +2027,7 @@ pub fn convert_ir_to_c(ir: &IRModule, repl_vars: Option<&Vec<String>>) -> String
             cf.code.push_str(" $$RET$$;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
         }
 
-        let last = convert_sexpr(&f.1.body, ir, &mut cf, &types);
+        let last = convert_sexpr(&f.1.body, module, cf, &types);
 
         if f.1.body.get_metadata().tailrec
         {
@@ -2084,15 +2071,13 @@ pub fn convert_ir_to_c(ir: &IRModule, repl_vars: Option<&Vec<String>>) -> String
             cf.code.push_str(&last);
         }
         cf.code.push_str(";\n");
-
-        funcs.insert(f.0, cf);
     }
 
     // Create the main function
     let mut main_func = CFunction {
         name: String::from(""),
         args: Vec::with_capacity(0),
-        ret_type: if let Some(v) = ir.sexprs.iter().last()
+        ret_type: if let Some(v) = module.sexprs.iter().last()
         {
             &v.get_metadata()._type
         } else
@@ -2105,15 +2090,22 @@ pub fn convert_ir_to_c(ir: &IRModule, repl_vars: Option<&Vec<String>>) -> String
 
     // Populate the main function
     let mut cleanup = vec![];
-    for s in ir.sexprs.iter()
+    for s in module.sexprs.iter()
     {
-        let v = convert_sexpr(s, ir, &mut main_func, &types);
+        if let SExpr::TypeAlias(_, _) = s
+        {
+            cleanup.push(String::with_capacity(0));
+            continue;
+        }
+
+        let v = convert_sexpr(s, module, &mut main_func, &types);
 
         // Debug print
+        /*
         if let Some(_) = repl_vars
         {
-            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, ir, &types, true);
-        }
+            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, module, &types, true);
+        }*/
 
         // Deallocation
         match s.get_metadata()._type
@@ -2128,112 +2120,10 @@ pub fn convert_ir_to_c(ir: &IRModule, repl_vars: Option<&Vec<String>>) -> String
     }
 
     // Define structures and helper functions
-    let ptr_size = std::mem::size_of::<&char>();
-    let mut code_string = format!("
-typedef {} int_t;
-typedef {} float_t;
-typedef {} size_t;
-",
-    match ptr_size
-    {
-        4 => "int",
-        8 => "long long",
-        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    },
-    match ptr_size
-    {
-        4 => "float",
-        8 => "double",
-        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    },
-    match ptr_size
-    {
-        4 => "unsigned int",
-        8 => "unsigned long",
-        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    });
-    code_string.push_str("
-typedef struct {
-    unsigned int refc;
-    void* func;
-    void* wrapper;
-    unsigned int arity;
-    unsigned int argc;
-    char (**cleaners)(void*);
-    void** args;
-} func_t;
-
-typedef union {
-    float_t d;
-    void* v;
-} double_wrapper_t;
-
-int printf(const char*, ...);
-
-void* calloc(size_t, size_t);
-
-void* malloc(size_t);
-
-void free(void*);
-
-char force_free_func(void* _func) {
-    // func_t* func = (func_t*) _func;
-    // for (int i = 0; i < func->argc; i++) {
-        // if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
-            // free(func->args[i]);
-    // }
-
-    // free(func->args);
-    // free(func->cleaners);
-    return (char) 1;
-}
-
-char free_func(func_t* func) {
-    // if (func->refc == 0) {
-    //    return force_free_func(func);
-    //}
-
-    return (char) 0;
-}
-
-char refc_func(func_t* func) {
-    // if (func->refc > 0)
-        // func->refc--;
-    return free_func(func);
-}
-
-void copy_func(func_t* dest, func_t* source) {
-    dest->refc = 0;
-    dest->func = source->func;
-    dest->wrapper = source->wrapper;
-    dest->arity = source->arity;
-    dest->argc = source->argc;
-
-    if (dest->argc != 0)
-    {
-        dest->cleaners = calloc(dest->arity, sizeof(void*));
-        dest->args = calloc(dest->arity, sizeof(void*));
-    } else
-    {
-        dest->cleaners = (void*) 0;
-        dest->args = (void*) 0;
-    }
-
-    for (int i = 0; i < dest->argc; i++) {
-        dest->cleaners[i] = source->cleaners[i];
-        dest->args[i] = source->args[i];
-    }
-}
-
-func_t* copy_func_arg(func_t* source) {
-    func_t* dest = malloc(sizeof(func_t));
-    copy_func(dest, source);
-    return dest;
-}
-");
-    code_string.push_str(&types_string);
+    let mut code_string = format!("#include \"{}.h\"\n\n", sanitise_symbol(&module.name));
 
     // Define repl value struct
+    /*
     if let Some(_) = repl_vars
     {
         code_string.push_str("
@@ -2268,7 +2158,7 @@ typedef struct {
 } repl_value_t;
 
 ");
-    }
+    }*/
 
     // Declare all functions
     for f in funcs.iter()
@@ -2288,6 +2178,7 @@ typedef struct {
     }
 
     // Retrieve previous arguments
+    /*
     if let Some(vec) = &repl_vars
     {
         code_string.push_str(get_c_type(main_func.ret_type, &types));
@@ -2295,17 +2186,17 @@ typedef struct {
         code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
         for v in vec.iter().enumerate()
         {
-            code_string.push_str(get_c_type(&ir.scope.get_var(v.1).unwrap().0, &types));
+            code_string.push_str(get_c_type(&module.scope.get_var(v.1).unwrap().0, &types));
             code_string.push(' ');
             code_string.push_str(&sanitise_symbol(&v.1));
             code_string.push_str(" = vars[");
             code_string.push_str(&format!("{}", v.0));
             code_string.push_str("]->vals.");
 
-            let mut _type = &ir.scope.get_var(v.1).unwrap().0;
+            let mut _type = &module.scope.get_var(v.1).unwrap().0;
             while let Type::Symbol(v) = _type
             {
-                _type = ir.types.get(v).unwrap();
+                _type = module.types.get(v).unwrap();
             }
 
             let c = match _type
@@ -2324,16 +2215,16 @@ typedef struct {
 
             code_string.push_str(";\n");
         }
-    } else
-    {
+    } else*/
+    //{
         code_string.push_str("int main() {\n");
-    }
+    //}
 
     // Main function code
     code_string.push_str(&main_func.code);
 
     // Deallocate everything
-    for v in ir.sexprs.iter().enumerate()
+    for v in module.sexprs.iter().enumerate()
     {
         if let SExpr::Assign(m, _, _) = v.1
         {
@@ -2355,6 +2246,7 @@ typedef struct {
     }
 
     // End main function
+    /*
     if let Some(_) = repl_vars
     {
         code_string.push_str("return ");
@@ -2365,9 +2257,72 @@ typedef struct {
         }
         code_string.push_str(";\n}\n");
     } else
-    {
+    {*/
         code_string.push_str("return 0;\n}\n");
-    }
+    //}
 
     code_string
+}
+
+fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, types: &HashMap<Type, CType>) -> (String, String)
+{
+    let mut header = String::new();
+    let ptr_size = std::mem::size_of::<&char>();
+    header.push_str(match ptr_size
+    {
+        4 => "#include <curly32.h>\n",
+        8 => "#include <curly64.h>\n",
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    });
+    header.push_str("#include \"types.h\"\n\n");
+
+    for export in module.exports.iter()
+    {
+        put_fn_declaration(&mut header, funcs.get(export.0).unwrap(), types);
+        header.push_str(";\n");
+    }
+
+    let mut filename = sanitise_symbol(&module.name);
+    filename.push_str(".h");
+
+    (filename, header)
+}
+
+pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
+{
+    let mut files = vec![];
+
+    // Create and populate types
+    let mut last_reference = 0;
+    let mut types_string = String::with_capacity(0);
+    let mut types = HashMap::new();
+
+    for module in ir.modules.iter()
+    {
+        collect_types(module.1, &mut types, &mut types_string, &mut last_reference);
+        collect_type_functions(module.1, &types, &mut types_string);
+    }
+
+    for module in ir.modules.iter()
+    {
+        let mut cfs = HashMap::with_capacity(0);
+        for f in module.1.funcs.iter()
+        {
+            let cf = CFunction {
+                name: sanitise_symbol(&f.0),
+                args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
+                ret_type: &f.1.body.get_metadata()._type,
+                code: String::new(),
+                last_reference: 0
+            };
+            cfs.insert(f.0.clone(), cf);
+        }
+
+        let f = convert_module_to_c(module.1, &mut cfs, &mut types);
+        files.push((format!("{}.c", sanitise_symbol(&module.1.name)), f));
+        files.push(generate_header_files(module.1, &cfs, &types));
+    }
+
+    files.push((String::from("types.h"), types_string));
+    files
 }

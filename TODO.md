@@ -8,6 +8,7 @@ These things are features and fixes I'd like to get completed for the third majo
 - Fix memory leaks
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
 - Remove hacky `putch` function and replace it with an actual C function
+- Char and Word types
 - See github issues
 
 ## Fourth official release:
@@ -23,7 +24,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Generics
 - Mutability
 - Laziness
-- Lists
+- Lists (defined as linked lists but optimised into vectors using `@vector`)
 - Span (`**`) for lists
 - Strings (which are basically just lists of chars)
 - `?`/`!` operators

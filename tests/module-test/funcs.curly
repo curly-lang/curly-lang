@@ -3,6 +3,7 @@ module Modules::Funcs
     , product : Float -> Float -> Float
     , id      : Num -> Num
     , id'     : Num -> Num
+    , fact    : Int -> Int
     # , type OptionInt
     )
 
@@ -22,3 +23,13 @@ id' a: Num =
         a
     else
         0
+
+id'' a: Bool = a
+
+fact_tail acc: Int, n: Int =
+    if n == 0 then
+        acc
+    else
+        fact_tail (acc * n) (n - 1)
+
+fact = fact_tail 1

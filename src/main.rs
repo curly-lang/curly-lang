@@ -132,7 +132,7 @@ fn main() -> Result<(), ()>
                 let mut ir = IR {
                     modules: HashMap::with_capacity(0)
                 };
-                let _c = check(&options.inputs, &contents, &mut ir); // compile(&options.inputs, &contents, &mut ir, None)?;
+                let _c = compile(&options.inputs, &contents, &mut ir, None)?;
 
                 /*
                 match fs::write(".curly_temp_0.c", &c)
@@ -884,25 +884,23 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
 
 // compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
 // Compiles curly into C code.
-/*
-fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<String, ()>
+fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<Vec<(String, String)>, ()>
 {
     // Check the file
     check(filenames, codes, ir)?;
 
-    // Remove empty sexpressions
-    use std::mem::swap;
-    let mut sexprs = HashMap::with_capacity(0);
-    swap(&mut sexprs, &mut ir.sexprs);
-    ir.sexprs = sexprs.into_iter().map(|v| (v.0, v.1.into_iter().filter(|v| if let SExpr::TypeAlias(_, _) = v { false } else { true }).collect())).collect();
-
     // Generate C code
-    let c = codegen::convert_ir_to_c(&ir, repl_vars);
-    if DEBUG { println!("{}", &c); }
+    let c = codegen::convert_ir_to_c(&ir);
+    if DEBUG
+    {
+        for (filename, contents) in c.iter()
+        {
+            println!("================ {} ================\n{}\n\n", filename, contents);
+        }
+    }
 
     Ok(c)
 }
-*/
 
 // execute(&str, &str, &mut IR, Option<(&mut Vec<String>, &mut HashMap<String, REPLType>)>, &mut Guard) -> Option<Library>
 // Executes Curly code.
