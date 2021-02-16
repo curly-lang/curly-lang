@@ -1,9 +1,11 @@
 module Modules::Funcs
-    ( sum     : Float -> Float -> Float
-    , product : Float -> Float -> Float
-    , id      : Num -> Num
-    , id'     : Num -> Num
-    , fact    : Int -> Int
+    ( sum       : Float -> Float -> Float
+    , product   : Float -> Float -> Float
+    , id        : Num -> Num
+    , id'       : Num -> Num
+    , fact      : Int -> Int
+    , fact_10   : Int
+    , x         : Int
     # , type OptionInt
     )
 
@@ -33,3 +35,7 @@ fact_tail acc: Int, n: Int =
         fact_tail (acc * n) (n - 1)
 
 fact = fact_tail 1
+
+fact_10 = fact 10
+
+x = 2

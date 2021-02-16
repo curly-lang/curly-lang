@@ -1999,7 +1999,7 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
     // Create and populate functions
     for f in module.funcs.iter()
     {
-        if f.1.written
+        if f.1.written || f.1.args.len() == 0
         {
             continue;
         }
@@ -2074,6 +2074,7 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
     }
 
     // Create the main function
+    /*
     let mut main_func = CFunction {
         name: String::from(""),
         args: Vec::with_capacity(0),
@@ -2117,7 +2118,7 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
         }
 
         cleanup.push(v);
-    }
+    }*/
 
     // Define structures and helper functions
     let mut code_string = format!("#include \"{}.h\"\n\n", sanitise_symbol(&module.name));
@@ -2164,17 +2165,76 @@ typedef struct {
     for f in funcs.iter()
     {
         put_fn_declaration(&mut code_string, &f.1, &types);
-        code_string.push_str(";\n");
+        code_string.push_str(";\n\n");
         put_fn_wrapper(&mut code_string, &f.1, &types);
+    }
+
+    // Declare getter functions
+    for s in module.sexprs.iter()
+    {
+        if let SExpr::Assign(_, n, v) = s
+        {
+            code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+            code_string.push(' ');
+            code_string.push_str(&sanitise_symbol(n));
+            code_string.push_str("$GET$$();\n\n");
+        }
     }
 
     // Put all function definitions
     for f in funcs
     {
+        if f.1.args.len() == 0
+        {
+            continue;
+        }
+
         put_fn_declaration(&mut code_string, &f.1, &types);
         code_string.push_str(" {\n");
         code_string.push_str(&f.1.code);
         code_string.push_str("}\n");
+    }
+
+    // Create getters
+    for s in module.sexprs.iter()
+    {
+        if let SExpr::Assign(_, n, v) = s
+        {
+            if let SExpr::Function(_, _) = &**v
+            {
+            } else
+            {
+                // Create getter
+                let sanitised = sanitise_symbol(n);
+                code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+                code_string.push(' ');
+                code_string.push_str(&sanitised);
+                code_string.push_str("$VALUE$$;\nchar ");
+                code_string.push_str(&sanitised);
+                code_string.push_str("$SAVED$$ = 0;\n");
+                code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+                code_string.push(' ');
+                code_string.push_str(&sanitised);
+                code_string.push_str("$GET$$() {\nif (");
+                code_string.push_str(&sanitised);
+                code_string.push_str("$SAVED$$)\nreturn ");
+                code_string.push_str(&sanitised);
+                code_string.push_str("$VALUE$$;\n");
+                let mut func = CFunction {
+                    name: String::with_capacity(0),
+                    args: Vec::with_capacity(0),
+                    ret_type: &Type::Unknown,
+                    code: code_string,
+                    last_reference: 0
+                };
+                let ret = convert_sexpr(v, module, &mut func, types);
+                code_string = func.code;
+                code_string.push_str(&sanitised);
+                code_string.push_str("$SAVED$$ = 1;\nreturn ");
+                code_string.push_str(&ret);
+                code_string.push_str(";\n}\n");
+            }
+        }
     }
 
     // Retrieve previous arguments
@@ -2215,10 +2275,10 @@ typedef struct {
 
             code_string.push_str(";\n");
         }
-    } else*/
-    //{
+    } else
+    {
         code_string.push_str("int main() {\n");
-    //}
+    }
 
     // Main function code
     code_string.push_str(&main_func.code);
@@ -2246,7 +2306,6 @@ typedef struct {
     }
 
     // End main function
-    /*
     if let Some(_) = repl_vars
     {
         code_string.push_str("return ");
@@ -2257,15 +2316,18 @@ typedef struct {
         }
         code_string.push_str(";\n}\n");
     } else
-    {*/
+    {
         code_string.push_str("return 0;\n}\n");
-    //}
+    }*/
 
     code_string
 }
 
+// generate_header_files(&IRModule, &HashMap<String, CFunction>, &HashMap<Type, CType>) -> (String, String)
+// Generates the header file for a given module.
 fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, types: &HashMap<Type, CType>) -> (String, String)
 {
+    // Include Curly stuff
     let mut header = String::new();
     let ptr_size = std::mem::size_of::<&char>();
     header.push_str(match ptr_size
@@ -2278,8 +2340,31 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
 
     for export in module.exports.iter()
     {
-        put_fn_declaration(&mut header, funcs.get(export.0).unwrap(), types);
-        header.push_str(";\n");
+        // Put function declaration
+        let mut add_getter = false;
+        if let Some(f) = funcs.get(export.0)
+        {
+            if f.args.len() != 0
+            {
+                put_fn_declaration(&mut header, f, types);
+                header.push_str(";\n\n");
+            } else
+            {
+                add_getter = true;
+            }
+        } else
+        {
+            add_getter = true;
+        }
+
+        // Put getter
+        if add_getter
+        {
+            header.push_str(get_c_type(&export.1.1, types));
+            header.push(' ');
+            header.push_str(&sanitise_symbol(export.0));
+            header.push_str("$GET$$();\n\n");
+        }
     }
 
     let mut filename = sanitise_symbol(&module.name);
@@ -2288,6 +2373,8 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
     (filename, header)
 }
 
+// convert_ir_to_c(&IR) -> Vec<(String, String)>
+// Converts an IR representation of Curly into a list of C files.
 pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 {
     let mut files = vec![];
