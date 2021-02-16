@@ -1855,6 +1855,44 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
             {
                 check_tailrec(&mut f.1.body, &f.0, true);
             }
+
+            // Eta reduced functions are optimised away
+            for sexpr in module.sexprs.iter_mut()
+            {
+                if let SExpr::Assign(_, n, v) = sexpr
+                {
+                    if let SExpr::Application(m, _, _) = &**v
+                    {
+                        if let Some(func) = module.funcs.get_mut(n)
+                        {
+                            if m.arity != 0 && func.args.len() == 0
+                            {
+                                let mut arity = m.arity;
+                                while arity > 0
+                                {
+                                    if let Type::Func(a, r) = &func.body.get_metadata()._type
+                                    {
+                                        func.args.push((format!("$${}", arity), *a.clone()));
+                                        let mut temp = SExpr::True(SExprMetadata::empty());
+                                        let _type = *r.clone();
+                                        swap(&mut func.body, &mut temp);
+                                        func.body = SExpr::Application(SExprMetadata::empty(), Box::new(temp), Box::new(SExpr::Symbol(SExprMetadata::empty(), format!("$${}", arity))));
+                                        func.body.get_mutable_metadata()._type = _type;
+                                        arity -= 1;
+                                    } else
+                                    {
+                                        unreachable!(":(");
+                                    }
+                                }
+                                let mut meta = SExprMetadata::empty();
+                                let n = n.clone();
+                                swap(&mut meta, sexpr.get_mutable_metadata());
+                                *sexpr = SExpr::Function(meta, n);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Ok(())
