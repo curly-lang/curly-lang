@@ -1834,7 +1834,7 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
                 // Save type definitions
                 let map = HashMap::from_iter(iter.into_iter().cloned().enumerate().filter_map(|v| if let Type::Sum(_) = v.1 { None } else { Some((v.1, v.0)) }));
                 let ct = CType::Sum(format!("struct $${}", last_reference), _type.1.clone(), map);
-                types_string.push_str("    } values;\n};\n");
+                types_string.push_str("    } values;\n};\n\n");
                 types.insert(_type.1.clone(), ct.clone());
                 types.insert(Type::Symbol(_type.0.clone()), ct);
                 *last_reference += 1;
@@ -1874,6 +1874,7 @@ fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_str
     for t in ir.types.iter()
     {
         let t = (t.1, types.get(t.1).unwrap());
+
         // Find symbols
         if let Type::Symbol(tname) = t.0
         {
@@ -2337,7 +2338,15 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
         8 => "#include <curly64.h>\n",
         _ => panic!("unsupported architecture with pointer size {}", ptr_size)
     });
-    header.push_str("#include \"types.h\"\n\n");
+    header.push_str("#include \"types.h\"\n");
+
+    for import in module.imports.iter()
+    {
+        header.push_str("#include \"");
+        header.push_str(&sanitise_symbol(&import.1.name));
+        header.push_str(".h\"\n");
+    }
+    header.push('\n');
 
     for export in module.exports.iter()
     {
@@ -2382,7 +2391,7 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 
     // Create and populate types
     let mut last_reference = 0;
-    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n");
+    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n\n");
     let mut types = HashMap::new();
 
     for module in ir.modules.iter()

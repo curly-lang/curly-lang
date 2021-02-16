@@ -14,18 +14,14 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-#[allow(unused_imports)]
 use std::process::Command;
-#[allow(unused_imports)]
 use libloading::{Library, Symbol};
 use logos::{Lexer, Span};
 
-#[allow(unused_imports)]
 use curlyc::backends::c::codegen;
 use curlyc::frontend::correctness;
 use curlyc::frontend::correctness::CorrectnessError;
 use curlyc::frontend::ir;
-#[allow(unused_imports)]
 use curlyc::frontend::ir::{IR, IRError, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
@@ -280,7 +276,6 @@ struct REPLSumFunc
 
 #[derive(Debug)]
 #[repr(C)]
-#[allow(dead_code)]
 enum REPLValue
 {
     Int(i64),
@@ -291,7 +286,6 @@ enum REPLValue
     SumFunc(REPLSumFunc)
 }
 
-#[allow(dead_code)]
 struct CurlyREPLHelper
 {
     libs: Vec<Library>,
