@@ -1,3 +1,6 @@
+#ifndef CURLY32_H
+#define CURLY32_H
+
 typedef float float_t;
 typedef int int_t;
 typedef unsigned int word_t;
@@ -35,3 +38,4 @@ void copy_func(func_t* dest, func_t* source);
 
 func_t* copy_func_arg(func_t* source);
 
+#endif

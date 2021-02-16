@@ -2328,7 +2328,8 @@ typedef struct {
 fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, types: &HashMap<Type, CType>) -> (String, String)
 {
     // Include Curly stuff
-    let mut header = String::new();
+    let mut filename = sanitise_symbol(&module.name);
+    let mut header = format!("#ifndef {}_H\n#define {}_H\n", filename, filename);
     let ptr_size = std::mem::size_of::<&char>();
     header.push_str(match ptr_size
     {
@@ -2367,7 +2368,7 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
         }
     }
 
-    let mut filename = sanitise_symbol(&module.name);
+    header.push_str("#endif\n");
     filename.push_str(".h");
 
     (filename, header)
@@ -2381,7 +2382,7 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 
     // Create and populate types
     let mut last_reference = 0;
-    let mut types_string = String::with_capacity(0);
+    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n");
     let mut types = HashMap::new();
 
     for module in ir.modules.iter()
@@ -2410,6 +2411,7 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
         files.push(generate_header_files(module.1, &cfs, &types));
     }
 
+    types_string.push_str("#endif\n");
     files.push((String::from("types.h"), types_string));
     files
 }

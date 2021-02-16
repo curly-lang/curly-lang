@@ -1,3 +1,6 @@
+#ifndef CURLY64_H
+#define CURLY64_H
+
 typedef double float_t;
 typedef long long int_t;
 typedef unsigned long long word_t;
@@ -34,3 +37,5 @@ char refc_func(func_t* func);
 void copy_func(func_t* dest, func_t* source);
 
 func_t* copy_func_arg(func_t* source);
+
+#endif
