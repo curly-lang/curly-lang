@@ -86,6 +86,7 @@ pub struct SExprMetadata
 {
     pub loc: Location,
     pub loc2: Location,
+    pub origin: String,
     pub _type: Type,
     pub arity: usize,
     pub saved_argc: Option<usize>,
@@ -101,6 +102,7 @@ impl SExprMetadata
         SExprMetadata {
             loc: Location::empty(),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
@@ -308,6 +310,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::Int(span, n) => SExpr::Int(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Int,
             arity: 0,
             saved_argc: None,
@@ -318,6 +321,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::Float(span, n) => SExpr::Float(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Float,
             arity: 0,
             saved_argc: None,
@@ -328,6 +332,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::True(span) => SExpr::True(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
@@ -338,6 +343,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::False(span) => SExpr::False(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
@@ -347,6 +353,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::List(span, list) => SExpr::List(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
@@ -357,6 +364,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
@@ -375,6 +383,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::String(span, s) => SExpr::String(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::String,
             arity: 0,
             saved_argc: None,
@@ -393,6 +402,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::Prefix(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
@@ -408,6 +418,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 SExpr::And(SExprMetadata {
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
@@ -418,6 +429,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 SExpr::Or(SExprMetadata {
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
@@ -452,6 +464,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 SExpr::MemberAccess(SExprMetadata {
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
@@ -487,6 +500,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 SExpr::Infix(SExprMetadata {
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
@@ -498,6 +512,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::As(span, value, _type) => SExpr::As(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::new(_type.get_span(), filename),
+            origin: String::with_capacity(0),
             _type: types::convert_ast_to_type(*_type, filename, types),
             arity: 0,
             saved_argc: None,
@@ -508,6 +523,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
@@ -518,6 +534,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
             loc: Location::new(span, filename),
             loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
@@ -544,6 +561,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::Assign(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
@@ -571,6 +589,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::Assign(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::new(_type.get_span().clone(), filename),
+                origin: String::with_capacity(0),
                 _type: types::convert_ast_to_type(*_type, filename, types),
                 arity: 0,
                 saved_argc: None,
@@ -585,6 +604,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::TypeAlias(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::new(span2, filename),
+                origin: String::with_capacity(0),
                 _type,
                 arity: 0,
                 saved_argc: None,
@@ -610,6 +630,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             let func_id = SExpr::Function(SExprMetadata {
                 loc: Location::new(span.clone(), filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
@@ -650,6 +671,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::Assign(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type,
                 arity,
                 saved_argc: None,
@@ -669,6 +691,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             let mut func_id = SExpr::Function(SExprMetadata {
                 loc: Location::new(span.clone(), filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
@@ -711,6 +734,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::Match(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
@@ -730,6 +754,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             SExpr::With(SExprMetadata {
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: v.get_metadata()._type.clone(),
                 arity: 0,
                 saved_argc: None,

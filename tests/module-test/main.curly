@@ -1,8 +1,11 @@
 module Main
+    ( main: Int
+    )
 import Modules::Funcs
 
-debug (sum 2.7 3.3)
-debug (product 43.3 24.2)
+main = with _ = debug (sum 2.7 3.3),
+            _ = debug (product 43.3 24.2),
+            0
 # debug (Funcs::OptionInt::Some 3)
 # debug Funcs::OptionInt::None
 

@@ -76,6 +76,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     m._type = t.0.clone();
                     m.arity = t.1;
                     m.saved_argc = t.2;
+                    m.origin = t.5.clone();
 
                     if module.funcs.get(f).is_some() && !module.funcs.get(f).unwrap().checked
                     {
@@ -83,7 +84,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         module.scope.push_scope(true);
                         for a in func.args.iter()
                         {
-                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
+                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
                         }
                         check_sexpr(&mut func.body, module, errors);
                         module.scope.pop_scope();
@@ -98,14 +99,14 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
                 None => {
                     let mut func = module.funcs.remove(f).unwrap();
-                    check_function_body(f, f, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
+                    check_function_body(f, f, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
 
                     module.scope.push_scope(true);
                     for a in func.args.iter()
                     {
                         if a.0 != "_"
                         {
-                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true);
+                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
                         }
                     }
                     check_sexpr(&mut func.body, module, errors);
@@ -119,6 +120,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         return;
                     }
 
+                    m.origin = module.name.clone();
                     m.arity = func.args.len();
                     m.saved_argc = Some(func.captured.len());
                     module.funcs.insert(f.clone(), func);
@@ -134,6 +136,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     m._type = t.0.clone();
                     m.arity = t.1;
                     m.saved_argc = t.2;
+                    m.origin = t.5.clone();
                 }
 
                 None => errors.push(CorrectnessError::SymbolNotFound(
@@ -495,7 +498,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             // Add variable to scope if no error occured
             if m._type != Type::Error && name != "_"
             {
-                module.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true);
+                module.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true, &module.name);
             }
         }
 
@@ -567,7 +570,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     {
                         &**t
                     };
-                    module.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true);
+                    module.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true, "");
                     (Some(s), &**t)
                 } else
                 {
@@ -896,7 +899,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
 
 // get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>, &mut Vec<(String, Type)>, &HashMap<String, Type>) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
-fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>) -> Type
+fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>) -> Type
 {
     match sexpr
     {
@@ -922,7 +925,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Check child function
                 None => {
                     let mut func = funcs.remove(f).unwrap();
-                    check_function_body(f, f, &mut func, scope, funcs, errors, types);
+                    check_function_body(f, f, module_name, &mut func, scope, funcs, errors, types);
                     funcs.insert(f.clone(), func);
                     scope.get_var(f).unwrap().0.clone()
                 }
@@ -954,7 +957,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             match op
             {
                 PrefixOp::Neg => {
-                    let vt = get_function_type(v, scope, funcs, errors, captured, captured_names, types).clone();
+                    let vt = get_function_type(v, module_name, scope, funcs, errors, captured, captured_names, types).clone();
 
                     match scope.get_func_ret(FunctionName::Prefix(vt))
                     {
@@ -969,8 +972,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Infix operators
         SExpr::Infix(_, op, l, r) => {
-            let lt = get_function_type(l, scope, funcs, errors, captured, captured_names, types).clone();
-            let rt = get_function_type(r, scope, funcs, errors, captured, captured_names, types).clone();
+            let lt = get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types).clone();
+            let rt = get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types).clone();
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt))
             {
@@ -983,15 +986,15 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
-            get_function_type(l, scope, funcs, errors, captured, captured_names, types);
-            get_function_type(r, scope, funcs, errors, captured, captured_names, types);
+            get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types);
+            get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types);
             Type::Bool
         }
 
         // If expressions
         SExpr::If(_, _, body, elsy) => {
-            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names, types);
-            let et = get_function_type(elsy, scope, funcs, errors, captured, captured_names, types);
+            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types);
+            let et = get_function_type(elsy, module_name, scope, funcs, errors, captured, captured_names, types);
 
             if bt == Type::Unknown && et == Type::Unknown
             {
@@ -1041,12 +1044,12 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 if s == "debug"
                 {
-                    return get_function_type(a, scope, funcs, errors, captured, captured_names, types);
+                    return get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types);
                 }
             }
 
             // Get function type
-            let mut ft = get_function_type(f, scope, funcs, errors, captured, captured_names, types);
+            let mut ft = get_function_type(f, module_name, scope, funcs, errors, captured, captured_names, types);
             if let Type::Unknown = ft
             {
                 return Type::Unknown;
@@ -1079,12 +1082,12 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 m._type.clone()
             } else
             {
-                get_function_type(value, scope, funcs, errors, captured, captured_names, types)
+                get_function_type(value, module_name, scope, funcs, errors, captured, captured_names, types)
             };
 
             if name != "_"
             {
-                scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true);
+                scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true, "");
             }
             t
         }
@@ -1097,11 +1100,11 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             // Populate scope with variable types
             for a in assigns
             {
-                get_function_type(a, scope, funcs, errors, captured, captured_names, types);
+                get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types);
             }
 
             // Get the function type
-            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names, types);
+            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types);
 
             // Pop the scope and return type
             scope.pop_scope();
@@ -1118,14 +1121,14 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Check body of match arm
                 let name = if let Type::Tag(s, t) = &arm.0
                 {
-                    scope.put_var(&s, &t, 0, None, &arm.1.get_metadata().loc2, true);
+                    scope.put_var(&s, &t, 0, None, &arm.1.get_metadata().loc2, true, "");
                     Some(s)
                 } else
                 {
                     None
                 };
 
-                let mut _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names, types);
+                let mut _type = get_function_type(&arm.1, module_name, scope, funcs, errors, captured, captured_names, types);
 
                 if let Some(s) = name
                 {
@@ -1246,17 +1249,17 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
     }
 }
 
-// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
+// check_function_body(&str, &str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
 // Checks a function body and determines the return type of the function.
-fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
+fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
 {
     if scope.get_var(name).is_none() && scope.get_var(refr).is_none()
     {
         // Put function in scope
-        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false);
+        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false, String::from(module_name));
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false);
+            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false, String::from(module_name));
         }
     }
 
@@ -1266,14 +1269,14 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
     {
         if arg.0 != "_"
         {
-            scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+            scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true, "");
         }
     }
 
     // Get the type
     let mut captured = HashMap::with_capacity(0);
     let mut captured_names = Vec::with_capacity(0);
-    let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names, types);
+    let _type = get_function_type(&func.body, module_name, scope, funcs, errors, &mut captured, &mut captured_names, types);
     func.captured = captured;
     func.captured_names = captured_names;
     scope.pop_scope();
@@ -1337,9 +1340,9 @@ fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mu
         // Put function type in global scope
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
+            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.loc.clone(), false, String::from(module_name));
         }
-        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false);
+        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false, String::from(module_name));
     }
 }
 
@@ -1354,7 +1357,7 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
         // Handle functions
         if let Some(mut func) = module.funcs.remove(&name.0)
         {
-            check_function_body(&name.0, &name.1, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
+            check_function_body(&name.0, &name.1, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
             module.funcs.insert(name.0, func);
         } else
         {
@@ -1374,7 +1377,7 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
             {
                 if arg.0 != "_"
                 {
-                    module.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true);
+                    module.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true, &module.name);
                 }
             }
 
@@ -1717,7 +1720,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
     // Put export types
     for export in module.exports.iter()
     {
-        module.scope.put_var(export.0, &export.1.1, 0, None, &export.1.0, false);
+        module.scope.put_var(export.0, &export.1.1, 0, None, &export.1.0, false, &module.name);
     }
 
     // Put unqualified imports in scope
@@ -1740,7 +1743,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                     } else if exporter.contains_key(i.0)
                     {
                         *i.1 = exporter.get(i.0).unwrap().1.clone();
-                        module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true);
+                        module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true, &import.1.name);
                     } else
                     {
                         errors.push(CorrectnessError::ImportedValueNotExported(
@@ -1764,7 +1767,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                         ));
                     } else
                     {
-                        module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true);
+                        module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true, &import.1.name);
                     }
                 }
             }
@@ -1809,7 +1812,7 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
             {
                 if m._type != Type::Error
                 {
-                    module.scope.put_var(a, &m._type, 0, None, &m.loc, false);
+                    module.scope.put_var(a, &m._type, 0, None, &m.loc, false, &module.name);
                 }
             }
         }
@@ -1822,6 +1825,7 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
         swap(&mut module.sexprs, &mut sexprs);
         for sexpr in sexprs.iter_mut()
         {
+            convert_function_symbols(sexpr, &mut HashSet::from_iter(module.funcs.iter().map(|v| v.0.clone())));
             check_sexpr(sexpr, &mut module, &mut errors);
         }
         swap(&mut module.sexprs, &mut sexprs);

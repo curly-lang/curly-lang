@@ -156,20 +156,23 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
         }
 
         // Functions
-        SExpr::Function(_, s) => {
+        SExpr::Function(m, f) => {
             // Get name
             let name = format!("$${}", func.last_reference);
             func.last_reference += 1;
 
             // Generate code
-            if let Some(f) = root.funcs.get(s)
+            let s = sanitise_symbol(f);
+            let mod_name = sanitise_symbol(&m.origin);
+            if let Some(f) = root.funcs.get(f)
             {
-                let s = sanitise_symbol(s);
                 func.code.push_str("func_t ");
                 func.code.push_str(&name);
                 func.code.push_str(" = { 0, (void*) ");
+                func.code.push_str(&mod_name);
                 func.code.push_str(&s);
                 func.code.push_str("$FUNC$$, (void*) ");
+                func.code.push_str(&mod_name);
                 func.code.push_str(&s);
                 func.code.push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
                 func.code.push_str(", 0, ");
@@ -263,12 +266,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                 }
             } else
             {
-                let s = sanitise_symbol(s);
                 func.code.push_str("func_t ");
                 func.code.push_str(&name);
                 func.code.push_str(" = { 0, (void*) ");
+                func.code.push_str(&mod_name);
                 func.code.push_str(&s);
                 func.code.push_str("$FUNC$$, (void*) ");
+                func.code.push_str(&mod_name);
                 func.code.push_str(&s);
                 func.code.push_str("$WRAPPER$$, 1, 0, (void*) 0, (void*) 0 };\n");
             }
@@ -1575,10 +1579,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 
 // put_fn_wrapper(&mut String, &CFunction) -> ()
 // Puts the wrapper for a given function in the built string.
-fn put_fn_wrapper(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>)
+fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
+    s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
     s.push_str("$WRAPPER$$");
     s.push_str("(func_t* f) {\nreturn ((");
@@ -1614,10 +1619,11 @@ fn put_fn_wrapper(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>
 
 // put_fn_declaration(&mut String, &CFunction, &HashMap<Type, CType>) -> ()
 // Puts a function declaration in the built string.
-fn put_fn_declaration(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>)
+fn put_fn_declaration(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
+    s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
     s.push_str("$FUNC$$");
     s.push('(');
@@ -1908,7 +1914,7 @@ fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_str
                             code: String::with_capacity(0),
                             last_reference: 0
                         };
-                        put_fn_declaration(types_string, &cf, types);
+                        put_fn_declaration(types_string, &ir.name, &cf, types);
                         let mut last_reference = 0;
 
                         // Build function
@@ -1923,7 +1929,7 @@ fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_str
                         types_string.push_str(" = arg$;\nreturn result;\n}\n");
 
                         // Build wrapper
-                        put_fn_wrapper(types_string, &cf, types)
+                        put_fn_wrapper(types_string, &ir.name, &cf, types)
                     }
                 }
             }
@@ -2165,9 +2171,12 @@ typedef struct {
     // Declare all functions
     for f in funcs.iter()
     {
-        put_fn_declaration(&mut code_string, &f.1, &types);
-        code_string.push_str(";\n\n");
-        put_fn_wrapper(&mut code_string, &f.1, &types);
+        if f.1.args.len() != 0
+        {
+            put_fn_declaration(&mut code_string, &module.name, &f.1, &types);
+            code_string.push_str(";\n\n");
+            put_fn_wrapper(&mut code_string, &module.name, &f.1, &types);
+        }
     }
 
     // Declare getter functions
@@ -2177,6 +2186,7 @@ typedef struct {
         {
             code_string.push_str(get_c_type(&v.get_metadata()._type, types));
             code_string.push(' ');
+            code_string.push_str(&sanitise_symbol(&module.name));
             code_string.push_str(&sanitise_symbol(n));
             code_string.push_str("$GET$$();\n\n");
         }
@@ -2190,7 +2200,7 @@ typedef struct {
             continue;
         }
 
-        put_fn_declaration(&mut code_string, &f.1, &types);
+        put_fn_declaration(&mut code_string, &module.name, &f.1, &types);
         code_string.push_str(" {\n");
         code_string.push_str(&f.1.code);
         code_string.push_str("}\n");
@@ -2356,8 +2366,14 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
         {
             if f.args.len() != 0
             {
-                put_fn_declaration(&mut header, f, types);
+                put_fn_declaration(&mut header, &module.name, f, types);
                 header.push_str(";\n\n");
+                header.push_str(get_c_type(f.ret_type, types));
+                header.push(' ');
+                header.push_str(&sanitise_symbol(&module.name));
+                header.push_str(&f.name);
+                header.push_str("$WRAPPER$$");
+                header.push_str("(func_t* f);\n\n");
             } else
             {
                 add_getter = true;
@@ -2372,6 +2388,7 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
         {
             header.push_str(get_c_type(&export.1.1, types));
             header.push(' ');
+            header.push_str(&sanitise_symbol(&module.name));
             header.push_str(&sanitise_symbol(export.0));
             header.push_str("$GET$$();\n\n");
         }

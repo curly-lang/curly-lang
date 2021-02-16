@@ -1567,6 +1567,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
 
             loop
             {
+                newline(parser);
                 if comma
                 {
                     match parser.peek()
@@ -1608,6 +1609,7 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                           }
                       }
                     ),
+
                     _ => {
                         let span = parser.span();
                         parser.return_state(state);
