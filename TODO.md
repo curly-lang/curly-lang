@@ -11,6 +11,7 @@ These things are features and fixes I'd like to get completed for the third majo
 - Tagged system for side effects
 - Fix memory leaks
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
+- `;` operator (chains actions together)
 - Remove hacky `putch` function and replace it with an actual C function
 - Char and Word types
 - See github issues

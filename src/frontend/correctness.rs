@@ -1726,6 +1726,82 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
     }
 }
 
+fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
+{
+    match sexpr
+    {
+        SExpr::Symbol(m, s)
+            | SExpr::Function(m, s) => {
+            if let Some(v) = scope.get_var(s)
+            {
+                m.arity = v.1;
+                m.saved_argc = v.2;
+            }
+        }
+
+        SExpr::Prefix(_, _, v)
+            | SExpr::As(_, v)
+            | SExpr::Assign(_, _, v)
+            => {
+            fix_arity(v, scope);
+        }
+
+        SExpr::Infix(_, _, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
+            => {
+            fix_arity(l, scope);
+            fix_arity(r, scope);
+        }
+
+        SExpr::Application(m, l, r) => {
+            fix_arity(l, scope);
+
+            if l.get_metadata().arity > 0
+            {
+                m.arity = l.get_metadata().arity - 1;
+                if let Some(v) = l.get_metadata().saved_argc
+                {
+                    m.saved_argc = Some(v + 1);
+                } else
+                {
+                    m.saved_argc = None;
+                }
+            }
+
+            fix_arity(r, scope);
+        }
+
+        SExpr::If(_, c, t, e) => {
+            fix_arity(c, scope);
+            fix_arity(t, scope);
+            fix_arity(e, scope);
+        }
+
+        SExpr::With(_, a, v) => {
+            scope.push_scope(false);
+            for a in a
+            {
+                fix_arity(a, scope);
+            }
+            fix_arity(v, scope);
+            scope.pop_scope();
+        }
+
+        SExpr::Match(_, v, a) => {
+            fix_arity(v, scope);
+            scope.push_scope(false);
+            for a in a.iter_mut()
+            {
+                fix_arity(&mut a.1, scope)
+            }
+            scope.pop_scope();
+        }
+
+        _ => ()
+    }
+}
+
 // check_imports(&IRModule, &IR, &mut Vec<CorrectnessError>) -> ()
 // Checks the validity of imported and exported items in a module.
 fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessError>)
@@ -1907,8 +1983,22 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                         };
                         func.body.get_mutable_metadata()._type = i.1.0.clone();
                         module.funcs.insert(i.0.clone(), func);
+                        let var = module.scope.variables.get_mut(i.0).unwrap();
+                        var.1 = i.1.1;
+                        var.2 = Some(0);
                     }
                 }
+            }
+
+            // Fix arity
+            for sexpr in module.sexprs.iter_mut()
+            {
+                fix_arity(sexpr, &mut module.scope);
+            }
+
+            for func in module.funcs.iter_mut()
+            {
+                fix_arity(&mut func.1.body, &mut module.scope);
             }
 
             // Eta reduced functions are optimised away
