@@ -1,9 +1,7 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Sanitise names so they have the module name in front to avoid collisions
 - Export functions with the correct arity
-- Change all globals to functions in the IR
 - Fix qualified imports in codegen
 - Deal with types properly
 - Some sort of main function

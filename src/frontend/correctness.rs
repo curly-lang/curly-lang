@@ -1399,15 +1399,23 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
 fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     // Get the set of all global functions and globals
-    let mut globals = HashSet::from_iter(module.funcs.iter().filter_map(|v| {
-        if v.1.global && v.0 != "_"
+    let mut globals = HashSet::from_iter(module.scope.variables.iter().filter_map(|v| {
+        if v.0 != "debug" && v.0 != "putch"
         {
             Some(v.0.clone())
         } else
         {
             None
         }
-    }));
+    }).chain(module.funcs.iter().filter_map(|v| {
+        if v.0 != "_" && v.1.global
+        {
+            Some(v.0.clone())
+        } else
+        {
+            None
+        }
+    })));
 
     // Iterate over every function
     for func in module.funcs.iter_mut()
@@ -1425,6 +1433,11 @@ fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
         convert_function_symbols(&mut func.1.body, &mut globals);
 
         globals = HashSet::from_iter(globals.union(&removed).cloned());
+    }
+
+    for sexpr in module.sexprs.iter_mut()
+    {
+        convert_function_symbols(sexpr, &mut globals);
     }
 
     // Check all globals

@@ -2176,6 +2176,7 @@ typedef struct {
             put_fn_declaration(&mut code_string, &module.name, &f.1, &types);
             code_string.push_str(";\n\n");
             put_fn_wrapper(&mut code_string, &module.name, &f.1, &types);
+            code_string.push('\n');
         }
     }
 
