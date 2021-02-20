@@ -729,7 +729,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         ));
                     } else
                     {
-                        m._type = v.clone();
+                        m._type = v.0.clone();
                     }
                     return;
                 }
@@ -1755,8 +1755,8 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                         ));
                     } else if exporter.contains_key(i.0)
                     {
-                        *i.1 = exporter.get(i.0).unwrap().1.clone();
-                        module.scope.put_var(i.0, i.1, 0, None, &import.1.loc, true, &import.1.name);
+                        *i.1 = (exporter.get(i.0).unwrap().1.clone(), 0);
+                        module.scope.put_var(i.0, &i.1.0, 0, None, &import.1.loc, true, &import.1.name);
                     } else
                     {
                         errors.push(CorrectnessError::ImportedValueNotExported(
@@ -1781,6 +1781,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                     } else
                     {
                         module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true, &import.1.name);
+                        import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0));
                     }
                 }
             }
@@ -1790,7 +1791,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
         {
             for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
             {
-                import.1.imports.insert(i.0.clone(), i.1.1.clone());
+                import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0));
             }
         }
     }
@@ -1848,8 +1849,11 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
-        for (_, module) in ir.modules.iter_mut()
+        let keys: Vec<String> = ir.modules.keys().cloned().collect();
+        for name in keys
         {
+            let mut module = ir.modules.remove(&name).unwrap();
+
             // Save types
             let mut id = 0;
             while let Some(_) = module.types.get(&format!("{}", id))
@@ -1871,6 +1875,40 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
             for f in module.funcs.iter_mut()
             {
                 check_tailrec(&mut f.1.body, &f.0, true);
+            }
+
+            // Import functions
+            for import in module.imports.iter_mut()
+            {
+                // Fix arity
+                let imported_mod = ir.modules.get(&import.1.name).unwrap();
+                for i in import.1.imports.iter_mut()
+                {
+                    i.1.1 = imported_mod.scope.get_var(i.0).unwrap().1;
+                }
+
+                // Add functions
+                if import.1.qualified
+                {
+                    unimplemented!("nyaaaaa :(");
+                } else
+                {
+                    for i in import.1.imports.iter()
+                    {
+                        let mut func = IRFunction {
+                            args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
+                            loc: Location::empty(),
+                            captured: HashMap::with_capacity(0),
+                            captured_names: Vec::with_capacity(0),
+                            body: SExpr::True(SExprMetadata::empty()),
+                            global: true,
+                            checked: true,
+                            written: true
+                        };
+                        func.body.get_mutable_metadata()._type = i.1.0.clone();
+                        module.funcs.insert(i.0.clone(), func);
+                    }
+                }
             }
 
             // Eta reduced functions are optimised away
@@ -1898,7 +1936,7 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                                         arity -= 1;
                                     } else
                                     {
-                                        unreachable!(":(");
+                                        unreachable!("nya");
                                     }
                                 }
                                 let mut meta = SExprMetadata::empty();
@@ -1910,6 +1948,8 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                     }
                 }
             }
+
+            ir.modules.insert(name, module);
         }
 
         Ok(())
