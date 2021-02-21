@@ -2,6 +2,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use home::home_dir;
 use owo_colors::OwoColorize;
 use rustyline::{Editor, Helper};
 use rustyline::completion::Completer;
@@ -128,53 +129,59 @@ fn main() -> Result<(), ()>
                 let mut ir = IR {
                     modules: HashMap::with_capacity(0)
                 };
-                let _c = compile(&options.inputs, &contents, &mut ir, None)?;
+                let mut c = compile(&options.inputs, &contents, &mut ir, None)?;
+                for c in c.iter_mut()
+                {
+                    c.0 = format!(".build/{}", c.0);
+                }
 
-                /*
-                match fs::write(".curly_temp_0.c", &c)
+                // Create .build
+                match fs::remove_dir_all(".build")
+                {
+                    _ => ()
+                }
+                match fs::create_dir(".build")
                 {
                     Ok(_) => (),
                     Err(e) => {
-                        eprintln!("error writing file: {}", e);
+                        eprintln!("error creating build directory: {}", e);
                         return Err(());
                     }
                 }
 
-                match options.compiler
+                for c in c.iter()
+                {
+                    match fs::write(&c.0, &c.1)
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("error writing {}: {}", c.0, e);
+                            return Err(());
+                        }
+                    }
+                }
+
+                let mut command = match options.compiler
                 {
                     CBackendCompiler::GCC => {
-                        Command::new("gcc")
-                                .arg("-o")
-                                .arg(&options.output)
-                                .arg(".curly_temp_0.c")
-                                .spawn()
-                                .expect("Failed to execute gcc")
-                                .wait()
-                                .expect("Failed to wait for gcc");
-
+                        let mut command = Command::new("gcc");
+                        command.arg(&format!("-I{}/.curly/include", home_dir().unwrap().to_str().unwrap()));
+                        command
                     }
 
                     CBackendCompiler::Clang => {
-                        Command::new("clang")
-                                .arg("-o")
-                                .arg(&options.output)
-                                .arg(".curly_temp_0.c")
-                                .spawn()
-                                .expect("Failed to execute clang")
-                                .wait()
-                                .expect("Failed to wait for clang");
+                        let mut command = Command::new("clang");
+                        command.arg(&format!("-I{}/.curly/include", home_dir().unwrap().to_str().unwrap()));
+                        command
                     }
+                };
+
+                for c in c
+                {
+                    command.arg(&c.0);
                 }
 
-                match fs::remove_file(".curly_temp_0.c")
-                {
-                    Ok(_) => (),
-                    Err(e) => {
-                        eprintln!("error deleting file: {}", e);
-                        return Err(());
-                    }
-                }
-                */
+                command.spawn().expect("failed to execute cc").wait().expect("failed to wait for cc");
             }
 
             "check" => {

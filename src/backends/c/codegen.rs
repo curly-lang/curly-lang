@@ -1020,7 +1020,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                 if fstr == ""
                                 {
                                     // Get function name
-                                    fstr = format!("{}$FUNC$$", if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
+                                    fstr = format!("{}{}$FUNC$$", sanitise_symbol(&f.get_metadata().origin), if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
                                     func.code.push_str(" = ");
                                     func.code.push_str(&fstr);
                                     func.code.push('(');
@@ -1213,6 +1213,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 
         // Assignments
         SExpr::Assign(m, a, v) => {
+            let val = convert_sexpr(v, root, func, types);
+            if a == "_"
+            {
+                return val;
+            }
+
             let _type =
                 if let Type::Symbol(_) = m._type
                 {
@@ -1235,7 +1241,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             {
                 Type::Sum(_) if _type != vtype => {
                     // Get value and generate code
-                    let val = convert_sexpr(v, root, func, types);
                     let map = types.get(&m._type).unwrap().get_hashmap().unwrap();
                     func.code.push_str(get_c_type(&m._type, types));
                     func.code.push(' ');
@@ -1258,7 +1263,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 
                 _ => {
                     // Get value and generate code
-                    let val = convert_sexpr(v, root, func, types);
                     func.code.push_str(get_c_type(&m._type, types));
                     func.code.push(' ');
                     func.code.push_str(a);
@@ -2255,11 +2259,11 @@ typedef struct {
                 code_string.push_str(&mod_name);
                 code_string.push_str(&sanitised);
                 code_string.push_str("$SAVED$$ = 1;\n");
-                code_string.push_str(&ret);
-                code_string.push_str(" = ");
                 code_string.push_str(&mod_name);
                 code_string.push_str(&sanitised);
-                code_string.push_str("$VALUE$$;\nreturn ");
+                code_string.push_str("$VALUE$$ = ");
+                code_string.push_str(&ret);
+                code_string.push_str(";\nreturn ");
                 code_string.push_str(&ret);
                 code_string.push_str(";\n}\n");
             }
@@ -2426,7 +2430,14 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 
     // Create and populate types
     let mut last_reference = 0;
-    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n\n");
+    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n");
+    let ptr_size = std::mem::size_of::<&char>();
+    types_string.push_str(match ptr_size
+    {
+        4 => "#include <curly32.h>\n\n",
+        8 => "#include <curly64.h>\n\n",
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    });
     let mut types = HashMap::new();
 
     for module in ir.modules.iter()

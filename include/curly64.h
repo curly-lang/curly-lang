@@ -1,9 +1,12 @@
 #ifndef CURLY64_H
 #define CURLY64_H
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 typedef double float_t;
-typedef long long int_t;
-typedef unsigned long long word_t;
+typedef int64_t int_t;
+typedef uint64_t word_t;
 
 typedef struct {
     unsigned int refc;
@@ -19,12 +22,6 @@ typedef union {
     float_t d;
     void* v;
 } double_wrapper_t;
-
-int printf(const char*, ...);
-
-void* calloc(word_t, word_t);
-
-void* malloc(word_t);
 
 void free(void*);
 

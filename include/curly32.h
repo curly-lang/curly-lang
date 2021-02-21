@@ -1,9 +1,12 @@
 #ifndef CURLY32_H
 #define CURLY32_H
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 typedef float float_t;
-typedef int int_t;
-typedef unsigned int word_t;
+typedef int32_t int_t;
+typedef uint32_t word_t;
 
 typedef struct {
     unsigned int refc;
