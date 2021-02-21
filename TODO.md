@@ -6,7 +6,6 @@ These things are features and fixes I'd like to get completed for the third majo
 - Deal with types properly
 - Some sort of main function
 - Standard library
-- Module system
 - Bindings with C
 - Tagged system for side effects
 - Fix memory leaks

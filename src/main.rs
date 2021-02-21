@@ -2,7 +2,6 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use home::home_dir;
 use owo_colors::OwoColorize;
 use rustyline::{Editor, Helper};
 use rustyline::completion::Completer;
@@ -164,15 +163,11 @@ fn main() -> Result<(), ()>
                 let mut command = match options.compiler
                 {
                     CBackendCompiler::GCC => {
-                        let mut command = Command::new("gcc");
-                        command.arg(&format!("-I{}/.curly/include", home_dir().unwrap().to_str().unwrap()));
-                        command
+                        Command::new("gcc")
                     }
 
                     CBackendCompiler::Clang => {
-                        let mut command = Command::new("clang");
-                        command.arg(&format!("-I{}/.curly/include", home_dir().unwrap().to_str().unwrap()));
-                        command
+                        Command::new("clang")
                     }
                 };
 
@@ -181,6 +176,8 @@ fn main() -> Result<(), ()>
                     command.arg(&c.0);
                 }
 
+                command.arg("-o");
+                command.arg(&options.output);
                 command.spawn().expect("failed to execute cc").wait().expect("failed to wait for cc");
             }
 

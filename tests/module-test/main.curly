@@ -1,6 +1,4 @@
 module Main
-    ( main: Int
-    )
 import Modules::Funcs
 
 main = with _ = debug (sum 2.7 3.3),

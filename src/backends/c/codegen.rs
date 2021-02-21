@@ -2353,6 +2353,11 @@ typedef struct {
         code_string.push_str("return 0;\n}\n");
     }*/
 
+    if module.name == "Main" && module.funcs.contains_key("main")
+    {
+        code_string.push_str("int main(void) {\n    Main$main$$GET$$();\n    return 0;\n}\n");
+    }
+
     code_string
 }
 
@@ -2362,15 +2367,7 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
 {
     // Include Curly stuff
     let mut filename = sanitise_symbol(&module.name);
-    let mut header = format!("#ifndef {}_H\n#define {}_H\n", filename, filename);
-    let ptr_size = std::mem::size_of::<&char>();
-    header.push_str(match ptr_size
-    {
-        4 => "#include <curly32.h>\n",
-        8 => "#include <curly64.h>\n",
-        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    });
-    header.push_str("#include \"types.h\"\n");
+    let mut header = format!("#ifndef {}_H\n#define {}_H\n#include \"curly.h\"\n#include \"types.h\"\n", filename, filename);
 
     for import in module.imports.iter()
     {
@@ -2430,14 +2427,7 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 
     // Create and populate types
     let mut last_reference = 0;
-    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n");
-    let ptr_size = std::mem::size_of::<&char>();
-    types_string.push_str(match ptr_size
-    {
-        4 => "#include <curly32.h>\n\n",
-        8 => "#include <curly64.h>\n\n",
-        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    });
+    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n#include \"curly.h\"\n\n");
     let mut types = HashMap::new();
 
     for module in ir.modules.iter()
@@ -2473,5 +2463,120 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 
     types_string.push_str("#endif\n");
     files.push((String::from("types.h"), types_string));
+    let ptr_size = std::mem::size_of::<&char>();
+    files.push((String::from("curly.h"), format!("
+#ifndef CURLY_H
+#define CURLY_H
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef {} float_t;
+typedef int{}_t int_t;
+typedef uint{}_t word_t;
+
+typedef struct {{
+    unsigned int refc;
+    void* func;
+    void* wrapper;
+    unsigned int arity;
+    unsigned int argc;
+    char (**cleaners)(void*);
+    void** args;
+}} func_t;
+
+typedef union {{
+    float_t d;
+    void* v;
+}} double_wrapper_t;
+
+char force_free_func(void* _func);
+
+char free_func(func_t* func);
+
+char refc_func(func_t* func);
+
+void copy_func(func_t* dest, func_t* source);
+
+func_t* copy_func_arg(func_t* source);
+
+#endif
+",
+    match ptr_size
+    {
+        4 => "float",
+        8 => "double",
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    },
+    match ptr_size
+    {
+        4 => 32,
+        8 => 64,
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    },
+    match ptr_size
+    {
+        4 => 32,
+        8 => 64,
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    })));
+    files.push((String::from("curly.c"), String::from("
+#include \"curly.h\"
+
+char force_free_func(void* _func) {
+    // func_t* func = (func_t*) _func;
+    // for (int i = 0; i < func->argc; i++) {
+        // if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
+            // free(func->args[i]);
+    // }
+
+    // free(func->args);
+    // free(func->cleaners);
+    return (char) 1;
+}
+
+char free_func(func_t* func) {
+    // if (func->refc == 0) {
+    //    return force_free_func(func);
+    //}
+
+    return (char) 0;
+}
+
+char refc_func(func_t* func) {
+    // if (func->refc > 0)
+        // func->refc--;
+    return free_func(func);
+}
+
+void copy_func(func_t* dest, func_t* source) {
+    dest->refc = 0;
+    dest->func = source->func;
+    dest->wrapper = source->wrapper;
+    dest->arity = source->arity;
+    dest->argc = source->argc;
+
+    if (dest->argc != 0)
+    {
+        dest->cleaners = calloc(dest->arity, sizeof(void*));
+        dest->args = calloc(dest->arity, sizeof(void*));
+    } else
+    {
+        dest->cleaners = (void*) 0;
+        dest->args = (void*) 0;
+    }
+
+    for (int i = 0; i < dest->argc; i++) {
+        dest->cleaners[i] = source->cleaners[i];
+        dest->args[i] = source->args[i];
+    }
+}
+
+func_t* copy_func_arg(func_t* source) {
+    func_t* dest = malloc(sizeof(func_t));
+    copy_func(dest, source);
+    return dest;
+}
+")));
     files
 }
