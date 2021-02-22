@@ -18,4 +18,4 @@ This project depends on either `clang` or `gcc` for compiling, which can each be
 Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
 ## Progress
-The parser and type checker are done for the first iteration of the language; current work is on the code generator for the C backend. Everything is highly experimental. Be cautious: code may be explosive.
+See TODO.md. Everything is highly experimental. Be cautious: code may be explosive.
