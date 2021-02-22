@@ -28,15 +28,8 @@ use curlyc::frontend::types::Type;
 
 static DEBUG: bool = true;
 
-enum CBackendCompiler
-{
-    GCC,
-    Clang
-}
-
 struct CommandlineBuildOptions
 {
-    compiler: CBackendCompiler,
     output: String,
     inputs: Vec<String>
 }
@@ -58,7 +51,6 @@ fn main() -> Result<(), ()>
         {
             "build" => {
                 let mut options = CommandlineBuildOptions {
-                    compiler: CBackendCompiler::Clang,
                     output: String::with_capacity(0),
                     inputs: Vec::with_capacity(0)
                 };
@@ -67,25 +59,6 @@ fn main() -> Result<(), ()>
                 {
                     match a.as_str()
                     {
-                        "--compiler" => {
-                            if let Some(v) = args.next()
-                            {
-                                match v.as_str()
-                                {
-                                    "gcc" => options.compiler = CBackendCompiler::GCC,
-                                    "clang" => options.compiler = CBackendCompiler::Clang,
-                                    _ => {
-                                        println!("Supported C compilers are gcc and clang");
-                                        return Err(());
-                                    }
-                                }
-                            } else
-                            {
-                                println!("Must specify a compiler to use");
-                                return Err(());
-                            }
-                        }
-
                         "-o" => {
                             if let Some(v) = args.next()
                             {
@@ -105,13 +78,13 @@ fn main() -> Result<(), ()>
 
                 if options.inputs.len() == 0
                 {
-                    println!("usage:\n{} build [options] [file]\noptions:\n--compiler - Sets the C compiler for the backend; supported compilers are gcc, tcc, and clang\n-o - Sets the output file", &name);
+                    println!("usage:\n{} build [options] [file]\noptions:\n-o - Sets the output file", &name);
                     return Err(());
                 }
 
                 if options.output == ""
                 {
-                    options.output = String::from(options.inputs[0].split(".").into_iter().next().unwrap());
+                    options.output = String::from("main");
                 }
 
                 let contents: Vec<String> = options.inputs.iter().map(
@@ -160,16 +133,7 @@ fn main() -> Result<(), ()>
                     }
                 }
 
-                let mut command = match options.compiler
-                {
-                    CBackendCompiler::GCC => {
-                        Command::new("gcc")
-                    }
-
-                    CBackendCompiler::Clang => {
-                        Command::new("clang")
-                    }
-                };
+                let mut command = Command::new("gcc");
 
                 for c in c
                 {
@@ -177,8 +141,8 @@ fn main() -> Result<(), ()>
                 }
 
                 command.arg("-o");
-                command.arg(&options.output);
-                command.spawn().expect("failed to execute cc").wait().expect("failed to wait for cc");
+                command.arg(&format!(".build/{}", options.output));
+                command.spawn().expect("failed to execute gcc").wait().expect("failed to wait for gcc");
             }
 
             "check" => {
@@ -924,16 +888,16 @@ fn execute(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars:
         }
     }
 
-    Command::new("clang")
+    Command::new("gcc")
         .arg("-shared")
         .arg("-fPIC")
         .arg("-o")
         .arg(&so_file)
         .arg(&c_file)
         .spawn()
-        .expect("Failed to execute clang")
+        .expect("Failed to execute gcc")
         .wait()
-        .expect("Failed to wait for clang");
+        .expect("Failed to wait for gcc");
 
     // Execute the C code
     let lib = Library::new(&so_file).unwrap();

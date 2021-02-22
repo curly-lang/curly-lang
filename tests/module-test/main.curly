@@ -3,6 +3,7 @@ import Modules::Funcs
 
 main = with _ = debug (sum 2.7 3.3),
             _ = debug (product 43.3 24.2),
+            _ = debug x,
             0
 # debug (Funcs::OptionInt::Some 3)
 # debug Funcs::OptionInt::None

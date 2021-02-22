@@ -4,8 +4,6 @@ These things are features and fixes I'd like to get completed for the third majo
 - Fix qualified imports in codegen
 - Make local assignments lazy
 - Deal with types properly
-- Some sort of main function
-- Standard library
 - Bindings with C
 - Tagged system for side effects
 - Fix memory leaks
@@ -30,7 +28,6 @@ These things are features and fixes I'd like to get completed in some point in t
 - Mutability
 - Laziness
 - Lists (defined as linked lists but optimised into vectors using `@vector`)
-- Span (`**`) for lists
 - Strings (which are basically just lists of chars)
 - `?`/`!` operators
 - Function composition operator
