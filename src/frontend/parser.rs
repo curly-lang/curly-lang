@@ -1621,8 +1621,6 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                         });
                     }
                 }
-
-                parser.next();
             }
 
             parser.next();
