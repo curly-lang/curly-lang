@@ -258,7 +258,27 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
         AST::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
             let s = r.get_span().clone();
-            fields.insert(convert_ast_to_type(*r, filename, types), s);
+            let v = convert_ast_to_type(*r, filename, types);
+            if let Type::Sum(v) = v
+            {
+                for v in v.0
+                {
+                    if let Some(s2) = fields.remove(&v)
+                    {
+                        return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
+                    }
+
+                    fields.insert(v, s.clone());
+                }
+            } else
+            {
+                if let Some(s2) = fields.remove(&v)
+                {
+                    return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
+                }
+
+                fields.insert(v, s);
+            }
             let mut acc = *l;
 
             loop 
@@ -296,6 +316,29 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                 }
             }
 
+            let s = acc.get_span();
+            let v = convert_ast_to_type(acc, filename, types);
+            if let Type::Sum(v) = v
+            {
+                for v in v.0
+                {
+                    if let Some(s2) = fields.remove(&v)
+                    {
+                        return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
+                    }
+
+                    fields.insert(v, s.clone());
+                }
+            } else
+            {
+                if let Some(s2) = fields.remove(&v)
+                {
+                    return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
+                }
+
+                fields.insert(v, s);
+            }
+
             for f in fields.iter()
             {
                 if let Type::UndeclaredTypeError(s) = f.0
@@ -304,14 +347,6 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                 }
             }
 
-            let s = acc.get_span();
-            let v = convert_ast_to_type(acc, filename, types);
-            if let Some(s2) = fields.remove(&v)
-            {
-                return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
-            }
-
-            fields.insert(v, s);
             if fields.len() == 1
             {
                 fields.into_iter().next().unwrap().0
