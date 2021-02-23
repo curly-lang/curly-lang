@@ -1,7 +1,6 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Fix qualified imports in codegen
 - Make local assignments lazy
 - Deal with types properly
 - Bindings with C

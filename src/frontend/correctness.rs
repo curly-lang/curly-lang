@@ -155,7 +155,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     // Check child node
                     check_sexpr(v, module, errors);
 
-                    // Check if an error occured
+                    // Check if an error occurred
                     if v.get_metadata()._type == Type::Error
                     {
                         return;
@@ -185,7 +185,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(left, module, errors);
             check_sexpr(right, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
             {
                 return;
@@ -214,7 +214,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             // Check child node
             check_sexpr(v, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if v.get_metadata()._type == Type::Error
             {
                 return;
@@ -239,7 +239,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(left, module, errors);
             check_sexpr(right, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
             {
                 return;
@@ -275,7 +275,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(then, module, errors);
             check_sexpr(elsy, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if cond.get_metadata()._type == Type::Error || then.get_metadata()._type == Type::Error || elsy.get_metadata()._type == Type::Error
             {
                 return;
@@ -495,7 +495,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
             }
 
-            // Add variable to scope if no error occured
+            // Add variable to scope if no error occurred
             if m._type != Type::Error && name != "_"
             {
                 module.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true, &module.name);
@@ -724,12 +724,16 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     {
                         errors.push(CorrectnessError::NonmemberAccess(
                             m.loc.clone(),
-                            module_name,
+                            format!("{}::{}", module_name, a[pos]),
                             a[pos + 1].clone()
                         ));
                     } else
                     {
                         m._type = v.0.clone();
+                        m.origin = module.imports.get(&module_name).unwrap().name.clone();
+                        let mut meta = SExprMetadata::empty();
+                        swap(&mut meta, m);
+                        *sexpr = SExpr::Function(meta, a[pos].clone());
                     }
                     return;
                 }
@@ -1065,7 +1069,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                 // Strings concatenate to other strings
                 // Type::String => Type::String,
 
-                // Functions apply themodule arguments
+                // Functions apply their arguments
                 Type::Func(_, r) => {
                     *r.clone()
                 }
@@ -1964,28 +1968,27 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                 }
 
                 // Add functions
-                if import.1.qualified
+                for i in import.1.imports.iter()
                 {
-                    unimplemented!("nyaaaaa :(");
-                } else
-                {
-                    for i in import.1.imports.iter()
+                    let mut func = IRFunction {
+                        args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
+                        loc: Location::empty(),
+                        captured: HashMap::with_capacity(0),
+                        captured_names: Vec::with_capacity(0),
+                        body: SExpr::True(SExprMetadata::empty()),
+                        global: true,
+                        checked: true,
+                        written: true
+                    };
+                    func.body.get_mutable_metadata()._type = i.1.0.clone();
+                    module.funcs.insert(i.0.clone(), func);
+                    if let Some(var) = module.scope.variables.get_mut(i.0)
                     {
-                        let mut func = IRFunction {
-                            args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
-                            loc: Location::empty(),
-                            captured: HashMap::with_capacity(0),
-                            captured_names: Vec::with_capacity(0),
-                            body: SExpr::True(SExprMetadata::empty()),
-                            global: true,
-                            checked: true,
-                            written: true
-                        };
-                        func.body.get_mutable_metadata()._type = i.1.0.clone();
-                        module.funcs.insert(i.0.clone(), func);
-                        let var = module.scope.variables.get_mut(i.0).unwrap();
                         var.1 = i.1.1;
                         var.2 = Some(0);
+                    } else
+                    {
+                        module.scope.variables.insert(i.0.clone(), (i.1.0.clone(), i.1.1, Some(0), Location::empty(), true, String::with_capacity(0)));
                     }
                 }
             }

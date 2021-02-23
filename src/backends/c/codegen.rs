@@ -19,7 +19,7 @@ struct CFunction<'a>
 #[derive(Clone, Debug)]
 enum CType
 {
-    Primative(String, Type),
+    Primitive(String, Type),
     Sum(String, Type, HashMap<Type, usize>)
 }
 
@@ -31,7 +31,7 @@ impl CType
     {
         match self
         {
-            CType::Primative(s, _)
+            CType::Primitive(s, _)
                 | CType::Sum(s, _, _)
                 => s
         }
@@ -43,7 +43,7 @@ impl CType
     {
         match self
         {
-            CType::Primative(_, t)
+            CType::Primitive(_, t)
                 | CType::Sum(_, t, _)
                 => t
         }
@@ -1768,21 +1768,21 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
     {
         match _type.1
         {
-            // Primatives get mapped to old type
+            // Primitives get mapped to old type
             Type::Int => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("int_t"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("int_t"), _type.1.clone()));
             }
 
             Type::Float => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("float_t"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("float_t"), _type.1.clone()));
             }
 
             Type::Bool => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("char"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("char"), _type.1.clone()));
             }
 
             Type::Func(_, _) => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("func_t"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("func_t"), _type.1.clone()));
             }
 
             // Sum types are tagged unions
