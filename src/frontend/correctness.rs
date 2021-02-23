@@ -3,34 +3,38 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::mem::swap;
 
-use super::ir::{BinOp, IR, IRFunction, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IR, IRFunction, IRModule, Location, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::{HashSetWrapper, Type};
 
 #[derive(Debug)]
 pub enum CorrectnessError
 {
-    UndefinedPrefixOp(Span, PrefixOp, Type),
-    UndefinedInfixOp(Span, BinOp, Type, Type),
-    NonboolInBoolExpr(Span, Type),
-    NonboolInIfCond(Span, Type),
-    NonmatchingAssignTypes(Span, Type, Span, Type),
-    SymbolNotFound(Span, String),
-    Reassignment(Span, Span, String),
-    InvalidType(Span),
-    DuplicateTypeInUnion(Span, Span, Type),
-    UnknownFunctionReturnType(Span, String),
-    MismatchedFunctionArgType(Span, Type, Type),
-    InvalidApplication(Span, Type),
-    InvalidCast(Span, Type, Span, Type),
-    NonSubtypeOnMatch(Span, Type, Span, Type),
-    InfiniteSizedType(Span, Type),
-    NonmemberAccess(Span, String, String)
+    UndefinedPrefixOp(Location, PrefixOp, Type),
+    UndefinedInfixOp(Location, BinOp, Type, Type),
+    NonboolInBoolExpr(Location, Type),
+    NonboolInIfCond(Location, Type),
+    NonmatchingAssignTypes(Location, Type, Location, Type),
+    SymbolNotFound(Location, String),
+    Reassignment(Location, Location, String),
+    InvalidType(Location),
+    DuplicateTypeInUnion(Location, Location, Type),
+    UnknownFunctionReturnType(Location, String),
+    MismatchedFunctionArgType(Location, Type, Type),
+    InvalidApplication(Location, Type),
+    InvalidCast(Location, Type, Location, Type),
+    NonSubtypeOnMatch(Location, Type, Location, Type),
+    InfiniteSizedType(Location, Type),
+    NonmemberAccess(Location, String, String),
+    MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type),
+    VariableImportedTwice(Location, Location),
+    ImportedValueNotExported(Location, String, String),
+    NoMainFunction
 }
 
-// check_sexpr(&mut SExpr, &mut SExprMetadata, &mut Vec<CorrectnessError>) -> ()
+// check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
-fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessError>)
+fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     if let Type::UndeclaredTypeError(s) = &sexpr.get_metadata()._type
     {
@@ -67,64 +71,77 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
         // Functions
         SExpr::Function(m, f) => {
-            match root.scope.get_var(f)
+            match module.scope.get_var(f)
             {
                 Some(t) => {
                     m._type = t.0.clone();
                     m.arity = t.1;
                     m.saved_argc = t.2;
+                    m.origin = t.5.clone();
 
-                    if root.funcs.get(f).is_some() && !root.funcs.get(f).unwrap().checked
+                    if module.funcs.get(f).is_some() && !module.funcs.get(f).unwrap().checked
                     {
-                        let mut func = root.funcs.remove(f).unwrap();
-                        root.scope.push_scope(true);
+                        let mut func = module.funcs.remove(f).unwrap();
+                        module.scope.push_scope(true);
                         for a in func.args.iter()
                         {
-                            root.scope.put_var(&a.0, &a.1, 0, None, Span { start: 0, end: 0 }, true);
+                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
                         }
-                        check_sexpr(&mut func.body, root, errors);
-                        root.scope.pop_scope();
-                        root.funcs.insert(f.clone(), func);
+                        check_sexpr(&mut func.body, module, errors);
+                        module.scope.pop_scope();
+                        module.funcs.insert(f.clone(), func);
                     }
 
                     if m._type == Type::Unknown
                     {
-                        root.funcs.remove(f);
+                        module.funcs.remove(f);
                     }
                 }
 
                 None => {
-                    let mut func = root.funcs.remove(f).unwrap();
-                    check_function_body(f, f, &mut func, &mut root.scope, &mut root.funcs, errors, &root.types);
+                    let mut func = module.funcs.remove(f).unwrap();
+                    check_function_body(f, f, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
 
-                    root.scope.push_scope(true);
+                    module.scope.push_scope(true);
                     for a in func.args.iter()
                     {
-                        root.scope.put_var(&a.0, &a.1, 0, None, Span { start: 0, end: 0 }, true);
+                        if a.0 != "_"
+                        {
+                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
+                        }
                     }
-                    check_sexpr(&mut func.body, root, errors);
-                    root.scope.pop_scope();
+                    check_sexpr(&mut func.body, module, errors);
+                    module.scope.pop_scope();
 
-                    m._type = root.scope.get_var(f).unwrap().0.clone();
+                    if let Some(v) = module.scope.get_var(f)
+                    {
+                        m._type = v.0.clone();
+                    } else
+                    {
+                        return;
+                    }
+
+                    m.origin = module.name.clone();
                     m.arity = func.args.len();
                     m.saved_argc = Some(func.captured.len());
-                    root.funcs.insert(f.clone(), func);
+                    module.funcs.insert(f.clone(), func);
                 }
             }
         }
 
         // Symbols
         SExpr::Symbol(m, s) => {
-            match root.scope.get_var(s)
+            match module.scope.get_var(s)
             {
                 Some(t) => {
                     m._type = t.0.clone();
                     m.arity = t.1;
                     m.saved_argc = t.2;
+                    m.origin = t.5.clone();
                 }
 
                 None => errors.push(CorrectnessError::SymbolNotFound(
-                    m.span.clone(),
+                    m.loc.clone(),
                     s.clone()
                 ))
             }
@@ -137,22 +154,22 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Negative has operators defined in scope
                 PrefixOp::Neg => {
                     // Check child node
-                    check_sexpr(v, root, errors);
+                    check_sexpr(v, module, errors);
 
-                    // Check if an error occured
+                    // Check if an error occurred
                     if v.get_metadata()._type == Type::Error
                     {
                         return;
                     }
 
                     // Get type
-                    if let Some(t) = root.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
+                    if let Some(t) = module.scope.get_func_ret(FunctionName::Prefix(v.get_metadata()._type.clone()))
                     {
                         m._type = t.clone();
                     } else
                     {
                         errors.push(CorrectnessError::UndefinedPrefixOp(
-                            m.span.clone(),
+                            m.loc.clone(),
                             PrefixOp::Neg,
                             v.get_metadata()._type.clone()
                         ));
@@ -166,17 +183,17 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         // Infix operators
         SExpr::Infix(m, op, left, right) => {
             // Check child nodes
-            check_sexpr(left, root, errors);
-            check_sexpr(right, root, errors);
+            check_sexpr(left, module, errors);
+            check_sexpr(right, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
             {
                 return;
             }
 
             // Get type
-            if let Some(t) = root.scope.get_func_ret(FunctionName::Infix(
+            if let Some(t) = module.scope.get_func_ret(FunctionName::Infix(
                 *op,
                 left.get_metadata()._type.clone(),
                 right.get_metadata()._type.clone()
@@ -186,7 +203,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             } else
             {
                 errors.push(CorrectnessError::UndefinedInfixOp(
-                    m.span.clone(),
+                    m.loc.clone(),
                     *op,
                     left.get_metadata()._type.clone(),
                     right.get_metadata()._type.clone()
@@ -196,21 +213,21 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
         SExpr::As(m, v) => {
             // Check child node
-            check_sexpr(v, root, errors);
+            check_sexpr(v, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if v.get_metadata()._type == Type::Error
             {
                 return;
             }
 
             // Assert the types are valid
-            if !v.get_metadata()._type.is_subtype(&m._type, &root.types)
+            if !v.get_metadata()._type.is_subtype(&m._type, &module.types)
             {
                 errors.push(CorrectnessError::InvalidCast(
-                    v.get_metadata().span.clone(),
+                    v.get_metadata().loc.clone(),
                     v.get_metadata()._type.clone(),
-                    m.span2.clone(),
+                    m.loc2.clone(),
                     m._type.clone()
                 ));
                 m._type = Type::Error;
@@ -220,10 +237,10 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         // And and or
         SExpr::And(m, left, right) | SExpr::Or(m, left, right) => {
             // Check child nodes
-            check_sexpr(left, root, errors);
-            check_sexpr(right, root, errors);
+            check_sexpr(left, module, errors);
+            check_sexpr(right, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
             {
                 return;
@@ -233,7 +250,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if left.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
-                    left.get_metadata().span.clone(),
+                    left.get_metadata().loc.clone(),
                     left.get_metadata()._type.clone(),
                 ));
             }
@@ -241,7 +258,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if right.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
-                    right.get_metadata().span.clone(),
+                    right.get_metadata().loc.clone(),
                     right.get_metadata()._type.clone(),
                 ));
             }
@@ -255,11 +272,11 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
         // If expressions
         SExpr::If(m, cond, then, elsy) => {
             // Check child nodes
-            check_sexpr(cond, root, errors);
-            check_sexpr(then, root, errors);
-            check_sexpr(elsy, root, errors);
+            check_sexpr(cond, module, errors);
+            check_sexpr(then, module, errors);
+            check_sexpr(elsy, module, errors);
 
-            // Check if an error occured
+            // Check if an error occurred
             if cond.get_metadata()._type == Type::Error || then.get_metadata()._type == Type::Error || elsy.get_metadata()._type == Type::Error
             {
                 return;
@@ -269,13 +286,19 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             if cond.get_metadata()._type != Type::Bool
             {
                 errors.push(CorrectnessError::NonboolInIfCond(
-                    cond.get_metadata().span.clone(),
+                    cond.get_metadata().loc.clone(),
                     cond.get_metadata()._type.clone()
                 ));
             }
 
             // Check that the types of the then and else blocks match
-            if then.get_metadata()._type != elsy.get_metadata()._type
+            if then.get_metadata()._type.is_subtype(&elsy.get_metadata()._type, &module.types)
+            {
+                m._type = elsy.get_metadata()._type.clone()
+            } else if elsy.get_metadata()._type.is_subtype(&then.get_metadata()._type, &module.types)
+            {
+                m._type = then.get_metadata()._type.clone()
+            } else if then.get_metadata()._type != elsy.get_metadata()._type
             {
                 let mut set = Vec::with_capacity(0);
                 if let Type::Sum(v) = &then.get_metadata()._type
@@ -316,8 +339,8 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
         SExpr::Application(m, func, arg) => {
             // Check the function and arg types
-            check_sexpr(func, root, errors);
-            check_sexpr(arg, root, errors);
+            check_sexpr(func, module, errors);
+            check_sexpr(arg, module, errors);
 
             // Check if either the function or argument resulted in an error
             if func.get_metadata()._type == Type::Error || arg.get_metadata()._type == Type::Error
@@ -339,7 +362,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             let mut _type = &func.get_metadata()._type;
             while let Type::Symbol(s) = _type
             {
-                _type = root.types.get(s).unwrap();
+                _type = module.types.get(s).unwrap();
             }
 
             // Match the function
@@ -352,7 +375,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
                 // Functions apply their arguments
                 Type::Func(l, r) => {
-                    if arg.get_metadata()._type.is_subtype(&**l, &root.types)
+                    if arg.get_metadata()._type.is_subtype(l, &module.types)
                     {
                         m._type = *r.clone();
                         m.arity = if func.get_metadata().arity > 0
@@ -370,7 +393,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     } else
                     {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
-                            arg.get_metadata().span.clone(),
+                            arg.get_metadata().loc.clone(),
                             *l.clone(),
                             arg.get_metadata()._type.clone()
                         ));
@@ -380,7 +403,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Everything else is invalid
                 _ => {
                     errors.push(CorrectnessError::InvalidApplication(
-                        func.get_metadata().span.clone(),
+                        func.get_metadata().loc.clone(),
                         func.get_metadata()._type.clone()
                     ));
                 }
@@ -389,47 +412,65 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
 
         // Assignments
         SExpr::Assign(m, name, value) => {
-            // Check if variable already exists
-            if let Some(v) = root.scope.variables.get(name)
+            // Check child node
+            check_sexpr(value, module, errors);
+            if value.get_metadata()._type == Type::Error
             {
-                if value.get_metadata()._type == Type::Unknown
-                {
-                    root.scope.variables.remove(name);
-                    return;
-                }
+                return;
+            }
 
+            // Check if variable already exists
+            if let Some(v) = module.scope.variables.get(name)
+            {
                 if v.4
                 {
                     errors.push(CorrectnessError::Reassignment(
-                        m.span.clone(),
+                        m.loc.clone(),
                         v.3.clone(),
                         name.clone()
                     ));
-                    if let SExpr::Function(_, v) = &**value
+                    if let SExpr::Function(_, f) = &**value
                     {
-                        if v != name
+                        if f != name
                         {
-                            root.scope.variables.remove(v);
+                            module.scope.variables.remove(f);
                         }
-                        root.funcs.remove(v);
+                        module.funcs.remove(f);
                     }
+                    m._type = Type::Error;
+                    return;
+                } else if m._type != Type::Error && !m._type.is_subtype(&v.0, &module.types)
+                {
+                    errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                        v.3.clone(),
+                        v.0.clone(),
+                        m.loc.clone(),
+                        m._type.clone()
+                    ));
+                    m._type = Type::Error;
+                    return;
+                } else if m._type == Type::Error && !value.get_metadata()._type.is_subtype(&v.0, &module.types)
+                {
+                    errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                        v.3.clone(),
+                        v.0.clone(),
+                        value.get_metadata().loc.clone(),
+                        value.get_metadata()._type.clone()
+                    ));
+                    m._type = Type::Error;
                     return;
                 }
-            }
 
-            // Check child node
-            check_sexpr(value, root, errors);
+                if m._type != v.0
+                {
+                    m._type = v.0.clone();
+                }
+            }
 
             // Check if variable value is unknown type
             if value.get_metadata()._type == Type::Unknown
             {
-                root.scope.variables.remove(name);
-                return;
-            }
-
-            // Check if an error occured or the type is unknown
-            if value.get_metadata()._type == Type::Error
-            {
+                module.scope.variables.remove(name);
                 return;
             }
 
@@ -442,12 +483,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 // Preassigned type
                 _ => {
                     // Types do not match
-                    if !value.get_metadata()._type.is_subtype(&m._type, &root.types)
+                    if !value.get_metadata()._type.is_subtype(&m._type, &module.types)
                     {
                         errors.push(CorrectnessError::NonmatchingAssignTypes(
-                            m.span2.clone(),
+                            m.loc2.clone(),
                             m._type.clone(),
-                            value.get_metadata().span.clone(),
+                            value.get_metadata().loc.clone(),
                             value.get_metadata()._type.clone()
                         ));
                         m._type = Type::Error;
@@ -455,17 +496,17 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 }
             }
 
-            // Add variable to scope if no error occured
-            if m._type != Type::Error
+            // Add variable to scope if no error occurred
+            if m._type != Type::Error && name != "_"
             {
-                root.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, Span { start: m.span.start, end: value.get_metadata().span.start }, true);
+                module.scope.put_var(name, &m._type, value.get_metadata().arity, value.get_metadata().saved_argc, &Location::new(Span { start: m.loc.span.start, end: value.get_metadata().loc.span.start }, &m.loc.filename), true, &module.name);
             }
         }
 
         // With expressions
         SExpr::With(m, assigns, body) => {
             // Push a new scope
-            root.scope.push_scope(false);
+            module.scope.push_scope(false);
 
             // Function iterator
             let iter = assigns.iter().filter_map(
@@ -485,26 +526,26 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             );
 
             // Deal with functions
-            check_function_group(iter, root, errors);
+            check_function_group(iter, module, errors);
 
             // Check assignments
             for a in assigns
             {
-                check_sexpr(a, root, errors);
+                check_sexpr(a, module, errors);
             }
 
             // Check body
-            check_sexpr(body, root, errors);
+            check_sexpr(body, module, errors);
             m._type = body.get_metadata()._type.clone();
             m.arity = body.get_metadata().arity;
 
             // Pop scope
-            root.scope.pop_scope();
+            module.scope.pop_scope();
         }
 
         SExpr::Match(m, value, arms) => {
             // Check value
-            check_sexpr(value, root, errors);
+            check_sexpr(value, module, errors);
             let _type = &value.get_metadata()._type;
             if *_type == Type::Error
             {
@@ -515,8 +556,9 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
             }
 
             // Check match arms
-            root.scope.push_scope(false);
-            let mut set = Vec::with_capacity(0);
+            module.scope.push_scope(false);
+            let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
+            let mut last = None;
             for arm in arms.iter_mut()
             {
                 // Get name of symbol
@@ -524,12 +566,12 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 {
                     let vtype = if let Type::Tag(_, t) = &**t
                     {
-                        t
+                        &**t
                     } else
                     {
-                        t
+                        &**t
                     };
-                    root.scope.put_var(s, vtype, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    module.scope.put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true, "");
                     (Some(s), &**t)
                 } else
                 {
@@ -541,75 +583,165 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     errors.push(CorrectnessError::InvalidType(
                         s.clone()
                     ));
-                    root.scope.pop_scope();
+                    module.scope.pop_scope();
                     continue;
                 }
 
                 // Nonsubtypes are errors
-                if !atype.is_subtype(&_type, &root.types)
+                if !atype.is_subtype(&_type, &module.types)
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
-                        value.get_metadata().span.clone(),
+                        value.get_metadata().loc.clone(),
                         _type.clone(),
-                        arm.1.get_metadata().span2.clone(),
+                        arm.1.get_metadata().loc2.clone(),
                         arm.0.clone()
                     ));
-                    root.scope.pop_scope();
+                    module.scope.pop_scope();
                     return;
                 }
 
                 // Check body of match arm
-                check_sexpr(&mut arm.1, root, errors);
+                check_sexpr(&mut arm.1, module, errors);
 
                 // Remove variable
                 if let Some(s) = name
                 {
-                    root.scope.variables.remove(s);
+                    module.scope.variables.remove(s);
                 }
 
                 // Check for error
                 if arm.1.get_metadata()._type == Type::Error
                 {
-                    set.push(Type::Error);
+                    last = Some(Type::Error);
                     continue;
                 }
 
                 // Unwrap symbol
                 let mut _type = arm.1.get_metadata()._type.clone();
-                while let Type::Symbol(s) = _type
-                {
-                    _type = root.types.get(&s).unwrap().clone();
-                }
 
                 // Add types
-                if let Type::Sum(v) = _type
+                if returned.is_subtype(&_type, &module.types) && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, &module.types))
                 {
-                    for v in v.0
+                    last = Some(_type);
+                } else if let Some(Type::Error) = last
+                {
+                    last = Some(Type::Error);
+                } else if let Type::Sum(set) = &mut returned
+                {
+                    if let Some(mut t) = last
                     {
-                        set.push(v);
+                        while let Type::Symbol(s) = t
+                        {
+                            t = module.types.get(&s).unwrap().clone();
+                        }
+                        if let Type::Sum(v) = t
+                        {
+                            for v in v.0
+                            {
+                                set.0.insert(v);
+                            }
+                        } else
+                        {
+                            set.0.insert(t);
+                        }
+                        last = None;
                     }
-                } else
-                {
-                    set.push(_type);
+
+                    while let Type::Symbol(s) = _type
+                    {
+                        _type = module.types.get(&s).unwrap().clone();
+                    }
+                    if let Type::Sum(v) = _type
+                    {
+                        for v in v.0
+                        {
+                            set.0.insert(v);
+                        }
+                    } else
+                    {
+                        set.0.insert(_type);
+                    }
                 }
             }
 
-            root.scope.pop_scope();
-            let set = HashSet::from_iter(set.into_iter());
-            m._type = if set.len() == 1
+            module.scope.pop_scope();
+            m._type = if let Some(v) = last
             {
-                set.into_iter().next().unwrap()
-            } else if set.contains(&Type::Error)
+                v
+            } else if let Type::Sum(v) = returned
             {
-                Type::Error
+                if v.0.len() == 1
+                {
+                    v.0.into_iter().next().unwrap()
+                } else
+                {
+                    Type::Sum(v)
+                }
             } else
             {
-                Type::Sum(HashSetWrapper(set))
+                unreachable!("if youre here you dont deserve a single uwu");
             };
         }
 
         SExpr::MemberAccess(m, a) => {
-            if let Some(t) = root.types.get(&a[0])
+            // Get module
+            let mut module_name = String::new();
+            let mut pos = 0;
+            let types = &module.types;
+            for a in a.iter().enumerate()
+            {
+                if module_name.len() != 0
+                {
+                    module_name.push_str("::");
+                }
+                module_name.push_str(a.1);
+
+                if module.imports.contains_key(&module_name)
+                {
+                    pos = a.0 + 1;
+                }
+            }
+
+            if pos > 0
+            {
+                module_name.clear();
+                for a in a.iter().enumerate()
+                {
+                    if a.0 == pos
+                    {
+                        break;
+                    }
+
+                    if module_name.len() != 0
+                    {
+                        module_name.push_str("::");
+                    }
+                    module_name.push_str(a.1);
+                }
+
+                if let Some(v) = module.imports.get(&module_name).unwrap().imports.get(&a[pos])
+                {
+                    if a.len() > pos + 1
+                    {
+                        errors.push(CorrectnessError::NonmemberAccess(
+                            m.loc.clone(),
+                            format!("{}::{}", module_name, a[pos]),
+                            a[pos + 1].clone()
+                        ));
+                    } else
+                    {
+                        m._type = v.0.clone();
+                        m.origin = module.imports.get(&module_name).unwrap().name.clone();
+                        let mut meta = SExprMetadata::empty();
+                        swap(&mut meta, m);
+                        *sexpr = SExpr::Function(meta, a[pos].clone());
+                    }
+                    return;
+                }
+            }
+
+            // Get type
+            if let Some(t) = types.get(&a[pos])
             {
                 if let Type::Sum(f) = t
                 {
@@ -618,33 +750,26 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                         if a.len() != 2
                         {
                             errors.push(CorrectnessError::NonmemberAccess(
-                                m.span.clone(),
+                                m.loc.clone(),
                                 format!("{}::{}", a[0], a[1]),
                                 a[2].clone()
                             ));
                         } else
                         {
-                            m._type = Type::Symbol(a[0].clone());
+                            m._type = Type::Symbol(a[pos].clone());
                         }
                     } else if let Some(v) = f.0.iter().filter(|v| if let Type::Tag(t, _) = v { t == &a[1] } else { false }).next()
                     {
                         if a.len() != 2
                         {
                             errors.push(CorrectnessError::NonmemberAccess(
-                                m.span.clone(),
+                                m.loc.clone(),
                                 format!("{}::{}", a[0], a[1]),
                                 a[2].clone()
                             ));
                         } else if let Type::Tag(_, t) = v
                         {
-                            let mut temp = SExprMetadata {
-                                span: Span { start: 0, end: 0 },
-                                span2: Span { start: 0, end: 0 },
-                                _type: Type::Error,
-                                arity: 0,
-                                saved_argc: None,
-                                tailrec: false
-                            };
+                            let mut temp = SExprMetadata::empty();
 
                             swap(&mut temp, m);
                             temp.arity = 1;
@@ -656,7 +781,7 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                     } else
                     {
                         errors.push(CorrectnessError::NonmemberAccess(
-                            m.span.clone(),
+                            m.loc.clone(),
                             a[0].clone(),
                             a[1].clone()
                         ));
@@ -664,16 +789,23 @@ fn check_sexpr(sexpr: &mut SExpr, root: &mut IR, errors: &mut Vec<CorrectnessErr
                 } else
                 {
                     errors.push(CorrectnessError::NonmemberAccess(
-                        m.span.clone(),
+                        m.loc.clone(),
                         a[0].clone(),
                         a[1].clone()
                     ));
                 }
-            } else
+            } else if pos == 0
             {
                 errors.push(CorrectnessError::SymbolNotFound(
-                    m.span.clone(),
+                    m.loc.clone(),
                     a[0].clone(),
+                ));
+            } else
+            {
+                errors.push(CorrectnessError::NonmemberAccess(
+                    m.loc.clone(),
+                    module_name,
+                    a[pos].clone()
                 ));
             }
         }
@@ -690,20 +822,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
         SExpr::Symbol(m, s) => {
             if funcs.contains(s)
             {
-                let mut meta = SExprMetadata {
-                    span: Span {
-                        start: 0,
-                        end: 0
-                    },
-                    span2: Span {
-                        start: 0,
-                        end: 0
-                    },
-                    _type: Type::Error,
-                    arity: 0,
-                    saved_argc: None,
-                    tailrec: false
-                };
+                let mut meta = SExprMetadata::empty();
 
                 swap(&mut meta, m);
                 let mut id = String::with_capacity(0);
@@ -785,7 +904,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
 
 // get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>, &mut Vec<(String, Type)>, &HashMap<String, Type>) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
-fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>) -> Type
+fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>) -> Type
 {
     match sexpr
     {
@@ -811,7 +930,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 // Check child function
                 None => {
                     let mut func = funcs.remove(f).unwrap();
-                    check_function_body(f, f, &mut func, scope, funcs, errors, types);
+                    check_function_body(f, f, module_name, &mut func, scope, funcs, errors, types);
                     funcs.insert(f.clone(), func);
                     scope.get_var(f).unwrap().0.clone()
                 }
@@ -843,7 +962,7 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             match op
             {
                 PrefixOp::Neg => {
-                    let vt = get_function_type(v, scope, funcs, errors, captured, captured_names, types).clone();
+                    let vt = get_function_type(v, module_name, scope, funcs, errors, captured, captured_names, types).clone();
 
                     match scope.get_func_ret(FunctionName::Prefix(vt))
                     {
@@ -858,8 +977,8 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Infix operators
         SExpr::Infix(_, op, l, r) => {
-            let lt = get_function_type(l, scope, funcs, errors, captured, captured_names, types).clone();
-            let rt = get_function_type(r, scope, funcs, errors, captured, captured_names, types).clone();
+            let lt = get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types).clone();
+            let rt = get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types).clone();
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt))
             {
@@ -872,15 +991,15 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
-            get_function_type(l, scope, funcs, errors, captured, captured_names, types);
-            get_function_type(r, scope, funcs, errors, captured, captured_names, types);
+            get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types);
+            get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types);
             Type::Bool
         }
 
         // If expressions
         SExpr::If(_, _, body, elsy) => {
-            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names, types);
-            let et = get_function_type(elsy, scope, funcs, errors, captured, captured_names, types);
+            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types);
+            let et = get_function_type(elsy, module_name, scope, funcs, errors, captured, captured_names, types);
 
             if bt == Type::Unknown && et == Type::Unknown
             {
@@ -891,6 +1010,12 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             } else if bt == Type::Unknown
             {
                 et
+            } else if bt.is_subtype(&et, types)
+            {
+                et
+            } else if et.is_subtype(&bt, types)
+            {
+                bt
             } else
             {
                 let mut set = Vec::with_capacity(0);
@@ -924,12 +1049,12 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             {
                 if s == "debug"
                 {
-                    return get_function_type(a, scope, funcs, errors, captured, captured_names, types);
+                    return get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types);
                 }
             }
 
             // Get function type
-            let mut ft = get_function_type(f, scope, funcs, errors, captured, captured_names, types);
+            let mut ft = get_function_type(f, module_name, scope, funcs, errors, captured, captured_names, types);
             if let Type::Unknown = ft
             {
                 return Type::Unknown;
@@ -962,9 +1087,13 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                 m._type.clone()
             } else
             {
-                get_function_type(value, scope, funcs, errors, captured, captured_names, types)
+                get_function_type(value, module_name, scope, funcs, errors, captured, captured_names, types)
             };
-            scope.put_var(&name, &t, 0, None, Span { start: 0, end: 0 }, true);
+
+            if name != "_"
+            {
+                scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true, "");
+            }
             t
         }
 
@@ -976,11 +1105,11 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
             // Populate scope with variable types
             for a in assigns
             {
-                get_function_type(a, scope, funcs, errors, captured, captured_names, types);
+                get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types);
             }
 
             // Get the function type
-            let bt = get_function_type(body, scope, funcs, errors, captured, captured_names, types);
+            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types);
 
             // Pop the scope and return type
             scope.pop_scope();
@@ -990,20 +1119,21 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
         SExpr::Match(_, _, arms) => {
             // Check match arms
             scope.push_scope(false);
-            let mut set = Vec::with_capacity(0);
+            let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
+            let mut last: Option<Type> = None;
             for arm in arms.iter()
             {
                 // Check body of match arm
                 let name = if let Type::Tag(s, t) = &arm.0
                 {
-                    scope.put_var(s, t, 0, None, arm.1.get_metadata().span2.clone(), true);
+                    scope.put_var(&s, &t, 0, None, &arm.1.get_metadata().loc2, true, "");
                     Some(s)
                 } else
                 {
                     None
                 };
 
-                let mut _type = get_function_type(&arm.1, scope, funcs, errors, captured, captured_names, types);
+                let mut _type = get_function_type(&arm.1, module_name, scope, funcs, errors, captured, captured_names, types);
 
                 if let Some(s) = name
                 {
@@ -1015,32 +1145,70 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                     continue;
                 }
 
-                while let Type::Symbol(s) = _type
+                if returned.is_subtype(&_type, types) && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, types))
                 {
-                    _type = types.get(&s).unwrap().clone();
-                }
+                    last = Some(_type);
+                } else if let Some(Type::Error) = last
+                {
+                    last = Some(Type::Error);
+                } else if let Type::Sum(set) = &mut returned
+                {
+                    if let Some(mut t) = last
+                    {
+                        while let Type::Symbol(s) = t
+                        {
+                            t = types.get(&s).unwrap().clone();
+                        }
+                        if let Type::Sum(v) = t
+                        {
+                            for v in v.0
+                            {
+                                set.0.insert(v);
+                            }
+                        } else
+                        {
+                            set.0.insert(t);
+                        }
+                        last = None;
+                    }
 
-                if let Type::Sum(v) = _type
-                {
-                    set.extend(v.0.into_iter());
-                } else
-                {
-                    set.push(_type);
+                    while let Type::Symbol(s) = _type
+                    {
+                        _type = types.get(&s).unwrap().clone();
+                    }
+                    if let Type::Sum(v) = _type
+                    {
+                        for v in v.0
+                        {
+                            set.0.insert(v);
+                        }
+                    } else
+                    {
+                        set.0.insert(_type);
+                    }
                 }
             }
 
             scope.pop_scope();
 
-            let set = HashSet::from_iter(set.into_iter());
-            if set.len() == 0
+            if let Some(v) = last
             {
-                Type::Unknown
-            } else if set.len() == 1
+                v
+            } else if let Type::Sum(v) = returned
             {
-                set.into_iter().next().unwrap()
+                if v.0.len() == 0
+                {
+                    Type::Unknown
+                } else if v.0.len() == 1
+                {
+                    v.0.into_iter().next().unwrap()
+                } else
+                {
+                    Type::Sum(v)
+                }
             } else
             {
-                Type::Sum(HashSetWrapper(set))
+                unreachable!("if youre here you dont deserve a single uwu");
             }
         }
 
@@ -1074,43 +1242,6 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
                     {
                         Type::Unknown
                     }
-
-
-
-                    /*
-                     *
-                     *                    } else if let Some(v) = f.0.iter().filter(|v| if let Type::Tag(t, _) = v { t == &a[1] } else { false }).next()
-                    {
-                        if a.len() != 2
-                        {
-                            errors.push(CorrectnessError::NonmemberAccess(
-                                m.span.clone(),
-                                format!("{}::{}", a[0], a[1]),
-                                a[2].clone()
-                            ));
-                        } else if let Type::Tag(_, t) = v
-                        {
-                            let mut temp = SExprMetadata {
-                                span: Span { start: 0, end: 0 },
-                                span2: Span { start: 0, end: 0 },
-                                _type: Type::Error,
-                                arity: 0,
-                                saved_argc: None,
-                                tailrec: false
-                            };
-
-                            swap(&mut temp, m);
-                            temp.arity = 1;
-                            temp.saved_argc = Some(0);
-                            temp._type = Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
-
-                            *sexpr = SExpr::Function(temp, a.join("::").to_string());
-                        }
-
-                     *
-                     *
-                     *
-                     * */
                 } else
                 {
                     Type::Unknown
@@ -1123,133 +1254,178 @@ fn get_function_type(sexpr: &SExpr, scope: &mut Scope, funcs: &mut HashMap<Strin
     }
 }
 
-// check_function_body(&str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
+// check_function_body(&str, &str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
 // Checks a function body and determines the return type of the function.
-fn check_function_body(name: &str, refr: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
+fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>)
 {
-    if let None = scope.get_var(name)
+    if scope.get_var(name).is_none() && scope.get_var(refr).is_none()
     {
         // Put function in scope
-        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
+        scope.put_var_raw(String::from(name), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false, String::from(module_name));
         if name != refr
         {
-            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Span { start: 0, end: 0 }, false);
+            scope.put_var_raw(String::from(refr), Type::Unknown, func.args.len(), None, Location::new(Span { start: 0, end: 0 }, &func.loc.filename), false, String::from(module_name));
+        }
+    }
+
+    // Put arguments into scope
+    scope.push_scope(true);
+    for arg in func.args.iter()
+    {
+        if arg.0 != "_"
+        {
+            scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true, "");
+        }
+    }
+
+    // Get the type
+    let mut captured = HashMap::with_capacity(0);
+    let mut captured_names = Vec::with_capacity(0);
+    let _type = get_function_type(&func.body, module_name, scope, funcs, errors, &mut captured, &mut captured_names, types);
+    func.captured = captured;
+    func.captured_names = captured_names;
+    scope.pop_scope();
+
+    // Push an error if type is unknown
+    if _type == Type::Unknown
+    {
+        errors.push(CorrectnessError::UnknownFunctionReturnType(
+            func.body.get_metadata().loc.clone(),
+            String::from(name)
+        ));
+    } else
+    {
+        // Construct the type
+        let mut acc = _type;
+        for t in func.args.iter().rev()
+        {
+            acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
         }
 
-        // Put arguments into scope
-        scope.push_scope(true);
-        for arg in func.args.iter()
+        if let Some(v) = scope.variables.remove(refr)
         {
-            scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+            if v.0 != Type::Unknown && v.0 != acc
+            {
+                errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                    v.3,
+                    v.0,
+                    func.loc.clone(),
+                    acc
+                ));
+                return
+            }
+        }
+        if let Some(v) = scope.variables.remove(name)
+        {
+            if v.0 != Type::Unknown && v.0 != acc
+            {
+                errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
+                    v.3,
+                    v.0,
+                    func.loc.clone(),
+                    acc
+                ));
+                return
+            }
         }
 
-        // Get the type
-        let mut captured = HashMap::with_capacity(0);
-        let mut captured_names = Vec::with_capacity(0);
-        let _type = get_function_type(&func.body, scope, funcs, errors, &mut captured, &mut captured_names, types);
-        func.captured = captured;
-        func.captured_names = captured_names;
-        scope.pop_scope();
-
-        // Push an error if type is unknown
-        if _type == Type::Unknown
+        // Get global scope
+        let mut scope = scope;
+        loop
         {
-            errors.push(CorrectnessError::UnknownFunctionReturnType(
-                func.body.get_metadata().span.clone(),
-                String::from(name)
-            ));
-        } else
-        {
-            // Construct the type
-            let mut acc = _type;
-            for t in func.args.iter().rev()
+            if scope.parent.is_some()
             {
-                acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
-            }
-
-            scope.variables.remove(refr);
-            scope.variables.remove(name);
-
-            // Get global scope
-            let mut scope = scope;
-            loop
+                scope = &mut *scope.parent.as_mut().unwrap();
+            } else
             {
-                if scope.parent.is_some()
-                {
-                    scope = &mut *scope.parent.as_mut().unwrap();
-                } else
-                {
-                    break;
-                }
+                break;
             }
-
-            // Put function type in global scope
-            if name != refr
-            {
-                scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.span.clone(), false);
-            }
-            scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.span.clone(), false);
         }
+
+        // Put function type in global scope
+        if name != refr
+        {
+            scope.put_var_raw(String::from(refr), acc.clone(), func.args.len(), Some(func.captured.len()), func.loc.clone(), false, String::from(module_name));
+        }
+        scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false, String::from(module_name));
     }
 }
 
-// check_function_group(T, &HashMap<String, IRFunction>, &mut IR, &mut Vec<CorrectnessError>) -> ()
+// check_function_group(T, &HashMap<String, IRFunction>, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
 // Checks the group of functions for return types.
-fn check_function_group<T>(names: T, ir: &mut IR, errors: &mut Vec<CorrectnessError>)
+fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
     where T: Iterator<Item = (String, String)> + Clone
 {
     // Generate function types
     for name in names.clone()
     {
-        let mut func = ir.funcs.remove(&name.0).unwrap();
-        check_function_body(&name.0, &name.1, &mut func, &mut ir.scope, &mut ir.funcs, errors, &ir.types);
-        ir.funcs.insert(name.0, func);
+        // Handle functions
+        if let Some(mut func) = module.funcs.remove(&name.0)
+        {
+            check_function_body(&name.0, &name.1, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types);
+            module.funcs.insert(name.0, func);
+        } else
+        {
+            unreachable!("uwu");
+        }
     }
 
     // Check all function bodies
     for name in names
     {
         // Remove function
-        if let Some(mut func) = ir.funcs.remove(&name.0)
+        if let Some(mut func) = module.funcs.remove(&name.0)
         {
             // Push scope and add arguments
-            ir.scope.push_scope(false);
+            module.scope.push_scope(false);
             for arg in &func.args
             {
-                ir.scope.put_var(&arg.0, &arg.1, 0, None, Span { start: 0, end: 0 }, true);
+                if arg.0 != "_"
+                {
+                    module.scope.put_var(&arg.0, &arg.1, 0, None, &Location::new(Span { start: 0, end: 0 }, &func.loc.filename), true, &module.name);
+                }
             }
 
             // Check body
-            check_sexpr(&mut func.body, ir, errors);
+            check_sexpr(&mut func.body, module, errors);
             func.checked = true;
 
             // Pop scope
-            ir.scope.pop_scope();
+            module.scope.pop_scope();
 
             // Reinsert function
-            ir.funcs.insert(name.0, func);
+            module.funcs.insert(name.0, func);
         }
     }
 }
 
-// check_functions(&mut IR, &mut Vec<CorrectnessError>) -> ()
-// Checks function return types.
-fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
+// check_globals(&mut IRModule, Vec<String>, &mut Vec<CorrectnessError>) -> ()
+// Checks global function return types.
+fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
-    // Get the set of all global functions
-    let mut globals = HashSet::from_iter(ir.funcs.iter().filter_map(|v| {
-        if v.1.global
+    // Get the set of all global functions and globals
+    let mut globals = HashSet::from_iter(module.scope.variables.iter().filter_map(|v| {
+        if v.0 != "debug" && v.0 != "putch"
         {
             Some(v.0.clone())
         } else
         {
             None
         }
-    }));
+    }).chain(module.funcs.iter().filter_map(|v| {
+        if v.0 != "_" && v.1.global
+        {
+            Some(v.0.clone())
+        } else
+        {
+            None
+        }
+    })));
 
     // Iterate over every function
-    for func in ir.funcs.iter_mut()
+    for func in module.funcs.iter_mut()
     {
+        // Remove arguments
         let mut removed = HashSet::with_capacity(0);
         for a in func.1.args.iter()
         {
@@ -1262,18 +1438,22 @@ fn check_functions(ir: &mut IR, errors: &mut Vec<CorrectnessError>)
         convert_function_symbols(&mut func.1.body, &mut globals);
 
         globals = HashSet::from_iter(globals.union(&removed).cloned());
-
     }
 
-    // Check all global functions
-    let v: Vec<(String, String)> = ir.funcs.iter().filter_map(
+    for sexpr in module.sexprs.iter_mut()
+    {
+        convert_function_symbols(sexpr, &mut globals);
+    }
+
+    // Check all globals
+    let v: Vec<(String, String)> = module.funcs.iter().filter_map(
         |v| match v.1.global
         {
             true => Some((v.0.clone(), v.0.clone())),
             false => None
         }
     ).collect();
-    check_function_group(v.into_iter(), ir, errors);
+    check_function_group(v.into_iter(), module, errors);
 }
 
 // save_single_type(&mut usize, &Type, &mut HashMap) -> ()
@@ -1341,7 +1521,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
 
         SExpr::Match(_, v, a) => {
             save_types(v, types, id);
-            for a in a
+            for a in a.iter()
             {
                 let _type = if let Type::Tag(_, t) = &a.0
                 {
@@ -1353,7 +1533,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
 
                 if let Type::Sum(_) = _type
                 {
-                    save_single_type(id, _type, types);
+                    save_single_type(id, &_type, types);
                 }
                 save_types(&a.1, types, id);
             }
@@ -1363,11 +1543,11 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
     }
 }
 
-// check_type_validity(&IR) -> ()
+// check_type_validity(&IRModule) -> ()
 // Checks whether the given types are valid or not.
-fn check_type_validity(ir: &IR, errors: &mut Vec<CorrectnessError>)
+fn check_type_validity(module: &IRModule, errors: &mut Vec<CorrectnessError>)
 {
-    for s in ir.sexprs.iter()
+    for s in module.sexprs.iter()
     {
         if let SExpr::TypeAlias(m, n) = s
         {
@@ -1375,14 +1555,14 @@ fn check_type_validity(ir: &IR, errors: &mut Vec<CorrectnessError>)
             {
                 Type::Symbol(s) if s == n => {
                     errors.push(CorrectnessError::InfiniteSizedType(
-                        m.span2.clone(),
+                        m.loc2.clone(),
                         m._type.clone()
                     ));
                 }
 
                 Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
                     errors.push(CorrectnessError::InfiniteSizedType(
-                        m.span2.clone(),
+                        m.loc2.clone(),
                         m._type.clone()
                     ));
                 }
@@ -1551,51 +1731,333 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
     }
 }
 
+fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
+{
+    match sexpr
+    {
+        SExpr::Symbol(m, s)
+            | SExpr::Function(m, s) => {
+            if let Some(v) = scope.get_var(s)
+            {
+                m.arity = v.1;
+                m.saved_argc = v.2;
+            }
+        }
+
+        SExpr::Prefix(_, _, v)
+            | SExpr::As(_, v)
+            | SExpr::Assign(_, _, v)
+            => {
+            fix_arity(v, scope);
+        }
+
+        SExpr::Infix(_, _, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
+            => {
+            fix_arity(l, scope);
+            fix_arity(r, scope);
+        }
+
+        SExpr::Application(m, l, r) => {
+            fix_arity(l, scope);
+
+            if l.get_metadata().arity > 0
+            {
+                m.arity = l.get_metadata().arity - 1;
+                if let Some(v) = l.get_metadata().saved_argc
+                {
+                    m.saved_argc = Some(v + 1);
+                } else
+                {
+                    m.saved_argc = None;
+                }
+            }
+
+            fix_arity(r, scope);
+        }
+
+        SExpr::If(_, c, t, e) => {
+            fix_arity(c, scope);
+            fix_arity(t, scope);
+            fix_arity(e, scope);
+        }
+
+        SExpr::With(_, a, v) => {
+            scope.push_scope(false);
+            for a in a
+            {
+                fix_arity(a, scope);
+            }
+            fix_arity(v, scope);
+            scope.pop_scope();
+        }
+
+        SExpr::Match(_, v, a) => {
+            fix_arity(v, scope);
+            scope.push_scope(false);
+            for a in a.iter_mut()
+            {
+                fix_arity(&mut a.1, scope)
+            }
+            scope.pop_scope();
+        }
+
+        _ => ()
+    }
+}
+
+// check_imports(&IRModule, &IR, &mut Vec<CorrectnessError>) -> ()
+// Checks the validity of imported and exported items in a module.
+fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessError>)
+{
+    // Put export types
+    for export in module.exports.iter()
+    {
+        module.scope.put_var(export.0, &export.1.1, 0, None, &export.1.0, false, &module.name);
+    }
+
+    // Put unqualified imports in scope
+    for import in module.imports.iter_mut()
+    {
+        if !import.1.qualified
+        {
+            // Import specific values
+            if import.1.imports.len() != 0
+            {
+                let exporter = &ir.modules.get(&import.1.name).unwrap().exports;
+                for i in import.1.imports.iter_mut()
+                {
+                    if module.scope.variables.contains_key(i.0)
+                    {
+                        errors.push(CorrectnessError::VariableImportedTwice(
+                            module.scope.variables.get(i.0).unwrap().3.clone(),
+                            import.1.loc.clone()
+                        ));
+                    } else if exporter.contains_key(i.0)
+                    {
+                        *i.1 = (exporter.get(i.0).unwrap().1.clone(), 0);
+                        module.scope.put_var(i.0, &i.1.0, 0, None, &import.1.loc, true, &import.1.name);
+                    } else
+                    {
+                        errors.push(CorrectnessError::ImportedValueNotExported(
+                            import.1.loc.clone(),
+                            i.0.clone(),
+                            import.1.name.clone()
+                        ));
+                    }
+                }
+
+            // Import everything
+            } else
+            {
+                for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
+                {
+                    if module.scope.variables.contains_key(i.0)
+                    {
+                        errors.push(CorrectnessError::VariableImportedTwice(
+                            module.scope.variables.get(i.0).unwrap().3.clone(),
+                            i.1.0.clone()
+                        ));
+                    } else
+                    {
+                        module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true, &import.1.name);
+                        import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0));
+                    }
+                }
+            }
+
+        // Import qualified
+        } else
+        {
+            for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
+            {
+                import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0));
+            }
+        }
+    }
+}
+
 // check_correctness(&mut IR) -> ()
-// Checks the correctness of ir.
+// Checks the correctness of module.
 pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
 {
+    // Set up
     let mut errors = Vec::with_capacity(0);
+    let keys: Vec<String> = ir.modules.iter().map(|v| v.0.clone()).collect();
 
     // Check types
-    check_type_validity(ir, &mut errors);
-
-    // Check functions
-    check_functions(ir, &mut errors);
-
-    // Check sexpressions
-    let mut sexprs = Vec::with_capacity(0);
-    swap(&mut ir.sexprs, &mut sexprs);
-    for sexpr in sexprs.iter_mut()
+    for module in ir.modules.iter_mut()
     {
-        check_sexpr(sexpr, ir, &mut errors);
+        check_type_validity(module.1, &mut errors);
     }
-    swap(&mut ir.sexprs, &mut sexprs);
+
+    for name in keys
+    {
+        // Get module
+        let mut module = ir.modules.remove(&name).unwrap();
+
+        // Check the module
+        check_module(&mut module, ir, &mut errors);
+
+        // Collect globals
+        for sexpr in module.sexprs.iter()
+        {
+            if let SExpr::Assign(m, a, _) = sexpr
+            {
+                if m._type != Type::Error
+                {
+                    module.scope.put_var(a, &m._type, 0, None, &m.loc, false, &module.name);
+                }
+            }
+        }
+
+        // Check globals
+        check_globals(&mut module, &mut errors);
+
+        // Check sexpressions
+        let mut sexprs = Vec::with_capacity(0);
+        swap(&mut module.sexprs, &mut sexprs);
+        for sexpr in sexprs.iter_mut()
+        {
+            convert_function_symbols(sexpr, &mut HashSet::from_iter(module.funcs.iter().map(|v| v.0.clone())));
+            check_sexpr(sexpr, &mut module, &mut errors);
+        }
+        swap(&mut module.sexprs, &mut sexprs);
+        ir.modules.insert(name, module);
+    }
+
+    let mut has_main = false;
+    for module in ir.modules.iter()
+    {
+        if module.1.name == "Main" && module.1.scope.variables.contains_key("main")
+        {
+            has_main = true;
+        }
+    }
+
+    if !has_main
+    {
+        errors.push(CorrectnessError::NoMainFunction);
+    }
 
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
-        // Save types
-        let mut id = 0;
-        while let Some(_) = ir.types.get(&format!("{}", id))
+        let keys: Vec<String> = ir.modules.keys().cloned().collect();
+        for name in keys
         {
-            id += 1;
-        }
+            let mut module = ir.modules.remove(&name).unwrap();
 
-        for sexpr in ir.sexprs.iter()
-        {
-            save_types(sexpr, &mut ir.types, &mut id);
-        }
+            // Save types
+            let mut id = 0;
+            while let Some(_) = module.types.get(&format!("{}", id))
+            {
+                id += 1;
+            }
 
-        for f in ir.funcs.iter()
-        {
-            save_types(&f.1.body, &mut ir.types, &mut id);
-        }
+            for sexpr in module.sexprs.iter()
+            {
+                save_types(sexpr, &mut module.types, &mut id);
+            }
 
-        // Check for tail recursion
-        for f in ir.funcs.iter_mut()
-        {
-            check_tailrec(&mut f.1.body, &f.0, true);
+            for f in module.funcs.iter()
+            {
+                save_types(&f.1.body, &mut module.types, &mut id);
+            }
+
+            // Check for tail recursion
+            for f in module.funcs.iter_mut()
+            {
+                check_tailrec(&mut f.1.body, &f.0, true);
+            }
+
+            // Import functions
+            for import in module.imports.iter_mut()
+            {
+                // Fix arity
+                let imported_mod = ir.modules.get(&import.1.name).unwrap();
+                for i in import.1.imports.iter_mut()
+                {
+                    i.1.1 = imported_mod.scope.get_var(i.0).unwrap().1;
+                }
+
+                // Add functions
+                for i in import.1.imports.iter()
+                {
+                    let mut func = IRFunction {
+                        args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
+                        loc: Location::empty(),
+                        captured: HashMap::with_capacity(0),
+                        captured_names: Vec::with_capacity(0),
+                        body: SExpr::True(SExprMetadata::empty()),
+                        global: true,
+                        checked: true,
+                        written: true
+                    };
+                    func.body.get_mutable_metadata()._type = i.1.0.clone();
+                    module.funcs.insert(i.0.clone(), func);
+                    if let Some(var) = module.scope.variables.get_mut(i.0)
+                    {
+                        var.1 = i.1.1;
+                        var.2 = Some(0);
+                    } else
+                    {
+                        module.scope.variables.insert(i.0.clone(), (i.1.0.clone(), i.1.1, Some(0), Location::empty(), true, String::with_capacity(0)));
+                    }
+                }
+            }
+
+            // Fix arity
+            for sexpr in module.sexprs.iter_mut()
+            {
+                fix_arity(sexpr, &mut module.scope);
+            }
+
+            for func in module.funcs.iter_mut()
+            {
+                fix_arity(&mut func.1.body, &mut module.scope);
+            }
+
+            // Eta reduced functions are optimised away
+            for sexpr in module.sexprs.iter_mut()
+            {
+                if let SExpr::Assign(_, n, v) = sexpr
+                {
+                    if let SExpr::Application(m, _, _) = &**v
+                    {
+                        if let Some(func) = module.funcs.get_mut(n)
+                        {
+                            if m.arity != 0 && func.args.len() == 0
+                            {
+                                let mut arity = m.arity;
+                                while arity > 0
+                                {
+                                    if let Type::Func(a, r) = &func.body.get_metadata()._type
+                                    {
+                                        func.args.push((format!("$${}", arity), *a.clone()));
+                                        let mut temp = SExpr::True(SExprMetadata::empty());
+                                        let _type = *r.clone();
+                                        swap(&mut func.body, &mut temp);
+                                        func.body = SExpr::Application(SExprMetadata::empty(), Box::new(temp), Box::new(SExpr::Symbol(SExprMetadata::empty(), format!("$${}", arity))));
+                                        func.body.get_mutable_metadata()._type = _type;
+                                        arity -= 1;
+                                    } else
+                                    {
+                                        unreachable!("nya");
+                                    }
+                                }
+                                let mut meta = SExprMetadata::empty();
+                                let n = n.clone();
+                                swap(&mut meta, sexpr.get_mutable_metadata());
+                                *sexpr = SExpr::Function(meta, n);
+                            }
+                        }
+                    }
+                }
+            }
+
+            ir.modules.insert(name, module);
         }
 
         Ok(())

@@ -1,9 +1,9 @@
-use logos::Span;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 use std::iter::FromIterator;
 use std::hash::{Hash, Hasher};
 
+use super::ir::Location;
 use super::parser::AST;
 
 #[derive(Clone, Debug)]
@@ -31,8 +31,8 @@ impl<T: Hash + Eq> Hash for HashSetWrapper<T>
 pub enum Type
 {
     Error,
-    UndeclaredTypeError(Span),
-    DuplicateTypeError(Span, Span, Box<Type>),
+    UndeclaredTypeError(Location),
+    DuplicateTypeError(Location, Location, Box<Type>),
     Unknown,
     Int,
     Float,
@@ -55,7 +55,7 @@ impl Display for Type
             Type::Error => { write!(f, "TypeError")?; }
             Type::UndeclaredTypeError(_) => { write!(f, "UndeclaredTypeError")?; }
             Type::DuplicateTypeError(_, _, _) => { write! (f, "DuplicateTypeError")?; }
-            Type::Unknown => { write!(f, "UnknownType")?; }
+            Type::Unknown => { write!(f, "{{ unknown }}")?; }
 
             // Primatives
             Type::Int => { write!(f, "Int")?; }
@@ -219,7 +219,7 @@ impl Type
 
 // convert_ast_to_type(AST, &IR) -> Type
 // Converts an ast node into a type.
-pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
+pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Type>) -> Type
 {
     match ast
     {
@@ -239,7 +239,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                         Type::Symbol(v)
                     } else
                     {
-                        Type::UndeclaredTypeError(s)
+                        Type::UndeclaredTypeError(Location::new(s, filename))
                     }
             }
         }
@@ -258,7 +258,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
         AST::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
             let s = r.get_span().clone();
-            fields.insert(convert_ast_to_type(*r, types), s);
+            fields.insert(convert_ast_to_type(*r, filename, types), s);
             let mut acc = *l;
 
             loop 
@@ -267,14 +267,14 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 {
                     AST::Infix(_, op, l, r) if op == "|" => {
                         let s = r.get_span().clone();
-                        let v = convert_ast_to_type(*r, types);
+                        let v = convert_ast_to_type(*r, filename, types);
                         if let Type::Sum(v) = v
                         {
                             for v in v.0
                             {
                                 if let Some(s2) = fields.remove(&v)
                                 {
-                                    return Type::DuplicateTypeError(s, s2, Box::new(v));
+                                    return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
                                 }
 
                                 fields.insert(v, s.clone());
@@ -283,7 +283,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                         {
                             if let Some(s2) = fields.remove(&v)
                             {
-                                return Type::DuplicateTypeError(s, s2, Box::new(v));
+                                return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
                             }
 
                             fields.insert(v, s);
@@ -305,10 +305,10 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
             }
 
             let s = acc.get_span();
-            let v = convert_ast_to_type(acc, types);
+            let v = convert_ast_to_type(acc, filename, types);
             if let Some(s2) = fields.remove(&v)
             {
-                return Type::DuplicateTypeError(s, s2, Box::new(v));
+                return Type::DuplicateTypeError(Location::new(s, filename), Location::new(s2, filename), Box::new(v));
             }
 
             fields.insert(v, s);
@@ -323,8 +323,8 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
 
         // Function types
         AST::Infix(_, op, l, r) if op == "->" => {
-            let l = convert_ast_to_type(*l, types);
-            let r = convert_ast_to_type(*r, types);
+            let l = convert_ast_to_type(*l, filename, types);
+            let r = convert_ast_to_type(*r, filename, types);
 
             if let Type::UndeclaredTypeError(s) = l
             {
@@ -340,7 +340,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
 
         AST::Infix(_, op, l, r) if op == ":" => {
             let s = r.get_span().clone();
-            let r = convert_ast_to_type(*r, types);
+            let r = convert_ast_to_type(*r, filename, types);
 
             if let Type::UndeclaredTypeError(s) = r
             {
@@ -350,7 +350,7 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
                 Type::DuplicateTypeError(a, b, c)
             } else if let Type::Enum(_) = r
             {
-                Type::UndeclaredTypeError(s)
+                Type::UndeclaredTypeError(Location::new(s, filename))
             } else if let AST::Symbol(_, s) = *l
             {
                 Type::Tag(s, Box::new(r))
@@ -362,10 +362,10 @@ pub fn convert_ast_to_type(ast: AST, types: &HashMap<String, Type>) -> Type
 
         // Parenthesised types
         AST::Prefix(_, op, v) if op == "" =>
-            convert_ast_to_type(*v, types),
+            convert_ast_to_type(*v, filename, types),
 
         // Error
-        _ => Type::UndeclaredTypeError(ast.get_span())
+        _ => Type::UndeclaredTypeError(Location::new(ast.get_span(), filename))
     }
 }
 

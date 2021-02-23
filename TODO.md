@@ -1,13 +1,16 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Standard library
-- Module system
+- Make local assignments lazy
+- Deal with types properly
 - Bindings with C
 - Tagged system for side effects
 - Fix memory leaks
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
+- `;` operator (chains actions together)
+- `:=` operator (creates a super local scope that only lasts for one infix operation)
 - Remove hacky `putch` function and replace it with an actual C function
+- Char and Word types
 - See github issues
 
 ## Fourth official release:
@@ -23,8 +26,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Generics
 - Mutability
 - Laziness
-- Lists
-- Span (`**`) for lists
+- Lists (defined as linked lists but optimised into vectors using `@vector`)
 - Strings (which are basically just lists of chars)
 - `?`/`!` operators
 - Function composition operator

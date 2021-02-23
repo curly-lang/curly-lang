@@ -7,6 +7,47 @@ use super::scopes::Scope;
 use super::types;
 use super::types::Type;
 
+// Represents a location
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Location
+{
+    pub span: Span,
+    pub filename: String
+}
+
+impl Location
+{
+    // new(Span, &str) -> Location
+    // Creates a new Location.
+    pub fn new(span: Span, filename: &str) -> Location
+    {
+        Location {
+            span,
+            filename: String::from(filename)
+        }
+    }
+
+    // empty() -> Location
+    // Creates an empty Location.
+    pub fn empty() -> Location
+    {
+        Location {
+            span: Span { start: 0, end: 0 },
+            filename: String::with_capacity(0)
+        }
+    }
+}
+
+// Represents an error in IR
+pub enum IRError
+{
+    InvalidType(Location),
+    DuplicateTypeInUnion(Location, Location, Type),
+    DoubleExport(Location, Location, String),
+    RedefineImportAlias(Location, Location, String),
+    UnsupportedAnnotation(Location, String)
+}
+
 // Represents a prefix operator.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PrefixOp
@@ -43,12 +84,32 @@ pub enum BinOp
 #[derive(Debug, Clone)]
 pub struct SExprMetadata
 {
-    pub span: Span,
-    pub span2: Span,
+    pub loc: Location,
+    pub loc2: Location,
+    pub origin: String,
     pub _type: Type,
     pub arity: usize,
     pub saved_argc: Option<usize>,
     pub tailrec: bool
+}
+
+impl SExprMetadata
+{
+    // empty() -> SExprMetadata
+    // Creates empty metadata.
+    pub fn empty() -> SExprMetadata
+    {
+        SExprMetadata {
+            loc: Location::empty(),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
+            _type: Type::Error,
+            arity: 0,
+            saved_argc: None,
+            tailrec: false
+
+        }
+    }
 }
 
 // Represents an s expression
@@ -179,70 +240,77 @@ impl SExpr
 #[derive(Debug)]
 pub struct IRFunction
 {
+    pub loc: Location,
     pub args: Vec<(String, Type)>,
     pub captured: HashMap<String, Type>,
     pub captured_names: Vec<String>,
     pub body: SExpr,
     pub global: bool,
-    pub span: Span,
     pub checked: bool,
     pub written: bool
 }
 
-// Represents the ir.
 #[derive(Debug)]
-pub struct IR
+pub struct IRImport
 {
+    pub name: String,
+    pub loc: Location,
+    pub qualified: bool,
+    pub imports: HashMap<String, (Type, usize)>
+}
+
+// Represents a module of the ir.
+#[derive(Debug)]
+pub struct IRModule
+{
+    pub name: String,
+    pub filename: String,
+    pub imports: HashMap<String, IRImport>,
+    pub exports: HashMap<String, (Location, Type)>,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub types: HashMap<String, Type>,
     pub sexprs: Vec<SExpr>
 }
 
-impl IR
+#[derive(Debug)]
+pub struct IR
 {
-    // new() -> IR
-    // Creates a new root IR.
-    pub fn new() -> IR
+    pub modules: HashMap<String, IRModule>
+}
+
+impl IRModule
+{
+    // new() -> IRModule
+    // Creates a new IRModule.
+    pub fn new(filename: &str) -> IRModule
     {
-        IR {
+        IRModule {
+            name: String::with_capacity(0),
+            filename: String::from(filename),
+            imports: HashMap::with_capacity(0),
+            exports: HashMap::with_capacity(0),
+
+            // TODO: make init_builtins() be called in only a prelude
             scope: Scope::new().init_builtins(),
             funcs: HashMap::with_capacity(0),
             types: HashMap::with_capacity(0),
-            sexprs: vec![]
+            sexprs: Vec::with_capacity(0)
         }
-    }
-
-    // clear(&mut self) -> ()
-    // Clears the root of any sexpressions.
-    pub fn clear(&mut self)
-    {
-        use std::mem::swap;
-
-        self.sexprs.clear();
-        let mut funcs = HashMap::with_capacity(0);
-        swap(&mut funcs, &mut self.funcs);
-        self.funcs = HashMap::from_iter(funcs.into_iter().filter(|v| v.1.global));
-        for f in self.funcs.iter_mut()
-        {
-            f.1.written = true;
-        }
-        let mut vars = HashMap::with_capacity(0);
-        swap(&mut vars, &mut self.scope.variables);
-        self.scope.variables = HashMap::from_iter(vars.into_iter().filter(|v| v.1.4));
     }
 }
 
-// convert_node(AST, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
+// convert_node(AST, &str, bool, &mut HashMap<String, IRFunction>, &mut HashMap<String, HashMap>) -> SExpr
 // Converts an ast node into an sexpression.
-fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool, seen_funcs: &mut HashMap<String, usize>, types: &mut HashMap<String, Type>) -> SExpr
+fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction>, global: bool, seen_funcs: &mut HashMap<String, usize>, types: &mut HashMap<String, Type>) -> SExpr
 {
     match ast
     {
         // Int
         AST::Int(span, n) => SExpr::Int(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Int,
             arity: 0,
             saved_argc: None,
@@ -251,8 +319,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
         // Float
         AST::Float(span, n) => SExpr::Float(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Float,
             arity: 0,
             saved_argc: None,
@@ -261,8 +330,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
         // True
         AST::True(span) => SExpr::True(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
@@ -271,8 +341,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
  
         // False
         AST::False(span) => SExpr::False(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
@@ -280,32 +351,39 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
         }),
 
         AST::List(span, list) => SExpr::List(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
             tailrec: false
-        }, list.into_iter().map(|v| convert_node(v, funcs, global, seen_funcs, types)).collect()),
+        }, list.into_iter().map(|v| convert_node(v, filename, funcs, global, seen_funcs, types)).collect()),
 
         // Symbol
         AST::Symbol(span, s) => SExpr::Symbol(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
             tailrec: false
         }, s),
 
-        AST::Annotation(_, _) => {
-            unreachable!("unhandled annotation!");
+        AST::Annotation(_, _)
+            | AST::Import(_, _, _)
+            | AST::QualifiedImport(_, _, _)
+            | AST::Header(_, _, _, _)
+            => {
+            unreachable!("annotations, imports, and headers are already handled!");
         }
 
         // String
         AST::String(span, s) => SExpr::String(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::String,
             arity: 0,
             saved_argc: None,
@@ -322,13 +400,14 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             };
 
             SExpr::Prefix(SExprMetadata {
-                span,
-                span2: Span { start: 0, end: 0 },
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
                 tailrec: false
-            }, op, Box::new(convert_node(*v, funcs, global, seen_funcs, types)))
+            }, op, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)))
         }
 
         // Infix
@@ -337,23 +416,25 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             if op == "and"
             {
                 SExpr::And(SExprMetadata {
-                    span,
-                    span2: Span { start: 0, end: 0 },
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
                     tailrec: false
-                }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
+                }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             } else if op == "or"
             {
                 SExpr::Or(SExprMetadata {
-                    span,
-                    span2: Span { start: 0, end: 0 },
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
                     tailrec: false
-                }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
+                }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
 
             // Deal with accessing members
             } else if op == "::"
@@ -381,8 +462,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
                 }
 
                 SExpr::MemberAccess(SExprMetadata {
-                    span,
-                    span2: Span { start: 0, end: 0 },
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
@@ -416,74 +498,113 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
                 // Return
                 SExpr::Infix(SExprMetadata {
-                    span,
-                    span2: Span { start: 0, end: 0 },
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
                     tailrec: false
-                }, op, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types)))
+                }, op, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             }
         }
 
         AST::As(span, value, _type) => SExpr::As(SExprMetadata {
-            span,
-            span2: _type.get_span(),
-            _type: types::convert_ast_to_type(*_type, types),
+            loc: Location::new(span, filename),
+            loc2: Location::new(_type.get_span(), filename),
+            origin: String::with_capacity(0),
+            _type: types::convert_ast_to_type(*_type, filename, types),
             arity: 0,
             saved_argc: None,
             tailrec: false
-        }, Box::new(convert_node(*value, funcs, global, seen_funcs, types))),
+        }, Box::new(convert_node(*value, filename, funcs, global, seen_funcs, types))),
 
         // If expression
         AST::If(span, cond, then, elsy) => SExpr::If(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
             tailrec: false
-        }, Box::new(convert_node(*cond, funcs, global, seen_funcs, types)), Box::new(convert_node(*then, funcs, global, seen_funcs, types)), Box::new(convert_node(*elsy, funcs, global, seen_funcs, types))),
+        }, Box::new(convert_node(*cond, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*then, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*elsy, filename, funcs, global, seen_funcs, types))),
 
         // Application
         AST::Application(span, l, r) => SExpr::Application(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
             tailrec: false
-        }, Box::new(convert_node(*l, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, funcs, global, seen_funcs, types))),
+        }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types))),
 
         // Assignment
-        AST::Assign(span, name, val) => SExpr::Assign(SExprMetadata {
-            span,
-            span2: Span { start: 0, end: 0 },
-            _type: Type::Error,
-            arity: 0,
-            saved_argc: None,
-            tailrec: false
-        }, name, Box::new(convert_node(*val, funcs, global, seen_funcs, types))),
+        AST::Assign(span, name, val) => {
+            let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
+            if global && name != "_"
+            {
+                funcs.insert(name.clone(), IRFunction {
+                    loc: Location::new(span.clone(), filename),
+                    args: Vec::with_capacity(0),
+                    captured: HashMap::with_capacity(0),
+                    captured_names: Vec::with_capacity(0),
+                    body: sexpr.clone(),
+                    global: true,
+                    checked: false,
+                    written: false
+                });
+            }
 
-        // Assignment with types
-        AST::AssignTyped(span, name, _type, val) => {
             SExpr::Assign(SExprMetadata {
-                span,
-                span2: _type.get_span().clone(),
-                _type: types::convert_ast_to_type(*_type, types),
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
+                _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
                 tailrec: false
-            }, name, Box::new(convert_node(*val, funcs, global, seen_funcs, types)))
+            }, name, Box::new(sexpr))
+        }
+
+        // Assignment with types
+        AST::AssignTyped(span, name, _type, val) => {
+            let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
+            if global && name != "_"
+            {
+                funcs.insert(name.clone(), IRFunction {
+                    loc: Location::new(span.clone(), filename),
+                    args: Vec::with_capacity(0),
+                    captured: HashMap::with_capacity(0),
+                    captured_names: Vec::with_capacity(0),
+                    body: sexpr.clone(),
+                    global: true,
+                    checked: false,
+                    written: false
+                });
+            }
+
+            SExpr::Assign(SExprMetadata {
+                loc: Location::new(span, filename),
+                loc2: Location::new(_type.get_span().clone(), filename),
+                origin: String::with_capacity(0),
+                _type: types::convert_ast_to_type(*_type, filename, types),
+                arity: 0,
+                saved_argc: None,
+                tailrec: false
+            }, name, Box::new(sexpr))
         }
 
         AST::AssignType(span, name, _type) => {
             let span2 = _type.get_span();
-            let _type = types::convert_ast_to_type(*_type, types);
+            let _type = types::convert_ast_to_type(*_type, filename, types);
             types.insert(name.clone(), _type.clone());
             SExpr::TypeAlias(SExprMetadata {
-                span,
-                span2,
+                loc: Location::new(span, filename),
+                loc2: Location::new(span2, filename),
+                origin: String::with_capacity(0),
                 _type,
                 arity: 0,
                 saved_argc: None,
@@ -507,8 +628,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             let arity = args.len();
             let func_id = SExpr::Function(SExprMetadata {
-                span: val.get_span(),
-                span2: Span { start: 0, end: 0 },
+                loc: Location::new(span.clone(), filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
@@ -517,15 +639,15 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             // Create the function
             let func = IRFunction {
-                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, types))).collect(),
+                loc: Location::new(Span {
+                    start: span.start,
+                    end: func_id.get_metadata().loc.span.start
+                }, filename),
+                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types))).collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
-                body: convert_node(*val, funcs, false, seen_funcs, types),
+                body: convert_node(*val, filename, funcs, false, seen_funcs, types),
                 global,
-                span: Span {
-                    start: span.start,
-                    end: func_id.get_metadata().span.start - 1
-                },
                 checked: false,
                 written: false
             };
@@ -547,8 +669,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
             // Return assigning to the function id
             funcs.insert(func_name, func);
             SExpr::Assign(SExprMetadata {
-                span,
-                span2: Span { start: 0, end: 0 },
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type,
                 arity,
                 saved_argc: None,
@@ -566,8 +689,9 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             let arity = args.len();
             let mut func_id = SExpr::Function(SExprMetadata {
-                span: span.clone(),
-                span2: Span { start: 0, end: 0 },
+                loc: Location::new(span.clone(), filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
@@ -576,12 +700,12 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
             // Create the function
             let func = IRFunction {
-                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, types))).collect(),
+                loc: Location::new(span, filename),
+                args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types))).collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
-                body: convert_node(*val, funcs, false, seen_funcs, types),
+                body: convert_node(*val, filename, funcs, false, seen_funcs, types),
                 global: false,
-                span,
                 checked: false,
                 written: false
             };
@@ -608,116 +732,237 @@ fn convert_node(ast: AST, funcs: &mut HashMap<String, IRFunction>, global: bool,
 
         AST::Match(span, v, a) =>
             SExpr::Match(SExprMetadata {
-                span,
-                span2: Span { start: 0, end: 0 },
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
                 tailrec: false
-            }, Box::new(convert_node(*v, funcs, global, seen_funcs, types)),
+            }, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)),
                 a.into_iter().map(|a| {
                     let span2 = a.0.get_span().clone();
-                    let mut v = (types::convert_ast_to_type(a.0, types), convert_node(a.1, funcs, global, seen_funcs, types));
-                    v.1.get_mutable_metadata().span2 = span2;
+                    let mut v = (types::convert_ast_to_type(a.0, filename, types), convert_node(a.1, filename, funcs, global, seen_funcs, types));
+                    v.1.get_mutable_metadata().loc2.span = span2;
                     v
                 }).collect()
             ),
 
         // With expressions
         AST::With(span, a, v) => {
-            let v = convert_node(*v, funcs, false, seen_funcs, types);
+            let v = convert_node(*v, filename, funcs, false, seen_funcs, types);
             SExpr::With(SExprMetadata {
-                span,
-                span2: Span { start: 0, end: 0 },
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
                 _type: v.get_metadata()._type.clone(),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false
-            }, a.into_iter().map(|a| convert_node(a, funcs, false, seen_funcs, types)).collect(), Box::new(v))
+            }, a.into_iter().map(|a| convert_node(a, filename, funcs, false, seen_funcs, types)).collect(), Box::new(v))
         }
     }
 }
 
-// extract_types_to_ir(&Vec<AST>, &mut IR) -> ()
+// extract_types_to_ir(&Vec<AST>, &mut IRModule) -> ()
 // Extracts types and inserts them into the IR's list of types.
-fn extract_types_to_ir(asts: &Vec<AST>, ir: &mut IR)
+fn extract_types_to_ir(asts: &Vec<AST>, module: &mut IRModule)
 {
     for ast in asts
     {
         if let AST::AssignType(_, v, _) = ast
         {
-            ir.types.insert(v.clone(), Type::Unknown);
+            module.types.insert(v.clone(), Type::Unknown);
         }
     }
 }
 
 // convert_ast_to_ir(Vec<AST>) -> IR
 // Converts a list of asts into ir.
-pub fn convert_ast_to_ir(asts: Vec<AST>, ir: &mut IR)
+pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<(), Vec<IRError>>
 {
-    extract_types_to_ir(&asts, ir);
-    let mut seen_funcs = HashMap::from_iter(ir.funcs.iter().map(|v| (v.0.clone(), 0usize)));
+    // Set up
+    let mut module = IRModule::new(filename);
+    extract_types_to_ir(&asts, &mut module);
+    let mut seen_funcs = HashMap::new();
     seen_funcs.insert(String::with_capacity(0), 0);
+    let mut sexprs = vec![];
+    let mut module_name = String::with_capacity(0);
+    let mut errors = vec![];
+
+    // Iterate over every ast node
     for ast in asts
     {
-        if let AST::Annotation(span, a) = ast
+        // Deal with the header
+        if let AST::Header(_, name, exports, imports) = ast
         {
-            if a == "@debug"
+            // Get module name
+            let mut full_name = vec![];
+            let mut top = *name;
+            while let AST::Infix(_, _, l, r) = top
             {
-                let last = ir.sexprs.pop().unwrap();
-                let called = if let SExpr::Assign(_, v, _) = &last
+                if let AST::Symbol(_, v) = *r
                 {
-                    let v = v.clone();
-                    ir.sexprs.push(last);
-                    SExpr::Application(SExprMetadata {
-                        span: span.clone(),
-                        span2: Span { start: 0, end: 0 },
-                        _type: Type::Error,
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false
-                    }, Box::new(SExpr::Symbol(SExprMetadata {
-                        span: span.clone(),
-                        span2: Span { start: 0, end: 0 },
-                        _type: Type::Error,
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false
-                    }, String::from("debug"))), Box::new(SExpr::Symbol(SExprMetadata {
-                        span: span.clone(),
-                        span2: Span { start: 0, end: 0 },
-                        _type: Type::Error,
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false
-                    }, v)))
+                    full_name.push(v);
+                }
+
+                top = *l;
+            }
+            if let AST::Symbol(_, v) = top
+            {
+                full_name.push(v);
+            }
+            full_name.reverse();
+            module_name = full_name.join("::");
+
+            // Deal with exports
+            for export in exports
+            {
+                // Check exported variable type
+                let _type = types::convert_ast_to_type(export.2, filename, &module.types);
+                if let Type::UndeclaredTypeError(s) = _type
+                {
+                    errors.push(IRError::InvalidType(
+                        s
+                    ));
+                } else if let Type::DuplicateTypeError(s1, s2, t) = _type
+                {
+                    errors.push(IRError::DuplicateTypeInUnion(
+                        s1, s2, *t
+                    ));
+
+                // Check export is unique
+                } else if module.exports.contains_key(&export.1)
+                {
+                    errors.push(IRError::DoubleExport(
+                        module.exports.get(&export.1).unwrap().0.clone(),
+                        Location::new(export.0, filename),
+                        export.1
+                    ));
                 } else
                 {
-                    SExpr::Application(SExprMetadata {
-                        span: span.clone(),
-                        span2: Span { start: 0, end: 0 },
-                        _type: Type::Error,
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false
-                    }, Box::new(SExpr::Symbol(SExprMetadata {
-                        span: span.clone(),
-                        span2: Span { start: 0, end: 0 },
-                        _type: Type::Error,
-                        arity: 0,
-                        saved_argc: None,
-                        tailrec: false
-                    }, String::from("debug"))), Box::new(last))
-                };
-                ir.sexprs.push(called);
-            } else
+                    // Add export to list of exports
+                    module.exports.insert(export.1, (Location::new(export.0, filename), _type));
+                }
+            }
+
+            // Deal with imports
+            for import in imports
             {
-                panic!("unsupported annotation!");
+                let imp_mod;
+                let alias;
+                if let AST::QualifiedImport(s, m, a) = import
+                {
+                    let mut name = vec![];
+                    let mut m = m;
+                    while let AST::Infix(_, _, l, r) = *m
+                    {
+                        if let AST::Symbol(_, v) = *r
+                        {
+                            name.push(v);
+                        } else
+                        {
+                            unreachable!("always a symbol");
+                        }
+                        m = l;
+                    }
+                    if let AST::Symbol(_, v) = *m
+                    {
+                        name.push(v);
+                    }
+                    name.reverse();
+
+                    if a != ""
+                    {
+                        alias = a;
+                    } else
+                    {
+                        alias = name.join("::");
+                    }
+
+                    imp_mod = IRImport {
+                        name: name.join("::"),
+                        loc: Location::new(s, filename),
+                        qualified: true,
+                        imports: HashMap::with_capacity(0)
+                    };
+                } else if let AST::Import(s, m, imports) = import
+                {
+                    let mut name = vec![];
+                    let mut m = m;
+                    while let AST::Infix(_, _, l, r) = *m
+                    {
+                        if let AST::Symbol(_, v) = *r
+                        {
+                            name.push(v);
+                        } else
+                        {
+                            unreachable!("always a symbol");
+                        }
+                        m = l;
+                    }
+                    if let AST::Symbol(_, v) = *m
+                    {
+                        name.push(v);
+                    }
+                    name.reverse();
+
+                    alias = name.join("::");
+                    imp_mod = IRImport {
+                        name: name.join("::"),
+                        loc: Location::new(s, filename),
+                        qualified: false,
+                        imports: HashMap::from_iter(imports.into_iter().map(|v| (v, (Type::Unknown, 0))))
+                    };
+                } else
+                {
+                    unreachable!("always either a QualifiedImport or an Import");
+                }
+
+                if module.imports.contains_key(&alias)
+                {
+                    errors.push(IRError::RedefineImportAlias(
+                        module.imports.get(&alias).unwrap().loc.clone(),
+                        imp_mod.loc,
+                        alias
+                    ));
+                } else
+                {
+                    module.imports.insert(alias, imp_mod);
+                }
+            }
+        } else if let AST::Annotation(span, a) = ast
+        {
+            if true
+            {
+                errors.push(IRError::UnsupportedAnnotation(
+                    Location::new(span, filename),
+                    a
+                ));
             }
         } else
         {
-            ir.sexprs.push(convert_node(ast, &mut ir.funcs, true, &mut seen_funcs, &mut ir.types));
+            sexprs.push(convert_node(ast, filename, &mut module.funcs, true, &mut seen_funcs, &mut module.types));
         }
+    }
+
+    // Check module name
+    if module_name == ""
+    {
+        module_name = filename.split('/').last().unwrap().split('.').next().unwrap().to_string();
+    }
+    module.name = module_name.clone();
+    module.sexprs = sexprs;
+
+    // Add module to ir root
+    ir.modules.insert(module_name, module);
+
+    if errors.len() == 0
+    {
+        Ok(())
+    } else
+    {
+        Err(errors)
     }
 }
 

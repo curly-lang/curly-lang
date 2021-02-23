@@ -1,0 +1,17 @@
+fact_tail acc: Int, n: Int =
+    if n == 0 then
+        1
+    else
+        fact_tail (acc * n) (n - 1)
+
+fact = fact_tail 1
+
+fact_plus_1 n: Int = fact n + one
+
+one = 1
+
+_ = 3
+_ = true
+with _ = 3,
+     _ = false,
+     5

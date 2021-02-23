@@ -1,0 +1,42 @@
+module Modules::Funcs
+    ( sum       : Float -> Float -> Float
+    , product   : Float -> Float -> Float
+    , id        : Num -> Num
+    , id'       : Num -> Num
+    , fact      : Int -> Int
+    , fact_10   : Int
+    , x         : Int
+    # , type OptionInt
+    )
+
+sum x: Float, y: Float = x + y
+product x: Float, y: Float = x * y
+
+type Num = Int | Float
+type OptionInt = Some: Int | enum None
+
+id a: Num =
+    match a
+    to Int => a
+    to Float => a
+
+id' a: Num =
+    if true then
+        a
+    else
+        0
+
+id'' a: Bool = a
+
+fact_tail acc: Int, n: Int =
+    if n == 0 then
+        acc
+    else
+        fact_tail (acc * n) (n - 1)
+
+fact = fact_tail 1
+
+fact_10 = fact 10
+
+x = 2
+

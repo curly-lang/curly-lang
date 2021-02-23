@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 
-use crate::frontend::ir::{BinOp, IR, PrefixOp, SExpr};
+use crate::frontend::ir::{BinOp, IR, IRModule, PrefixOp, SExpr};
 use crate::frontend::types::Type;
 
 // Represents a function in C.
+#[derive(Debug)]
 struct CFunction<'a>
 {
     name: String,
@@ -18,7 +19,7 @@ struct CFunction<'a>
 #[derive(Clone, Debug)]
 enum CType
 {
-    Primative(String, Type),
+    Primitive(String, Type),
     Sum(String, Type, HashMap<Type, usize>)
 }
 
@@ -30,19 +31,19 @@ impl CType
     {
         match self
         {
-            CType::Primative(s, _)
+            CType::Primitive(s, _)
                 | CType::Sum(s, _, _)
                 => s
         }
     }
 
     // get_curly_type(&self) -> &Type
-    // Returns the Curly IR type.
+    // Returns the Curly IRModule type.
     fn get_curly_type(&self) -> &Type
     {
         match self
         {
-            CType::Primative(_, t)
+            CType::Primitive(_, t)
                 | CType::Sum(_, t, _)
                 => t
         }
@@ -61,7 +62,7 @@ impl CType
 }
 
 // get_c_type(&Type, &HashMap<Type, String>) -> &str
-// Converts an IR type into a C type.
+// Converts an IRModule type into a C type.
 fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
 {
     match _type
@@ -85,9 +86,9 @@ fn sanitise_symbol(value: &str) -> String
     s
 }
 
-// convert_sexpr(&SExpr, &IR, &mut CFunction, &HashMap<Type, String>) -> String
+// convert_sexpr(&SExpr, &IRModule, &mut CFunction, &HashMap<Type, String>) -> String
 // Converts a s expression into C code.
-fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap<Type, CType>) -> String
+fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &HashMap<Type, CType>) -> String
 {
     match sexpr
     {
@@ -156,124 +157,132 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
         }
 
         // Functions
-        SExpr::Function(_, s) => {
+        SExpr::Function(m, f) => {
             // Get name
             let name = format!("$${}", func.last_reference);
             func.last_reference += 1;
 
             // Generate code
-            if let Some(f) = root.funcs.get(s)
+            let s = sanitise_symbol(f);
+            let mod_name = sanitise_symbol(&m.origin);
+            if let Some(f) = root.funcs.get(f)
             {
-                let s = sanitise_symbol(s);
-                func.code.push_str("func_t ");
-                func.code.push_str(&name);
-                func.code.push_str(" = { 0, (void*) ");
-                func.code.push_str(&s);
-                func.code.push_str("$FUNC$$, (void*) ");
-                func.code.push_str(&s);
-                func.code.push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
-                func.code.push_str(", 0, ");
-                if f.captured.len() > 0
+                if f.args.len() != 0
                 {
-                    let count = f.args.len() + f.captured.len();
-                    func.code.push_str("calloc(");
-                    func.code.push_str(&format!("{}", count));
-                    func.code.push_str(", sizeof(void*)), calloc(");
-                    func.code.push_str(&format!("{}", count));
-                    func.code.push_str(", sizeof(void*)) };\n");
-                } else
-                {
-                    func.code.push_str("(void*) 0, (void*) 0 };\n");
-                }
-
-                // Save captured variables
-                for c in f.captured_names.iter()
-                {
-                    // Get type
-                    let mut v = sanitise_symbol(c);
-                    let mut _type = f.captured.get(c).unwrap();
-                    while let Type::Symbol(s) = _type
+                    func.code.push_str("func_t ");
+                    func.code.push_str(&name);
+                    func.code.push_str(" = { 0, (void*) ");
+                    func.code.push_str(&mod_name);
+                    func.code.push_str(&s);
+                    func.code.push_str("$FUNC$$, (void*) ");
+                    func.code.push_str(&mod_name);
+                    func.code.push_str(&s);
+                    func.code.push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
+                    func.code.push_str(", 0, ");
+                    if f.captured.len() > 0
                     {
-                        _type = root.types.get(s).unwrap();
+                        let count = f.args.len() + f.captured.len();
+                        func.code.push_str("calloc(");
+                        func.code.push_str(&format!("{}", count));
+                        func.code.push_str(", sizeof(void*)), calloc(");
+                        func.code.push_str(&format!("{}", count));
+                        func.code.push_str(", sizeof(void*)) };\n");
+                    } else
+                    {
+                        func.code.push_str("(void*) 0, (void*) 0 };\n");
                     }
 
-                    // Fix functions, floats, and sum types
-                    match _type
+                    // Save captured variables
+                    for c in f.captured_names.iter()
                     {
-                        Type::Float => {
-                            let name = format!("$${}", func.last_reference);
-                            func.last_reference += 1;
-                            func.code.push_str("double_wrapper_t ");
-                            func.code.push_str(&name);
-                            func.code.push_str(";\n");
-                            func.code.push_str(&name);
-                            func.code.push_str(".d = ");
-                            func.code.push_str(&v);
-                            func.code.push_str(";\nvoid* ");
-                            v = format!("$${}", func.last_reference);
-                            func.last_reference += 1;
-                            func.code.push_str(&v);
-                            func.code.push_str(" = ");
-                            func.code.push_str(&name);
-                            func.code.push_str(".v;\n");
+                        // Get type
+                        let mut v = sanitise_symbol(c);
+                        let mut _type = f.captured.get(c).unwrap();
+                        while let Type::Symbol(s) = _type
+                        {
+                            _type = root.types.get(s).unwrap();
                         }
 
-                        Type::Func(_, _) => {
-                            v = {
+                        // Fix functions, floats, and sum types
+                        match _type
+                        {
+                            Type::Float => {
                                 let name = format!("$${}", func.last_reference);
                                 func.last_reference += 1;
-                                func.code.push_str("func_t* ");
+                                func.code.push_str("double_wrapper_t ");
                                 func.code.push_str(&name);
-                                func.code.push_str(" = copy_func_arg(&");
+                                func.code.push_str(";\n");
+                                func.code.push_str(&name);
+                                func.code.push_str(".d = ");
                                 func.code.push_str(&v);
-                                func.code.push_str(");\n");
-                                name
-                            };
-                            func.code.push_str(&name);
-                            func.code.push_str(".args[");
-                            func.code.push_str(&name);
-                            func.code.push_str(".argc] = (void*) force_free_func;\n");
+                                func.code.push_str(";\nvoid* ");
+                                v = format!("$${}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str(&v);
+                                func.code.push_str(" = ");
+                                func.code.push_str(&name);
+                                func.code.push_str(".v;\n");
+                            }
+
+                            Type::Func(_, _) => {
+                                v = {
+                                    let name = format!("$${}", func.last_reference);
+                                    func.last_reference += 1;
+                                    func.code.push_str("func_t* ");
+                                    func.code.push_str(&name);
+                                    func.code.push_str(" = copy_func_arg(&");
+                                    func.code.push_str(&v);
+                                    func.code.push_str(");\n");
+                                    name
+                                };
+                                func.code.push_str(&name);
+                                func.code.push_str(".args[");
+                                func.code.push_str(&name);
+                                func.code.push_str(".argc] = (void*) force_free_func;\n");
+                            }
+
+                            Type::Sum(_) => {
+                                let name = format!("$${}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str(get_c_type(&_type, types));
+                                func.code.push_str("* ");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = malloc(sizeof(");
+                                func.code.push_str(get_c_type(&_type, types));
+                                func.code.push_str("));\n*");
+                                func.code.push_str(&name);
+                                func.code.push_str(" = ");
+                                func.code.push_str(&v);
+                                func.code.push_str(";\n");
+                                v = name;
+                            }
+
+                            _ => ()
                         }
 
-                        Type::Sum(_) => {
-                            let name = format!("$${}", func.last_reference);
-                            func.last_reference += 1;
-                            func.code.push_str(get_c_type(&_type, types));
-                            func.code.push_str("* ");
-                            func.code.push_str(&name);
-                            func.code.push_str(" = malloc(sizeof(");
-                            func.code.push_str(get_c_type(&_type, types));
-                            func.code.push_str("));\n*");
-                            func.code.push_str(&name);
-                            func.code.push_str(" = ");
-                            func.code.push_str(&v);
-                            func.code.push_str(";\n");
-                            v = name;
-                        }
-
-                        _ => ()
+                        func.code.push_str(&name);
+                        func.code.push_str(".args[");
+                        func.code.push_str(&name);
+                        func.code.push_str(".argc++] = (void*) ");
+                        func.code.push_str(&v);
+                        func.code.push_str(";\n");
                     }
-
+                } else
+                {
+                    func.code.push_str(get_c_type(&f.body.get_metadata()._type, types));
+                    func.code.push(' ');
                     func.code.push_str(&name);
-                    func.code.push_str(".args[");
-                    func.code.push_str(&name);
-                    func.code.push_str(".argc++] = (void*) ");
-                    func.code.push_str(&v);
-                    func.code.push_str(";\n");
+                    func.code.push_str(" = ");
+                    func.code.push_str(&mod_name);
+                    func.code.push_str(&s);
+                    func.code.push_str("$GET$$();\n");
                 }
+
+                name
             } else
             {
-                let s = sanitise_symbol(s);
-                func.code.push_str("func_t ");
-                func.code.push_str(&name);
-                func.code.push_str(" = { 0, (void*) ");
-                func.code.push_str(&s);
-                func.code.push_str("$FUNC$$, (void*) ");
-                func.code.push_str(&s);
-                func.code.push_str("$WRAPPER$$, 1, 0, (void*) 0, (void*) 0 };\n");
+                unreachable!("function is always defined as a function, {} is not in {:?}", f, root.funcs.keys());
             }
-
-            name
         }
 
         // Prefix
@@ -1011,7 +1020,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
                                 if fstr == ""
                                 {
                                     // Get function name
-                                    fstr = format!("{}$FUNC$$", if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
+                                    fstr = format!("{}{}$FUNC$$", sanitise_symbol(&f.get_metadata().origin), if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
                                     func.code.push_str(" = ");
                                     func.code.push_str(&fstr);
                                     func.code.push('(');
@@ -1204,6 +1213,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
         // Assignments
         SExpr::Assign(m, a, v) => {
+            let val = convert_sexpr(v, root, func, types);
+            if a == "_"
+            {
+                return val;
+            }
+
             let _type =
                 if let Type::Symbol(_) = m._type
                 {
@@ -1226,7 +1241,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
             {
                 Type::Sum(_) if _type != vtype => {
                     // Get value and generate code
-                    let val = convert_sexpr(v, root, func, types);
                     let map = types.get(&m._type).unwrap().get_hashmap().unwrap();
                     func.code.push_str(get_c_type(&m._type, types));
                     func.code.push(' ');
@@ -1249,7 +1263,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
                 _ => {
                     // Get value and generate code
-                    let val = convert_sexpr(v, root, func, types);
                     func.code.push_str(get_c_type(&m._type, types));
                     func.code.push(' ');
                     func.code.push_str(a);
@@ -1575,10 +1588,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IR, func: &mut CFunction, types: &HashMap
 
 // put_fn_wrapper(&mut String, &CFunction) -> ()
 // Puts the wrapper for a given function in the built string.
-fn put_fn_wrapper(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>)
+fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
+    s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
     s.push_str("$WRAPPER$$");
     s.push_str("(func_t* f) {\nreturn ((");
@@ -1614,10 +1628,11 @@ fn put_fn_wrapper(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>
 
 // put_fn_declaration(&mut String, &CFunction, &HashMap<Type, CType>) -> ()
 // Puts a function declaration in the built string.
-fn put_fn_declaration(s: &mut String, func: &CFunction, types: &HashMap<Type, CType>)
+fn put_fn_declaration(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
     s.push_str(get_c_type(func.ret_type, types));
     s.push(' ');
+    s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
     s.push_str("$FUNC$$");
     s.push('(');
@@ -1656,9 +1671,9 @@ fn put_fn_declaration(s: &mut String, func: &CFunction, types: &HashMap<Type, CT
     s.push(')');
 }
 
-// put_debug_fn(&mut String, &str, &Type, &IR, &HashMap<Type, CType>, bool) -> ()
+// put_debug_fn(&mut String, &str, &Type, &IRModule, &HashMap<Type, CType>, bool) -> ()
 // Puts a debug function in the built string.
-fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashMap<Type, CType>, newline: bool)
+fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: &HashMap<Type, CType>, newline: bool)
 {
     let original_type = _type;
     let mut _type = _type;
@@ -1744,31 +1759,30 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IR, types: &HashM
     }
 }
 
-// collect_types(&IR, &mut HashMap<Type, String>, &mut String) -> ()
+// collect_types(&IRModule, &mut HashMap<Type, String>, &mut String) -> ()
 // Collects user defined types into a string containing all type definitions.
-fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut String)
+fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: &mut String, last_reference: &mut usize)
 {
     // Iterate over every type
-    let mut last_reference = 0;
     for _type in ir.types.iter().filter(|v| if let Type::Symbol(_) = v.1 { false } else { true })
     {
         match _type.1
         {
-            // Primatives get mapped to old type
+            // Primitives get mapped to old type
             Type::Int => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("int_t"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("int_t"), _type.1.clone()));
             }
 
             Type::Float => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("float_t"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("float_t"), _type.1.clone()));
             }
 
             Type::Bool => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("char"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("char"), _type.1.clone()));
             }
 
             Type::Func(_, _) => {
-                types.insert(Type::Symbol(_type.0.clone()), CType::Primative(String::from("func_t"), _type.1.clone()));
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("func_t"), _type.1.clone()));
             }
 
             // Sum types are tagged unions
@@ -1835,10 +1849,10 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
                 // Save type definitions
                 let map = HashMap::from_iter(iter.into_iter().cloned().enumerate().filter_map(|v| if let Type::Sum(_) = v.1 { None } else { Some((v.1, v.0)) }));
                 let ct = CType::Sum(format!("struct $${}", last_reference), _type.1.clone(), map);
-                types_string.push_str("    } values;\n};\n");
+                types_string.push_str("    } values;\n};\n\n");
                 types.insert(_type.1.clone(), ct.clone());
                 types.insert(Type::Symbol(_type.0.clone()), ct);
-                last_reference += 1;
+                *last_reference += 1;
             }
 
             _ => ()
@@ -1867,13 +1881,15 @@ fn collect_types(ir: &IR, types: &mut HashMap<Type, CType>, types_string: &mut S
     }
 }
 
-// collect_type_functions(&IR, &HashMap<Type, CType>, &mut String) -> ()
+// collect_type_functions(&IRModule, &HashMap<Type, CType>, &mut String) -> ()
 // Collect type functions (ie, in type Option 'a = Some: 'a | enum None, Option::Some is a type
 // function).
-fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &mut String)
+fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_string: &mut String)
 {
-    for t in types
+    for t in ir.types.iter()
     {
+        let t = (t.1, types.get(t.1).unwrap());
+
         // Find symbols
         if let Type::Symbol(tname) = t.0
         {
@@ -1907,7 +1923,7 @@ fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &
                             code: String::with_capacity(0),
                             last_reference: 0
                         };
-                        put_fn_declaration(types_string, &cf, types);
+                        put_fn_declaration(types_string, &ir.name, &cf, types);
                         let mut last_reference = 0;
 
                         // Build function
@@ -1922,7 +1938,7 @@ fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &
                         types_string.push_str(" = arg$;\nreturn result;\n}\n");
 
                         // Build wrapper
-                        put_fn_wrapper(types_string, &cf, types)
+                        put_fn_wrapper(types_string, &ir.name, &cf, types)
                     }
                 }
             }
@@ -1930,9 +1946,9 @@ fn collect_type_functions(ir: &IR, types: &HashMap<Type, CType>, types_string: &
     }
 }
 
-// fix_argument(&(String, &Type), &IR, &mut String, &HashMap<Type, CType>, &mut usize) -> ()
+// fix_argument(&(String, &Type), &IRModule, &mut String, &HashMap<Type, CType>, &mut usize) -> ()
 // Fixes an argument where necessary.
-fn fix_argument(a: &(&String, &Type), ir: &IR, code: &mut String, types: &HashMap<Type, CType>, last_reference: &mut usize)
+fn fix_argument(a: &(&String, &Type), ir: &IRModule, code: &mut String, types: &HashMap<Type, CType>, last_reference: &mut usize)
 {
     let mut _type = a.1;
     while let Type::Symbol(s) = _type
@@ -1992,37 +2008,24 @@ fn fix_argument(a: &(&String, &Type), ir: &IR, code: &mut String, types: &HashMa
     }
 }
 
-// convert_ir_to_c(&IR, Option<&mut Vec<String>>) -> String
-// Converts Curly IR to C code.
-pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
+// convert_module_to_c(&IRModule, Option<&mut Vec<String>>) -> String
+// Converts Curly IRModule to C code.
+fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>, types: &mut HashMap<Type, CType>) -> String
 {
-    // Create and populate types
-    let mut types = HashMap::new();
-    let mut types_string = String::with_capacity(0);
-    collect_types(ir, &mut types, &mut types_string);
-    collect_type_functions(ir, &types, &mut types_string);
-
     // Create and populate functions
-    let mut funcs = HashMap::new();
-    for f in ir.funcs.iter()
+    for f in module.funcs.iter()
     {
-        if f.1.written
+        if f.1.written || f.1.args.len() == 0
         {
             continue;
         }
 
-        let mut cf = CFunction {
-            name: sanitise_symbol(&f.0),
-            args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
-            ret_type: &f.1.body.get_metadata()._type,
-            code: String::new(),
-            last_reference: 0
-        };
+        let cf = funcs.get_mut(f.0).unwrap();
 
         // Fix doubles and functions
         for a in cf.args.iter()
         {
-            fix_argument(a, ir, &mut cf.code, &types, &mut cf.last_reference);
+            fix_argument(a, module, &mut cf.code, &types, &mut cf.last_reference);
         }
 
         if f.1.body.get_metadata().tailrec
@@ -2040,7 +2043,7 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             cf.code.push_str(" $$RET$$;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
         }
 
-        let last = convert_sexpr(&f.1.body, ir, &mut cf, &types);
+        let last = convert_sexpr(&f.1.body, module, cf, &types);
 
         if f.1.body.get_metadata().tailrec
         {
@@ -2084,15 +2087,14 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
             cf.code.push_str(&last);
         }
         cf.code.push_str(";\n");
-
-        funcs.insert(f.0, cf);
     }
 
     // Create the main function
+    /*
     let mut main_func = CFunction {
         name: String::from(""),
         args: Vec::with_capacity(0),
-        ret_type: if let Some(v) = ir.sexprs.last()
+        ret_type: if let Some(v) = module.sexprs.iter().last()
         {
             &v.get_metadata()._type
         } else
@@ -2105,15 +2107,22 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
 
     // Populate the main function
     let mut cleanup = vec![];
-    for s in ir.sexprs.iter()
+    for s in module.sexprs.iter()
     {
-        let v = convert_sexpr(s, ir, &mut main_func, &types);
+        if let SExpr::TypeAlias(_, _) = s
+        {
+            cleanup.push(String::with_capacity(0));
+            continue;
+        }
+
+        let v = convert_sexpr(s, module, &mut main_func, &types);
 
         // Debug print
+        /*
         if let Some(_) = repl_vars
         {
-            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, ir, &types, true);
-        }
+            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, module, &types, true);
+        }*/
 
         // Deallocation
         match s.get_metadata()._type
@@ -2125,21 +2134,374 @@ pub fn convert_ir_to_c(ir: &IR, repl_vars: Option<&Vec<String>>) -> String
         }
 
         cleanup.push(v);
-    }
+    }*/
 
     // Define structures and helper functions
-    let ptr_size = std::mem::size_of::<&char>();
-    let mut code_string = format!("
-typedef {} int_t;
-typedef {} float_t;
-typedef {} size_t;
-",
-    match ptr_size
+    let mut code_string = format!("#include \"{}.h\"\n\n", sanitise_symbol(&module.name));
+
+    // Define repl value struct
+    /*
+    if let Some(_) = repl_vars
     {
-        4 => "int",
-        8 => "long long",
-        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    },
+        code_string.push_str("
+typedef struct {
+    unsigned int tag;
+    union {
+        int_t i;
+        float_t d;
+        char b;
+        func_t f;
+");
+
+    let mut set = HashSet::with_capacity(0);
+    for _type in types.iter()
+    {
+        let name = _type.1.get_c_name();
+        if let Type::Sum(_) = &_type.0
+        {
+            if !set.contains(name)
+            {
+                code_string.push_str("        ");
+                code_string.push_str(name);
+                code_string.push(' ');
+                code_string.push_str(&name[7..]);
+                code_string.push_str(";\n");
+                set.insert(name);
+            }
+        }
+    }
+    code_string.push_str(
+"    } vals;
+} repl_value_t;
+
+");
+    }*/
+
+    // Declare all functions
+    for f in funcs.iter()
+    {
+        if f.1.args.len() != 0
+        {
+            put_fn_declaration(&mut code_string, &module.name, &f.1, &types);
+            code_string.push_str(";\n\n");
+            put_fn_wrapper(&mut code_string, &module.name, &f.1, &types);
+            code_string.push('\n');
+        }
+    }
+
+    // Declare getter functions
+    for s in module.sexprs.iter()
+    {
+        if let SExpr::Assign(_, n, v) = s
+        {
+            code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+            code_string.push(' ');
+            code_string.push_str(&sanitise_symbol(&module.name));
+            code_string.push_str(&sanitise_symbol(n));
+            code_string.push_str("$GET$$();\n\n");
+        }
+    }
+
+    // Put all function definitions
+    for f in funcs
+    {
+        if f.1.args.len() == 0
+        {
+            continue;
+        }
+
+        put_fn_declaration(&mut code_string, &module.name, &f.1, &types);
+        code_string.push_str(" {\n");
+        code_string.push_str(&f.1.code);
+        code_string.push_str("}\n");
+    }
+
+    // Create getters
+    for s in module.sexprs.iter()
+    {
+        if let SExpr::Assign(_, n, v) = s
+        {
+            if let SExpr::Function(_, _) = &**v
+            {
+            } else
+            {
+                // Create getter
+                let sanitised = sanitise_symbol(n);
+                let mod_name = sanitise_symbol(&module.name);
+                code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+                code_string.push(' ');
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$VALUE$$;\nchar ");
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$SAVED$$ = 0;\n");
+                code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+                code_string.push(' ');
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$GET$$() {\nif (");
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$SAVED$$)\nreturn ");
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$VALUE$$;\n");
+                let mut func = CFunction {
+                    name: String::with_capacity(0),
+                    args: Vec::with_capacity(0),
+                    ret_type: &Type::Unknown,
+                    code: code_string,
+                    last_reference: 0
+                };
+                let ret = convert_sexpr(v, module, &mut func, types);
+                code_string = func.code;
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$SAVED$$ = 1;\n");
+                code_string.push_str(&mod_name);
+                code_string.push_str(&sanitised);
+                code_string.push_str("$VALUE$$ = ");
+                code_string.push_str(&ret);
+                code_string.push_str(";\nreturn ");
+                code_string.push_str(&ret);
+                code_string.push_str(";\n}\n");
+            }
+        }
+    }
+
+    // Retrieve previous arguments
+    /*
+    if let Some(vec) = &repl_vars
+    {
+        code_string.push_str(get_c_type(main_func.ret_type, &types));
+
+        code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
+        for v in vec.iter().enumerate()
+        {
+            code_string.push_str(get_c_type(&module.scope.get_var(v.1).unwrap().0, &types));
+            code_string.push(' ');
+            code_string.push_str(&sanitise_symbol(&v.1));
+            code_string.push_str(" = vars[");
+            code_string.push_str(&format!("{}", v.0));
+            code_string.push_str("]->vals.");
+
+            let mut _type = &module.scope.get_var(v.1).unwrap().0;
+            while let Type::Symbol(v) = _type
+            {
+                _type = module.types.get(v).unwrap();
+            }
+
+            let c = match _type
+            {
+                Type::Int => "i",
+                Type::Float => "d",
+                Type::Bool => "b",
+                Type::Func(_, _) => "f",
+                Type::Sum(_) => {
+                    code_string.push_str(&format!("{}", &types.get(_type).unwrap().get_c_name()[7..]));
+                    ""
+                }
+                _ => panic!("unsupported type!")
+            };
+            code_string.push_str(c);
+
+            code_string.push_str(";\n");
+        }
+    } else
+    {
+        code_string.push_str("int main() {\n");
+    }
+
+    // Main function code
+    code_string.push_str(&main_func.code);
+
+    // Deallocate everything
+    for v in module.sexprs.iter().enumerate()
+    {
+        if let SExpr::Assign(m, _, _) = v.1
+        {
+            match m._type
+            {
+                Type::Func(_, _) => {
+                    code_string.push_str("if (");
+                    code_string.push_str(&cleanup[v.0]);
+                    code_string.push_str(".refc != 0) {\n");
+                    code_string.push_str(&cleanup[v.0]);
+                    code_string.push_str(".refc = 0;\nfree_func(&");
+                    code_string.push_str(&cleanup[v.0]);
+                    code_string.push_str(");\n}\n");
+                }
+
+                _ => ()
+            }
+        }
+    }
+
+    // End main function
+    if let Some(_) = repl_vars
+    {
+        code_string.push_str("return ");
+        match cleanup.last()
+        {
+            Some(v) => code_string.push_str(v),
+            None => code_string.push_str("0")
+        }
+        code_string.push_str(";\n}\n");
+    } else
+    {
+        code_string.push_str("return 0;\n}\n");
+    }*/
+
+    if module.name == "Main" && module.funcs.contains_key("main")
+    {
+        code_string.push_str("int main(void) {\n    Main$main$$GET$$();\n    return 0;\n}\n");
+    }
+
+    code_string
+}
+
+// generate_header_files(&IRModule, &HashMap<String, CFunction>, &HashMap<Type, CType>) -> (String, String)
+// Generates the header file for a given module.
+fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, types: &HashMap<Type, CType>) -> (String, String)
+{
+    // Include Curly stuff
+    let mut filename = sanitise_symbol(&module.name);
+    let mut header = format!("#ifndef {}_H\n#define {}_H\n#include \"curly.h\"\n#include \"types.h\"\n", filename, filename);
+
+    for import in module.imports.iter()
+    {
+        header.push_str("#include \"");
+        header.push_str(&sanitise_symbol(&import.1.name));
+        header.push_str(".h\"\n");
+    }
+    header.push('\n');
+
+    for export in module.exports.iter()
+    {
+        // Put function declaration
+        let mut add_getter = false;
+        if let Some(f) = funcs.get(export.0)
+        {
+            if f.args.len() != 0
+            {
+                put_fn_declaration(&mut header, &module.name, f, types);
+                header.push_str(";\n\n");
+                header.push_str(get_c_type(f.ret_type, types));
+                header.push(' ');
+                header.push_str(&sanitise_symbol(&module.name));
+                header.push_str(&f.name);
+                header.push_str("$WRAPPER$$");
+                header.push_str("(func_t* f);\n\n");
+            } else
+            {
+                add_getter = true;
+            }
+        } else
+        {
+            add_getter = true;
+        }
+
+        // Put getter
+        if add_getter
+        {
+            header.push_str(get_c_type(&export.1.1, types));
+            header.push(' ');
+            header.push_str(&sanitise_symbol(&module.name));
+            header.push_str(&sanitise_symbol(export.0));
+            header.push_str("$GET$$();\n\n");
+        }
+    }
+
+    header.push_str("#endif\n");
+    filename.push_str(".h");
+
+    (filename, header)
+}
+
+// convert_ir_to_c(&IR) -> Vec<(String, String)>
+// Converts an IR representation of Curly into a list of C files.
+pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
+{
+    let mut files = vec![];
+
+    // Create and populate types
+    let mut last_reference = 0;
+    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n#include \"curly.h\"\n\n");
+    let mut types = HashMap::new();
+
+    for module in ir.modules.iter()
+    {
+        collect_types(module.1, &mut types, &mut types_string, &mut last_reference);
+        collect_type_functions(module.1, &types, &mut types_string);
+    }
+
+    for module in ir.modules.iter()
+    {
+        let mut cfs = HashMap::with_capacity(0);
+        for f in module.1.funcs.iter()
+        {
+            if f.1.written
+            {
+                continue;
+            }
+
+            let cf = CFunction {
+                name: sanitise_symbol(&f.0),
+                args: f.1.captured_names.iter().map(|v| (v, f.1.captured.get(v).unwrap())).chain(f.1.args.iter().map(|v| (&v.0, &v.1))).collect(),
+                ret_type: &f.1.body.get_metadata()._type,
+                code: String::new(),
+                last_reference: 0
+            };
+            cfs.insert(f.0.clone(), cf);
+        }
+
+        let f = convert_module_to_c(module.1, &mut cfs, &mut types);
+        files.push((format!("{}.c", sanitise_symbol(&module.1.name)), f));
+        files.push(generate_header_files(module.1, &cfs, &types));
+    }
+
+    types_string.push_str("#endif\n");
+    files.push((String::from("types.h"), types_string));
+    let ptr_size = std::mem::size_of::<&char>();
+    files.push((String::from("curly.h"), format!("
+#ifndef CURLY_H
+#define CURLY_H
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef {} float_t;
+typedef int{}_t int_t;
+typedef uint{}_t word_t;
+
+typedef struct {{
+    unsigned int refc;
+    void* func;
+    void* wrapper;
+    unsigned int arity;
+    unsigned int argc;
+    char (**cleaners)(void*);
+    void** args;
+}} func_t;
+
+typedef union {{
+    float_t d;
+    void* v;
+}} double_wrapper_t;
+
+char force_free_func(void* _func);
+
+char free_func(func_t* func);
+
+char refc_func(func_t* func);
+
+void copy_func(func_t* dest, func_t* source);
+
+func_t* copy_func_arg(func_t* source);
+
+#endif
+",
     match ptr_size
     {
         4 => "float",
@@ -2148,33 +2510,18 @@ typedef {} size_t;
     },
     match ptr_size
     {
-        4 => "unsigned int",
-        8 => "unsigned long",
+        4 => 32,
+        8 => 64,
         _ => panic!("unsupported architecture with pointer size {}", ptr_size)
-    });
-    code_string.push_str("
-typedef struct {
-    unsigned int refc;
-    void* func;
-    void* wrapper;
-    unsigned int arity;
-    unsigned int argc;
-    char (**cleaners)(void*);
-    void** args;
-} func_t;
-
-typedef union {
-    float_t d;
-    void* v;
-} double_wrapper_t;
-
-int printf(const char*, ...);
-
-void* calloc(size_t, size_t);
-
-void* malloc(size_t);
-
-void free(void*);
+    },
+    match ptr_size
+    {
+        4 => 32,
+        8 => 64,
+        _ => panic!("unsupported architecture with pointer size {}", ptr_size)
+    })));
+    files.push((String::from("curly.c"), String::from("
+#include \"curly.h\"
 
 char force_free_func(void* _func) {
     // func_t* func = (func_t*) _func;
@@ -2230,144 +2577,6 @@ func_t* copy_func_arg(func_t* source) {
     copy_func(dest, source);
     return dest;
 }
-");
-    code_string.push_str(&types_string);
-
-    // Define repl value struct
-    if let Some(_) = repl_vars
-    {
-        code_string.push_str("
-typedef struct {
-    unsigned int tag;
-    union {
-        int_t i;
-        float_t d;
-        char b;
-        func_t f;
-");
-
-    let mut set = HashSet::with_capacity(0);
-    for _type in types.iter()
-    {
-        let name = _type.1.get_c_name();
-        if let Type::Sum(_) = &_type.0
-        {
-            if !set.contains(name)
-            {
-                code_string.push_str("        ");
-                code_string.push_str(name);
-                code_string.push(' ');
-                code_string.push_str(&name[7..]);
-                code_string.push_str(";\n");
-                set.insert(name);
-            }
-        }
-    }
-    code_string.push_str(
-"    } vals;
-} repl_value_t;
-
-");
-    }
-
-    // Declare all functions
-    for f in funcs.iter()
-    {
-        put_fn_declaration(&mut code_string, &f.1, &types);
-        code_string.push_str(";\n");
-        put_fn_wrapper(&mut code_string, &f.1, &types);
-    }
-
-    // Put all function definitions
-    for f in funcs
-    {
-        put_fn_declaration(&mut code_string, &f.1, &types);
-        code_string.push_str(" {\n");
-        code_string.push_str(&f.1.code);
-        code_string.push_str("}\n");
-    }
-
-    // Retrieve previous arguments
-    if let Some(vec) = &repl_vars
-    {
-        code_string.push_str(get_c_type(main_func.ret_type, &types));
-
-        code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
-        for v in vec.iter().enumerate()
-        {
-            code_string.push_str(get_c_type(&ir.scope.get_var(v.1).unwrap().0, &types));
-            code_string.push(' ');
-            code_string.push_str(&sanitise_symbol(&v.1));
-            code_string.push_str(" = vars[");
-            code_string.push_str(&format!("{}", v.0));
-            code_string.push_str("]->vals.");
-
-            let mut _type = &ir.scope.get_var(v.1).unwrap().0;
-            while let Type::Symbol(v) = _type
-            {
-                _type = ir.types.get(v).unwrap();
-            }
-
-            let c = match _type
-            {
-                Type::Int => "i",
-                Type::Float => "d",
-                Type::Bool => "b",
-                Type::Func(_, _) => "f",
-                Type::Sum(_) => {
-                    code_string.push_str(&format!("{}", &types.get(_type).unwrap().get_c_name()[7..]));
-                    ""
-                }
-                _ => panic!("unsupported type!")
-            };
-            code_string.push_str(c);
-
-            code_string.push_str(";\n");
-        }
-    } else
-    {
-        code_string.push_str("int main() {\n");
-    }
-
-    // Main function code
-    code_string.push_str(&main_func.code);
-
-    // Deallocate everything
-    for v in ir.sexprs.iter().enumerate()
-    {
-        if let SExpr::Assign(m, _, _) = v.1
-        {
-            match m._type
-            {
-                Type::Func(_, _) => {
-                    code_string.push_str("if (");
-                    code_string.push_str(&cleanup[v.0]);
-                    code_string.push_str(".refc != 0) {\n");
-                    code_string.push_str(&cleanup[v.0]);
-                    code_string.push_str(".refc = 0;\nfree_func(&");
-                    code_string.push_str(&cleanup[v.0]);
-                    code_string.push_str(");\n}\n");
-                }
-
-                _ => ()
-            }
-        }
-    }
-
-    // End main function
-    if let Some(_) = repl_vars
-    {
-        code_string.push_str("return ");
-        match cleanup.last()
-        {
-            Some(v) => code_string.push_str(v),
-            None => code_string.push_str("0")
-        }
-        code_string.push_str(";\n}\n");
-    } else
-    {
-        code_string.push_str("return 0;\n}\n");
-    }
-
-    code_string
+")));
+    files
 }
