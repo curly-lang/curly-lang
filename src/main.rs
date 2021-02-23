@@ -758,12 +758,6 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                                 Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("Expected function, got `{}`", t))
                             ]);
-
-                        if t == Type::String
-                        {
-                            diagnostic = diagnostic
-                                .with_notes(vec![String::from("String concatenation is not yet implemented")]);
-                        }
                     }
 
                     CorrectnessError::InvalidCast(s1, t1, s2, t2) => {
@@ -835,6 +829,11 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                                 Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message(format!("{} not exported by {}", v, i))
                             ]);
+                    }
+
+                    CorrectnessError::NoMainFunction => {
+                        diagnostic = diagnostic
+                            .with_message("No main function found");
                     }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();

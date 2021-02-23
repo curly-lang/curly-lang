@@ -28,7 +28,8 @@ pub enum CorrectnessError
     NonmemberAccess(Location, String, String),
     MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type),
     VariableImportedTwice(Location, Location),
-    ImportedValueNotExported(Location, String, String)
+    ImportedValueNotExported(Location, String, String),
+    NoMainFunction
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1924,6 +1925,20 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
         }
         swap(&mut module.sexprs, &mut sexprs);
         ir.modules.insert(name, module);
+    }
+
+    let mut has_main = false;
+    for module in ir.modules.iter()
+    {
+        if module.1.name == "Main" && module.1.scope.variables.contains_key("main")
+        {
+            has_main = true;
+        }
+    }
+
+    if !has_main
+    {
+        errors.push(CorrectnessError::NoMainFunction);
     }
 
     // Return error if they exist, otherwise return success
