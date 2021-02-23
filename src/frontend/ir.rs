@@ -933,43 +933,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<
             }
         } else if let AST::Annotation(span, a) = ast
         {
-            // @debug alias
-            if a == "@debug"
-            {
-                // Get the last value and build a call to debug
-                let last = sexprs.pop().unwrap();
-                let called = if let SExpr::Assign(_, v, _) = &last
-                {
-                    // Build with last assignment
-                    let v = v.clone();
-                    sexprs.push(last);
-                    SExpr::Application(
-                        SExprMetadata::empty(),
-                        Box::new(SExpr::Symbol(
-                            SExprMetadata::empty(),
-                            String::from("debug"))),
-                            Box::new(SExpr::Symbol(
-                                SExprMetadata::empty(),
-                                v
-                            )
-                        )
-                    )
-                } else
-                {
-                    // Build with last expression
-                    SExpr::Application(
-                        SExprMetadata::empty(),
-                        Box::new(SExpr::Symbol(
-                            SExprMetadata::empty(), 
-                            String::from("debug"))
-                        ),
-                        Box::new(last)
-                    )
-                };
-                sexprs.push(called);
-
-            // All other aliases are not supported yet
-            } else
+            if true
             {
                 errors.push(IRError::UnsupportedAnnotation(
                     Location::new(span, filename),
