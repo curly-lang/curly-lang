@@ -1,0 +1,18 @@
+module Main
+
+main = with a = debug (enum A),
+            b = take_enum a,
+            c = iffy_enum,
+            d = matchy_enum,
+            0
+
+take_enum a: enum A = a
+iffy_enum =
+    if true then
+        enum A
+    else
+        enum B
+matchy_enum =
+    match 2 : Int | Float
+    to Int => enum A
+    to Float => enum B
