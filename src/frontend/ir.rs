@@ -132,6 +132,9 @@ pub enum SExpr
     // Symbols
     Symbol(SExprMetadata, String),
 
+    // Enums
+    Enum(SExprMetadata, String),
+
     // Strings
     String(SExprMetadata, String),
 
@@ -187,6 +190,7 @@ impl SExpr
                 | Self::True(m)
                 | Self::False(m)
                 | Self::Symbol(m, _)
+                | Self::Enum(m, _)
                 | Self::String(m, _)
                 | Self::List(m, _)
                 | Self::Function(m, _)
@@ -217,6 +221,7 @@ impl SExpr
                 | Self::True(m)
                 | Self::False(m)
                 | Self::Symbol(m, _)
+                | Self::Enum(m, _)
                 | Self::String(m, _)
                 | Self::List(m, _)
                 | Self::Function(m, _)
@@ -370,6 +375,17 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             saved_argc: None,
             tailrec: false
         }, s),
+
+        // Enum
+        AST::Enum(span, e) => SExpr::Enum(SExprMetadata {
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
+            _type: Type::Enum(e.clone()),
+            arity: 0,
+            saved_argc: None,
+            tailrec: false
+        }, e),
 
         AST::Annotation(_, _)
             | AST::Import(_, _, _)

@@ -134,7 +134,7 @@ impl Type
 
         match supertype
         {
-            // Primatives
+            // Primitives
             Type::Int => *_type == Type::Int,
             Type::Float => *_type == Type::Float,
             Type::Bool => *_type == Type::Bool,
@@ -227,7 +227,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
         AST::Symbol(s, v) => {
             match v.as_str()
             {
-                // Primatives
+                // Primitives
                 "Int" => Type::Int,
                 "Float" => Type::Float,
                 "Bool" => Type::Bool,

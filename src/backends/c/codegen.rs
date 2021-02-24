@@ -151,6 +151,8 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             name
         }
 
+        SExpr::Enum(_, _) => String::with_capacity(0),
+
         // Symbols
         SExpr::Symbol(_, s) => {
             sanitise_symbol(s)
@@ -1218,6 +1220,10 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             {
                 return val;
             }
+            if let Type::Enum(_) = m._type
+            {
+                return String::with_capacity(0);
+            }
 
             let _type =
                 if let Type::Symbol(_) = m._type
@@ -1737,7 +1743,7 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: 
         }
 
         Type::Enum(v) => {
-            code.push_str("printf(\"");
+            code.push_str("printf(\"enum ");
             code.push_str(v);
             code.push_str("\");\n");
         }
@@ -2192,9 +2198,9 @@ typedef struct {
     // Declare getter functions
     for s in module.sexprs.iter()
     {
-        if let SExpr::Assign(_, n, v) = s
+        if let SExpr::Assign(m, n, v) = s
         {
-            code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+            code_string.push_str(if let Type::Enum(_) = m._type { "void" } else { get_c_type(&v.get_metadata()._type, types) });
             code_string.push(' ');
             code_string.push_str(&sanitise_symbol(&module.name));
             code_string.push_str(&sanitise_symbol(n));
@@ -2219,34 +2225,46 @@ typedef struct {
     // Create getters
     for s in module.sexprs.iter()
     {
-        if let SExpr::Assign(_, n, v) = s
+        if let SExpr::Assign(m, n, v) = s
         {
             if let SExpr::Function(_, _) = &**v
             {
             } else
             {
                 // Create getter
+                let is_enum = if let Type::Enum(_) = m._type { true } else { false };
                 let sanitised = sanitise_symbol(n);
                 let mod_name = sanitise_symbol(&module.name);
-                code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+
+                if !is_enum
+                {
+                    code_string.push_str(get_c_type(&v.get_metadata()._type, types));
+                    code_string.push(' ');
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$VALUE$$;\nchar ");
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$SAVED$$ = 0;\n");
+                }
+
+                code_string.push_str(if is_enum { "void" } else { get_c_type(&v.get_metadata()._type, types) });
                 code_string.push(' ');
                 code_string.push_str(&mod_name);
                 code_string.push_str(&sanitised);
-                code_string.push_str("$VALUE$$;\nchar ");
-                code_string.push_str(&mod_name);
-                code_string.push_str(&sanitised);
-                code_string.push_str("$SAVED$$ = 0;\n");
-                code_string.push_str(get_c_type(&v.get_metadata()._type, types));
-                code_string.push(' ');
-                code_string.push_str(&mod_name);
-                code_string.push_str(&sanitised);
-                code_string.push_str("$GET$$() {\nif (");
-                code_string.push_str(&mod_name);
-                code_string.push_str(&sanitised);
-                code_string.push_str("$SAVED$$)\nreturn ");
-                code_string.push_str(&mod_name);
-                code_string.push_str(&sanitised);
-                code_string.push_str("$VALUE$$;\n");
+                code_string.push_str("$GET$$() {\n");
+
+                if !is_enum
+                {
+                    code_string.push_str("if (");
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$SAVED$$)\nreturn ");
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$VALUE$$;\n");
+                }
+
                 let mut func = CFunction {
                     name: String::with_capacity(0),
                     args: Vec::with_capacity(0),
@@ -2256,16 +2274,22 @@ typedef struct {
                 };
                 let ret = convert_sexpr(v, module, &mut func, types);
                 code_string = func.code;
-                code_string.push_str(&mod_name);
-                code_string.push_str(&sanitised);
-                code_string.push_str("$SAVED$$ = 1;\n");
-                code_string.push_str(&mod_name);
-                code_string.push_str(&sanitised);
-                code_string.push_str("$VALUE$$ = ");
-                code_string.push_str(&ret);
-                code_string.push_str(";\nreturn ");
-                code_string.push_str(&ret);
-                code_string.push_str(";\n}\n");
+
+                if !is_enum
+                {
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$SAVED$$ = 1;\n");
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$VALUE$$ = ");
+                    code_string.push_str(&ret);
+                    code_string.push_str(";\nreturn ");
+                    code_string.push_str(&ret);
+                    code_string.push_str(";\n");
+                }
+
+                code_string.push_str("}\n");
             }
         }
     }

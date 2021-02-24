@@ -333,6 +333,9 @@ pub enum AST
     // Symbol (variables and stuff)
     Symbol(Span, String),
 
+    // Enum (ie, atoms)
+    Enum(Span, String),
+
     // Annotations (@debug, @pure, @impure, @memoize, etc)
     Annotation(Span, String),
 
@@ -396,6 +399,7 @@ impl AST
                 | Self::String(s, _)
                 | Self::List(s, _)
                 | Self::Symbol(s, _)
+                | Self::Enum(s, _)
                 | Self::Annotation(s, _)
                 | Self::Application(s, _, _)
                 | Self::Prefix(s, _, _)
@@ -653,6 +657,15 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         let s = parser.slice();
         parser.next();
         Ok(AST::String(span, String::from(s)))
+
+    // Check for enum
+    } else if let Token::Enum = token
+    {
+        let s = parser.span();
+        let state = parser.save_state();
+        parser.next();
+        let (t, s2) = consume_save!(parser, Symbol, state, true, false, "");
+        Ok(AST::Enum(Span { start: s.start, end: s2.end }, t))
 
     // True
     } else if let Token::True = token

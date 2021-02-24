@@ -65,6 +65,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
         SExpr::String(_, _) => (),
         SExpr::True(_) => (),
         SExpr::False(_) => (),
+        SExpr::Enum(_, _) => (),
 
         // Lists
         SExpr::List(_, _) => panic!("uwu"),
@@ -915,6 +916,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             | SExpr::String(m, _)
             | SExpr::True(m)
             | SExpr::False(m)
+            | SExpr::Enum(m, _)
             => m._type.clone(),
 
         // Lists
