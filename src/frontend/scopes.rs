@@ -235,9 +235,15 @@ impl Scope
             }
 
             // Return success if found
-            if let Some(_) = scope.variables.get(name)
+            if let Some(v) = scope.variables.get(name)
             {
-                return new_func;
+                return if let Type::Enum(_) = v.0
+                {
+                    false
+                } else
+                {
+                    new_func
+                };
             }
 
             // Get next scope

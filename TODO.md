@@ -2,6 +2,7 @@
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
 - Make local assignments lazy
+- Replace `with x = 2, y = 3, x + y` with `let x = 2, y = 3 in x + y`
 - Deal with types properly
 - Bindings with C
 - Tagged system for side effects

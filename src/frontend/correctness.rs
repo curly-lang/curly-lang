@@ -389,7 +389,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
                         if let Some(v) = func.get_metadata().saved_argc
                         {
-                            m.saved_argc = Some(v + 1);
+                            if let Type::Enum(_) = **l
+                            {
+                                m.saved_argc = Some(v);
+                            } else
+                            {
+                                m.saved_argc = Some(v + 1);
+                            }
                         }
                     } else
                     {
@@ -1769,7 +1775,13 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
                 m.arity = l.get_metadata().arity - 1;
                 if let Some(v) = l.get_metadata().saved_argc
                 {
-                    m.saved_argc = Some(v + 1);
+                    if let Type::Enum(_) = r.get_metadata()._type
+                    {
+                        m.saved_argc = Some(v);
+                    } else
+                    {
+                        m.saved_argc = Some(v + 1);
+                    }
                 } else
                 {
                     m.saved_argc = None;

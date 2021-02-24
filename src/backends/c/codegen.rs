@@ -154,8 +154,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
         SExpr::Enum(_, _) => String::with_capacity(0),
 
         // Symbols
-        SExpr::Symbol(_, s) => {
-            sanitise_symbol(s)
+        SExpr::Symbol(m, s) => {
+            if let Type::Enum(_) = m._type
+            {
+                String::with_capacity(0)
+            } else
+            {
+                sanitise_symbol(s)
+            }
         }
 
         // Functions
@@ -505,6 +511,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                 func.code.push_str(&name);
                 func.code.push_str(" = ");
                 func.code.push_str(&body);
+                func.code.push_str(";\n");
             } else if let Type::Sum(_) = btype
             {
                 let map = types.get(mtype).unwrap().get_hashmap().unwrap();
@@ -537,6 +544,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                     func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
+            } else if let Type::Enum(_) = btype
+            {
+                let id = types.get(mtype).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
+                func.code.push_str(&name);
+                func.code.push_str(".tag = ");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(";\n");
             } else
             {
                 let id = types.get(mtype).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
@@ -549,8 +563,9 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                 func.code.push_str(&format!("{}", id));
                 func.code.push_str(" = ");
                 func.code.push_str(&body);
+                func.code.push_str(";\n");
             }
-            func.code.push_str(";\n} else {\n");
+            func.code.push_str("} else {\n");
 
             // Get else clause
             let elsy = convert_sexpr(e, root, func, types);
@@ -561,6 +576,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                 func.code.push_str(&name);
                 func.code.push_str(" = ");
                 func.code.push_str(&elsy);
+                func.code.push_str(";\n");
             } else if let Type::Sum(_) = etype
             {
                 let map = types.get(mtype).unwrap().get_hashmap().unwrap();
@@ -593,6 +609,13 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                     func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
+            } else if let Type::Enum(_) = btype
+            {
+                let id = types.get(mtype).unwrap().get_hashmap().unwrap().get(&b.get_metadata()._type).unwrap();
+                func.code.push_str(&name);
+                func.code.push_str(".tag = ");
+                func.code.push_str(&format!("{}", id));
+                func.code.push_str(";\n");
             } else
             {
                 let id = types.get(&m._type).unwrap().get_hashmap().unwrap().get(&e.get_metadata()._type).unwrap();
@@ -605,8 +628,9 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                 func.code.push_str(&format!("{}", id));
                 func.code.push_str(" = ");
                 func.code.push_str(&elsy);
+                func.code.push_str(";\n");
             }
-            func.code.push_str(";\n}\n");
+            func.code.push_str("}\n");
 
             name
         }
@@ -930,34 +954,48 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                             }
 
                             // Save argument
-                            func.code.push_str(&fstr);
-                            func.code.push_str(".args[");
-                            func.code.push_str(&fstr);
-                            func.code.push_str(".argc++] = (void*) ");
-                            func.code.push_str(&v);
-                            func.code.push_str(";\n");
-
-                            // Call the function
                             let _type = &funcs[n].get_metadata()._type;
-                            name = format!("$${}", func.last_reference);
-                            func.last_reference += 1;
-                            func.code.push_str(get_c_type(_type, types));
-                            func.code.push(' ');
-                            func.code.push_str(&name);
-                            if let Type::Func(_, _) = _type
+                            let is_enum = if let Type::Enum(_) = _type { true } else { false };
+                            if is_enum
                             {
-                                func.code.push_str(" = ");
                                 func.code.push_str(&fstr);
+                                func.code.push_str(".argc++;\n");
+                            } else
+                            {
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".args[");
+                                func.code.push_str(&fstr);
+                                func.code.push_str(".argc++] = (void*) ");
+                                func.code.push_str(&v);
+                                func.code.push_str(";\n");
+
+                                // Call the function
+                                name = format!("$${}", func.last_reference);
+                                func.last_reference += 1;
+                                func.code.push_str(get_c_type(_type, types));
+                                func.code.push(' ');
+                                func.code.push_str(&name);
+                                if let Type::Func(_, _) = _type
+                                {
+                                    func.code.push_str(" = ");
+                                    func.code.push_str(&fstr);
+                                }
+
+                                func.code.push_str(";\n");
                             }
 
-                            func.code.push_str(";\nif (");
+                            func.code.push_str("if (");
                             func.code.push_str(&fstr);
                             func.code.push_str(".arity == ");
                             func.code.push_str(&fstr);
                             func.code.push_str(".argc) {\n");
-                            func.code.push_str(&name);
-                            func.code.push_str(" = ((");
-                            func.code.push_str(get_c_type(_type, types));
+                            if !is_enum
+                            {
+                                func.code.push_str(&name);
+                                func.code.push_str(" = ");
+                            }
+                            func.code.push_str("((");
+                            func.code.push_str(if is_enum { "void" } else { get_c_type(_type, types) });
                             func.code.push_str(" (*)(func_t*))");
                             func.code.push_str(&fstr);
                             func.code.push_str(".wrapper)(&");
@@ -1001,6 +1039,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                             {
                                 for a in func.args.iter().enumerate()
                                 {
+                                    if let Type::Enum(_) = a.1.1
+                                    {
+                                        continue;
+                                    }
+
                                     func.code.push_str(&sanitise_symbol(a.1.0));
                                     func.code.push_str("$PARAM$$ = ");
                                     func.code.push_str(&astrs[a.0].0);
@@ -1015,24 +1058,38 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                             } else
                             {
                                 let saved_argc = f.get_metadata().saved_argc.unwrap();
-                                func.code.push_str(get_c_type(ftype, types));
-                                func.code.push(' ');
-                                func.code.push_str(&name);
+                                let is_enum = if let Type::Enum(_) = ftype { true } else { false };
+
+                                if !is_enum
+                                {
+                                    func.code.push_str(get_c_type(ftype, types));
+                                    func.code.push(' ');
+                                    func.code.push_str(&name);
+                                    func.code.push_str(" = ");
+                                }
 
                                 if fstr == ""
                                 {
                                     // Get function name
                                     fstr = format!("{}{}$FUNC$$", sanitise_symbol(&f.get_metadata().origin), if let SExpr::Function(_, f) = f { sanitise_symbol(f) } else { unreachable!("always a function"); });
-                                    func.code.push_str(" = ");
                                     func.code.push_str(&fstr);
                                     func.code.push('(');
 
                                     // Pass arguments
+                                    let mut comma = saved_argc > 0;
                                     for i in 0..f.get_metadata().arity
                                     {
-                                        if i != 0 || saved_argc > 0
+                                        if let Type::Enum(_) = astrs[i].1
+                                        {
+                                            continue;
+                                        }
+
+                                        if comma
                                         {
                                             func.code.push_str(", ");
+                                        } else
+                                        {
+                                            comma = true;
                                         }
 
                                         func.code.push_str(&astrs[i].0);
@@ -1047,11 +1104,23 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                     // Create function pointer
                                     func.code.push_str(get_c_type(ftype, types));
                                     func.code.push_str(" (*)(");
+                                    let mut comma = false;
                                     for i in 0..saved_argc + f.get_metadata().arity
                                     {
-                                        if i != 0
+                                        if i >= saved_argc
+                                        {
+                                            if let Type::Enum(_) = astrs[i - saved_argc].1
+                                            {
+                                                continue;
+                                            }
+                                        }
+
+                                        if comma
                                         {
                                             func.code.push_str(", ");
+                                        } else
+                                        {
+                                            comma = true;
                                         }
                                         func.code.push_str("void*");
                                     }
@@ -1074,15 +1143,24 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                     }
 
                                     // Pass new arguments
-                                    for i in 0..f.get_metadata().arity
+                                    let mut comma = saved_argc > 0;
+                                    for i in astrs.iter()
                                     {
-                                        if i != 0 || saved_argc > 0
+                                        if let Type::Enum(_) = i.1
+                                        {
+                                            continue;
+                                        }
+
+                                        if comma
                                         {
                                             func.code.push_str(", ");
+                                        } else
+                                        {
+                                            comma = true;
                                         }
 
                                         func.code.push_str("(void*) ");
-                                        func.code.push_str(&astrs[i].0);
+                                        func.code.push_str(&i.0);
                                     }
 
                                     // Close parentheses
@@ -1194,6 +1272,9 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                 func.code.push_str(&arg.0[1..]);
                                 func.code.push_str(";\n");
                                 arg.0 = name;
+                            } else if let Type::Enum(_) = arg.1
+                            {
+                                continue;
                             }
 
                             func.code.push_str(&name);
@@ -1208,7 +1289,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                     name
                 }
 
-                // String and list concatenation is unsupported at the moment
+                // Everything else is unsupported
                 _ => panic!("unsupported application of `{}` on {:?}!", _type, sexpr)
             }
         }
@@ -1536,6 +1617,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                         func.code.push_str("break;\n");
                     }
                     func.code.push_str("}\n");
+                } else if let Type::Enum(_) = atype
+                {
+                    let _type = types.get(&m._type).unwrap();
+                    let map = _type.get_hashmap().unwrap();
+                    let id = map.get(&atype).unwrap();
+                    func.code.push_str(&name);
+                    func.code.push_str(".tag = ");
+                    func.code.push_str(&format!("{};\n", id));
                 } else
                 {
                     let _type = types.get(&m._type).unwrap();
@@ -1596,20 +1685,29 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 // Puts the wrapper for a given function in the built string.
 fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
-    s.push_str(get_c_type(func.ret_type, types));
+    s.push_str(if let Type::Enum(_) = func.ret_type { "void" } else { get_c_type(func.ret_type, types) });
     s.push(' ');
     s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
     s.push_str("$WRAPPER$$");
     s.push_str("(func_t* f) {\nreturn ((");
-    s.push_str(get_c_type(func.ret_type, types));
+    s.push_str(if let Type::Enum(_) = func.ret_type { "void" } else { get_c_type(func.ret_type, types) });
     s.push_str(" (*) (");
 
-    for i in 0..func.args.len()
+    let mut comma = false;
+    for a in func.args.iter()
     {
-        if i != 0
+        if let Type::Enum(_) = a.1
+        {
+            continue;
+        }
+
+        if comma
         {
             s.push_str(", ");
+        } else
+        {
+            comma = true;
         }
 
         s.push_str("void*");
@@ -1636,7 +1734,7 @@ fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &Hash
 // Puts a function declaration in the built string.
 fn put_fn_declaration(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>)
 {
-    s.push_str(get_c_type(func.ret_type, types));
+    s.push_str(if let Type::Enum(_) = func.ret_type { "void" } else { get_c_type(func.ret_type, types) });
     s.push(' ');
     s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
@@ -1650,6 +1748,11 @@ fn put_fn_declaration(s: &mut String, mod_name: &str, func: &CFunction, types: &
         if let Type::Symbol(_) =& _type
         {
             _type = types.get(&_type).unwrap().get_curly_type();
+        }
+
+        if let Type::Enum(_) = _type
+        {
+            continue;
         }
 
         if comma
