@@ -75,6 +75,7 @@ fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
         Type::Func(_, _) => "func_t",
         Type::Symbol(_) => types.get(_type).unwrap().get_c_name(),
         Type::Sum(_) => types.get(_type).unwrap().get_c_name(),
+        Type::Pointer(_) => "void*",
         _ => panic!("unsupported type!")
     }
 }
@@ -1904,6 +1905,12 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: 
             code.push_str("\");\n");
         }
 
+        Type::Pointer(p) => {
+            code.push_str(&format!("printf(\"{} <%p>\", ", p));
+            code.push_str(v);
+            code.push_str(");\n");
+        }
+
         Type::Tag(s, t) => {
             code.push_str("printf(\"{ ");
             code.push_str(s);
@@ -1953,6 +1960,10 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
 
             Type::Func(_, _) => {
                 types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("func_t"), _type.1.clone()));
+            }
+
+            Type::Pointer(_) => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("void*"), _type.1.clone()));
             }
 
             // Sum types are tagged unions
