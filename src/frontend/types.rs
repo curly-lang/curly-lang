@@ -44,6 +44,7 @@ pub enum Type
     Func(Box<Type>, Box<Type>),
     Sum(HashSetWrapper<Type>),
     Enum(String),
+    Pointer(String),
     Tag(String, Box<Type>)
 }
 
@@ -68,6 +69,7 @@ impl Display for Type
             Type::String => { write!(f, "String")?; }
             Type::Symbol(s) => { write!(f, "{}", s)?; }
             Type::Enum(e) => { write!(f, "enum {}", e)?; }
+            Type::Pointer(p) => { write!(f, "ptr {}", p)?; }
 
             // Fuction types
             Type::Func(func, a) => {
@@ -203,6 +205,16 @@ impl Type
                     false
                 }
 
+            // Pointer
+            Type::Pointer(sp) =>
+                if let Type::Pointer(p) = _type
+                {
+                    sp == p
+                } else
+                {
+                    false
+                }
+
             Type::Tag(s, t) => {
                 if let Type::Tag(s2, t2) = _type
                 {
@@ -260,6 +272,16 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
             } else
             {
                 unreachable!("enum always has a symbol");
+            }
+
+        // Pointer
+        AST::Prefix(_, op, v) if op == "ptr" =>
+            if let AST::Symbol(_, v) = *v
+            {
+                Type::Pointer(v)
+            } else
+            {
+                unreachable!("ptr always has a symbol");
             }
 
         // Sum types

@@ -370,6 +370,7 @@ impl CurlyREPLHelper
                     | Stop
                     | Type
                     | Enum
+                    | Pointer
                     | Class
                     | Match
                     | Lambda

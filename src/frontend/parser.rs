@@ -43,52 +43,52 @@ pub enum Token
 
     #[token("::")]
     ColonColon,
-    
+
     #[token(",")]
     Comma,
 
     #[token(".")]
     Dot,
-    
+
     #[token("..")]
     Range,
-    
+
     #[token("=")]
     Assign,
-    
+
     #[token("*")]
     Mul,
-    
+
     #[regex(r"/|%")]
     DivMod,
-    
+
     #[token("+")]
     Add,
 
     #[token("-")]
     Sub,
-    
+
     #[regex(r"<<|>>")]
     BitShift,
-    
+
     #[regex(r"<|>|<=|>=|==|!=")]
     Compare,
-    
+
     #[token("&")]
     Ampersand,
-    
+
     #[token("|")]
     Bar,
-    
+
     #[token("^")]
     Caret,
-    
+
     // Numbers
     #[regex(r"[0-9]+", |lex| lex.slice().parse())]
     #[regex(r"0x[0-9a-fA-F]+", |lex| i64::from_str_radix(&lex.slice()[2..], 16))]
     #[regex(r"0b[01]+", |lex| i64::from_str_radix(&lex.slice()[2..], 2))]
     Int(i64),
-    
+
     #[regex(r"[0-9]+(\.[0-9]*([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)", |lex| lex.slice().parse())]
     Float(f64),
 
@@ -144,32 +144,32 @@ pub enum Token
     // Arrows
     #[token("->")]
     RightArrow,
-    
+
     #[token("=>")]
     ThiccArrow,
-    
+
     // Keywords
     #[token("with")]
     With,
-    
+
     #[token("for")]
     For,
-    
+
     #[token("some")]
     Some,
-    
+
     #[token("all")]
     All,
-    
+
     #[token("if")]
     If,
-    
+
     #[token("then")]
     Then,
-    
+
     #[token("else")]
     Else,
-    
+
     #[token("where")]
     Where,
 
@@ -190,13 +190,16 @@ pub enum Token
 
     #[token("stop")]
     Stop,
-    
+
     #[token("type")]
     Type,
-    
+
     #[token("enum")]
     Enum,
-    
+
+    #[token("ptr")]
+    Pointer,
+
     #[token("class")]
     Class,
 
@@ -840,7 +843,6 @@ fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
 // Gets the next addition/subtraction expression.
 fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    
     infix_op!(parser, muldivmod, Token::Add, Token::Sub)
 }
 
@@ -1180,6 +1182,18 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
             start: span.start,
             end: span2.end
         }, String::from("enum"), Box::new(AST::Symbol(span2, value))))
+
+    // Pointer types
+    } else if let Token::Pointer = token
+    {
+        let state = parser.save_state();
+        parser.next();
+        let (value, span2) = consume_save!(parser, Symbol, state, false, true, "Expected symbol after `enum`");
+
+        Ok(AST::Prefix(Span {
+            start: span.start,
+            end: span2.end
+        }, String::from("ptr"), Box::new(AST::Symbol(span2, value))))
 
     // Parenthesised types
     } else if let Token::LParen = token
