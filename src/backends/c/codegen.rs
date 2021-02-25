@@ -69,7 +69,9 @@ fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str
     {
         Type::Int => "int_t",
         Type::Float => "float_t",
-        Type::Bool => "char",
+        Type::Bool => "bool",
+        Type::Word => "word_t",
+        Type::Char => "char",
         Type::Func(_, _) => "func_t",
         Type::Symbol(_) => types.get(_type).unwrap().get_c_name(),
         Type::Sum(_) => types.get(_type).unwrap().get_c_name(),
@@ -124,6 +126,38 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             name
         }
 
+        // Word
+        SExpr::Word(_, n) => {
+            // Get name
+            let name = format!("$${}", func.last_reference);
+            func.last_reference += 1;
+
+            // Generate code
+            func.code.push_str("word_t ");
+            func.code.push_str(&name);
+            func.code.push_str(" = ");
+            func.code.push_str(&format!("{}", n));
+            func.code.push_str("u;\n");
+
+            name
+        }
+
+        // Char
+        SExpr::Char(_, c) => {
+            // Get name
+            let name = format!("$${}", func.last_reference);
+            func.last_reference += 1;
+
+            // Generate code
+            func.code.push_str("char ");
+            func.code.push_str(&name);
+            func.code.push_str(" = (char) ");
+            func.code.push_str(&format!("{}", c));
+            func.code.push_str(";\n");
+
+            name
+        }
+
         // Booleans
         SExpr::True(_) => {
             // Get name
@@ -131,7 +165,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str("char ");
+            func.code.push_str("bool ");
             func.code.push_str(&name);
             func.code.push_str(" = 1;\n");
 
@@ -144,7 +178,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             func.last_reference += 1;
 
             // Generate code
-            func.code.push_str("char ");
+            func.code.push_str("bool ");
             func.code.push_str(&name);
             func.code.push_str(" = 0;\n");
 
@@ -1813,6 +1847,25 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: 
             code.push_str(");\n");
         }
 
+        Type::Word => {
+            let ptr_size = std::mem::size_of::<&char>();
+            code.push_str("printf(\"");
+            match ptr_size
+            {
+                4 => code.push_str("%uu\", "),
+                8 => code.push_str("%lluu\", "),
+                _ => panic!("unsupported pointer size {}", ptr_size)
+            }
+            code.push_str(v);
+            code.push_str(");\n");
+        }
+
+        Type::Char => {
+            code.push_str("printf(\"'%c'\", ");
+            code.push_str(v);
+            code.push_str(");\n");
+        }
+
         Type::Bool => {
             code.push_str("printf(\"%s\", ");
             code.push_str(v);
@@ -1886,8 +1939,16 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
                 types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("float_t"), _type.1.clone()));
             }
 
-            Type::Bool => {
+            Type::Word => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("word_t"), _type.1.clone()));
+            }
+
+            Type::Char => {
                 types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("char"), _type.1.clone()));
+            }
+
+            Type::Bool => {
+                types.insert(Type::Symbol(_type.0.clone()), CType::Primitive(String::from("bool"), _type.1.clone()));
             }
 
             Type::Func(_, _) => {
@@ -1917,7 +1978,7 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
                     {
                         Type::Int => types_string.push_str("        int_t"),
                         Type::Float => types_string.push_str("        float_t"),
-                        Type::Bool => types_string.push_str("        char"),
+                        Type::Bool => types_string.push_str("        bool"),
                         Type::Func(_, _) => types_string.push_str("        func_t"),
 
                         Type::Enum(_) => {
@@ -1942,7 +2003,7 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
                             {
                                 Type::Int => types_string.push_str("        int_t"),
                                 Type::Float => types_string.push_str("        float_t"),
-                                Type::Bool => types_string.push_str("        char"),
+                                Type::Bool => types_string.push_str("        bool"),
                                 Type::Func(_, _) => types_string.push_str("        func_t"),
                                 _ => panic!("unsupported type!")
                             }
@@ -2147,7 +2208,7 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
                 cf.code.push_str("$PARAM$$;\n");
             }
 
-            cf.code.push_str("char $$LOOP$$ = 1;\n");
+            cf.code.push_str("bool $$LOOP$$ = 1;\n");
             cf.code.push_str(get_c_type(&f.1.body.get_metadata()._type, &types));
             cf.code.push_str(" $$RET$$;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
         }
@@ -2345,7 +2406,7 @@ typedef struct {
                     code_string.push(' ');
                     code_string.push_str(&mod_name);
                     code_string.push_str(&sanitised);
-                    code_string.push_str("$VALUE$$;\nchar ");
+                    code_string.push_str("$VALUE$$;\nbool ");
                     code_string.push_str(&mod_name);
                     code_string.push_str(&sanitised);
                     code_string.push_str("$SAVED$$ = 0;\n");
@@ -2595,6 +2656,7 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 #ifndef CURLY_H
 #define CURLY_H
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -2608,7 +2670,7 @@ typedef struct {{
     void* wrapper;
     unsigned int arity;
     unsigned int argc;
-    char (**cleaners)(void*);
+    bool (**cleaners)(void*);
     void** args;
 }} func_t;
 
@@ -2617,11 +2679,11 @@ typedef union {{
     void* v;
 }} double_wrapper_t;
 
-char force_free_func(void* _func);
+bool force_free_func(void* _func);
 
-char free_func(func_t* func);
+bool free_func(func_t* func);
 
-char refc_func(func_t* func);
+bool refc_func(func_t* func);
 
 void copy_func(func_t* dest, func_t* source);
 
@@ -2650,7 +2712,7 @@ func_t* copy_func_arg(func_t* source);
     files.push((String::from("curly.c"), String::from("
 #include \"curly.h\"
 
-char force_free_func(void* _func) {
+bool force_free_func(void* _func) {
     // func_t* func = (func_t*) _func;
     // for (int i = 0; i < func->argc; i++) {
         // if (func->cleaners[i] != (void*) 0 && func->cleaners[i](func->args[i]))
@@ -2659,18 +2721,18 @@ char force_free_func(void* _func) {
 
     // free(func->args);
     // free(func->cleaners);
-    return (char) 1;
+    return 1;
 }
 
-char free_func(func_t* func) {
+bool free_func(func_t* func) {
     // if (func->refc == 0) {
     //    return force_free_func(func);
     //}
 
-    return (char) 0;
+    return 0;
 }
 
-char refc_func(func_t* func) {
+bool refc_func(func_t* func) {
     // if (func->refc > 0)
         // func->refc--;
     return free_func(func);

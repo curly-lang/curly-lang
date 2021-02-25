@@ -42,74 +42,87 @@ impl Scope
         self.func_ret_types.insert(FunctionName::Prefix(Type::Float), Type::Float);
 
         // Infix operators
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Mul, Type::Word, Type::Word), Type::Word);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Mul, Type::Int, Type::Int), Type::Int);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Mul, Type::Float, Type::Int), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Mul, Type::Int, Type::Float), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Mul, Type::Float, Type::Float), Type::Float);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Div, Type::Word, Type::Word), Type::Word);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Div, Type::Int, Type::Int), Type::Int);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Div, Type::Float, Type::Int), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Div, Type::Int, Type::Float), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Div, Type::Float, Type::Float), Type::Float);
 
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::Mod, Type::Int, Type::Int), Type::Int);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Mod, Type::Int, Type::Int), Type::Int);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Add, Type::Word, Type::Word), Type::Word);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Add, Type::Int, Type::Int), Type::Int);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Add, Type::Float, Type::Int), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Add, Type::Int, Type::Float), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Add, Type::Float, Type::Float), Type::Float);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Sub, Type::Word, Type::Word), Type::Word);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Sub, Type::Int, Type::Int), Type::Int);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Sub, Type::Float, Type::Int), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Sub, Type::Int, Type::Float), Type::Float);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::Sub, Type::Float, Type::Float), Type::Float);
 
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::BSL, Type::Int, Type::Int), Type::Int);
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::BSR, Type::Int, Type::Int), Type::Int);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::BSL, Type::Word, Type::Word), Type::Word);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::BSL, Type::Int, Type::Int), Type::Int);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::BSR, Type::Word, Type::Word), Type::Word);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::BSR, Type::Int, Type::Int), Type::Int);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Word, Type::Word), Type::Word);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Int, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Float, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Int, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LT, Type::Float, Type::Float), Type::Bool);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Word, Type::Word), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Int, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Float, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Int, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GT, Type::Float, Type::Float), Type::Bool);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Word, Type::Word), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Float), Type::Bool);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Word, Type::Word), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Float), Type::Bool);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Word, Type::Word), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Int, Type::Int), Type::Bool);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Float, Type::Int), Type::Bool);
-        self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Int, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::Float, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::EQ, Type::String, Type::String), Type::Bool);
 
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Word, Type::Word), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Int), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Float), Type::Bool);
         self.func_ret_types.insert(FunctionName::Infix(BinOp::NEQ, Type::String, Type::String), Type::Bool);
 
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::And, Type::Int, Type::Int), Type::Int);
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::Or, Type::Int, Type::Int), Type::Int);
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::Xor, Type::Int, Type::Int), Type::Int);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::And, Type::Word, Type::Word), Type::Word);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::And, Type::Int, Type::Int), Type::Int);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Or, Type::Word, Type::Word), Type::Word);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Or, Type::Int, Type::Int), Type::Int);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Xor, Type::Word, Type::Word), Type::Word);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::Xor, Type::Int, Type::Int), Type::Int);
 
-         self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolXor, Type::Bool, Type::Bool), Type::Bool);
+        self.func_ret_types.insert(FunctionName::Infix(BinOp::BoolXor, Type::Bool, Type::Bool), Type::Bool);
 
-         // Functions
-         self.put_var_raw(String::from("debug"), Type::Unknown, 1, None, Location::empty(), true, String::with_capacity(0));
-         self.put_var_raw(String::from("putch"), Type::Func(Box::new(Type::Int), Box::new(Type::Int)), 1, Some(0), Location::empty(), true, String::with_capacity(0));
+        // Functions
+        self.put_var_raw(String::from("debug"), Type::Unknown, 1, None, Location::empty(), true, String::with_capacity(0));
+        self.put_var_raw(String::from("putch"), Type::Func(Box::new(Type::Int), Box::new(Type::Int)), 1, Some(0), Location::empty(), true, String::with_capacity(0));
 
-         self
+        self
     }
 
     // put_var_raw(&mut self, String, Type, usize, Option<usize>, Span, bool) -> ()

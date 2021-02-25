@@ -335,6 +335,8 @@ impl CurlyREPLHelper
 
                 Int(_)
                     | Float(_)
+                    | Word(_)
+                    | Char(_)
                     | String
                     | True
                     | False =>

@@ -1,0 +1,8 @@
+module Main
+
+main = with a: Char = debug 'a',
+            b: Word = debug 2u,
+            c: Word = debug 5u,
+            d: Word = debug (b & c),
+                0
+

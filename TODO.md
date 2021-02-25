@@ -11,7 +11,6 @@ These things are features and fixes I'd like to get completed for the third majo
 - `;` operator (chains actions together)
 - `:=` operator (creates a super local scope that only lasts for one infix operation)
 - Remove hacky `putch` function and replace it with an actual C function
-- Char and Word types
 - See github issues
 
 ## Fourth official release:

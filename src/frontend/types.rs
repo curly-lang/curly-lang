@@ -37,6 +37,8 @@ pub enum Type
     Int,
     Float,
     Bool,
+    Word,
+    Char,
     String,
     Symbol(String),
     Func(Box<Type>, Box<Type>),
@@ -61,6 +63,8 @@ impl Display for Type
             Type::Int => { write!(f, "Int")?; }
             Type::Float => { write!(f, "Float")?; }
             Type::Bool => { write!(f, "Bool")?; }
+            Type::Word => { write!(f, "Word")?; }
+            Type::Char => { write!(f, "Char")?; }
             Type::String => { write!(f, "String")?; }
             Type::Symbol(s) => { write!(f, "{}", s)?; }
             Type::Enum(e) => { write!(f, "enum {}", e)?; }
@@ -138,6 +142,8 @@ impl Type
             Type::Int => *_type == Type::Int,
             Type::Float => *_type == Type::Float,
             Type::Bool => *_type == Type::Bool,
+            Type::Word => *_type == Type::Word,
+            Type::Char => *_type == Type::Char,
             Type::String => *_type == Type::String,
 
             // Functions
@@ -231,6 +237,8 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                 "Int" => Type::Int,
                 "Float" => Type::Float,
                 "Bool" => Type::Bool,
+                "Word" => Type::Word,
+                "Char" => Type::Char,
 
                 // Check if registered in IR
                 _ =>

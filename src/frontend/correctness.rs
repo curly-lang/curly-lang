@@ -62,6 +62,8 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
         // Values
         SExpr::Int(_, _) => (),
         SExpr::Float(_, _) => (),
+        SExpr::Word(_, _) => (),
+        SExpr::Char(_, _) => (),
         SExpr::String(_, _) => (),
         SExpr::True(_) => (),
         SExpr::False(_) => (),
@@ -919,6 +921,8 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
         SExpr::TypeAlias(m, _)
             | SExpr::Int(m, _)
             | SExpr::Float(m, _)
+            | SExpr::Word(m, _)
+            | SExpr::Char(m, _)
             | SExpr::String(m, _)
             | SExpr::True(m)
             | SExpr::False(m)

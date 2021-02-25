@@ -125,6 +125,12 @@ pub enum SExpr
     // Floats
     Float(SExprMetadata, f64),
 
+    // Words
+    Word(SExprMetadata, u64),
+
+    // Chars
+    Char(SExprMetadata, u8),
+
     // Booleans
     True(SExprMetadata),
     False(SExprMetadata),
@@ -187,6 +193,8 @@ impl SExpr
             Self::TypeAlias(m, _)
                 | Self::Int(m, _)
                 | Self::Float(m, _)
+                | Self::Word(m, _)
+                | Self::Char(m, _)
                 | Self::True(m)
                 | Self::False(m)
                 | Self::Symbol(m, _)
@@ -218,6 +226,8 @@ impl SExpr
             Self::TypeAlias(m, _)
                 | Self::Int(m, _)
                 | Self::Float(m, _)
+                | Self::Word(m, _)
+                | Self::Char(m, _)
                 | Self::True(m)
                 | Self::False(m)
                 | Self::Symbol(m, _)
@@ -332,6 +342,28 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             saved_argc: None,
             tailrec: false
         }, n),
+
+        // Word
+        AST::Word(span, n) => SExpr::Word(SExprMetadata {
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
+            _type: Type::Word,
+            arity: 0,
+            saved_argc: None,
+            tailrec: false
+        }, n),
+
+        // Char
+        AST::Char(span, c) => SExpr::Char(SExprMetadata {
+            loc: Location::new(span, filename),
+            loc2: Location::empty(),
+            origin: String::with_capacity(0),
+            _type: Type::Char,
+            arity: 0,
+            saved_argc: None,
+            tailrec: false
+        }, c),
 
         // True
         AST::True(span) => SExpr::True(SExprMetadata {

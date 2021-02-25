@@ -87,20 +87,40 @@ pub enum Token
     #[regex(r"[0-9]+", |lex| lex.slice().parse())]
     #[regex(r"0x[0-9a-fA-F]+", |lex| i64::from_str_radix(&lex.slice()[2..], 16))]
     #[regex(r"0b[01]+", |lex| i64::from_str_radix(&lex.slice()[2..], 2))]
-    #[regex(r#"'([^\\']|\\[nrt'"])'"#, |lex| match lex.slice()
-            {
-                "'\\\\'" => '\\' as i64,
-                "'\\\"'" => '\"' as i64,
-                "'\\\''" => '\'' as i64,
-                "'\\n'" => '\n' as i64,
-                "'\\r'" => '\r' as i64,
-                "'\\t'" => '\t' as i64,
-                _ => lex.slice().chars().skip(1).next().unwrap() as i64
-            })]
     Int(i64),
     
     #[regex(r"[0-9]+(\.[0-9]*([eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)", |lex| lex.slice().parse())]
     Float(f64),
+
+    #[regex(r"[0-9]+u", |lex| {
+        let v = lex.slice();
+        v[..v.len() - 1].parse()
+    })]
+    #[regex(r"[a-fA-F0-9]+h", |lex| {
+        let v = lex.slice();
+        u64::from_str_radix(&v[..v.len() - 1], 16)
+    })]
+    #[regex(r"[0-7]+o", |lex| {
+        let v = lex.slice();
+        u64::from_str_radix(&v[..v.len() - 1], 8)
+    })]
+    #[regex(r"[01]+b", |lex| {
+        let v = lex.slice();
+        u64::from_str_radix(&v[..v.len() - 1], 2)
+    })]
+    Word(u64),
+
+    #[regex(r#"'([^\\']|\\[nrt'"])'"#, |lex| match lex.slice()
+    {
+        "'\\\\'" => '\\' as u8,
+        "'\\\"'" => '\"' as u8,
+        "'\\\''" => '\'' as u8,
+        "'\\n'" => '\n' as u8,
+        "'\\r'" => '\r' as u8,
+        "'\\t'" => '\t' as u8,
+        _ => lex.slice().chars().skip(1).next().unwrap() as u8
+    })]
+    Char(u8),
 
     // Symbols (variables and stuff)
     #[regex(r"[$a-zA-Z_][a-zA-Z0-9_']*")]
@@ -322,6 +342,8 @@ pub enum AST
     // Numbers
     Int(Span, i64),
     Float(Span, f64),
+    Word(Span, u64),
+    Char(Span, u8),
 
     // Booleans
     True(Span),
@@ -394,6 +416,8 @@ impl AST
         {
             Self::Int(s, _)
                 | Self::Float(s, _)
+                | Self::Word(s, _)
+                | Self::Char(s, _)
                 | Self::True(s)
                 | Self::False(s)
                 | Self::String(s, _)
@@ -650,6 +674,20 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         let n = *n;
         parser.next();
         Ok(AST::Float(span, n))
+
+    // Check for word
+    } else if let Token::Word(n) = token
+    {
+        let n = *n;
+        parser.next();
+        Ok(AST::Word(span, n))
+
+    // Check for token
+    } else if let Token::Char(c) = token
+    {
+        let c = *c;
+        parser.next();
+        Ok(AST::Char(span, c))
 
     // Check for string
     } else if let Token::String = token
