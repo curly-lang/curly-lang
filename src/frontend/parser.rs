@@ -100,10 +100,6 @@ pub enum Token
         let v = lex.slice();
         u64::from_str_radix(&v[..v.len() - 1], 16)
     })]
-    #[regex(r"[0-7]+o", |lex| {
-        let v = lex.slice();
-        u64::from_str_radix(&v[..v.len() - 1], 8)
-    })]
     #[regex(r"[01]+b", |lex| {
         let v = lex.slice();
         u64::from_str_radix(&v[..v.len() - 1], 2)
