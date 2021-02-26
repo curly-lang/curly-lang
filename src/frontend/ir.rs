@@ -45,7 +45,8 @@ pub enum IRError
     DuplicateTypeInUnion(Location, Location, Type),
     DoubleExport(Location, Location, String),
     RedefineImportAlias(Location, Location, String),
-    UnsupportedAnnotation(Location, String)
+    UnsupportedAnnotation(Location, String),
+    InvalidFFIType(Location, Type)
 }
 
 // Represents a prefix operator.
@@ -274,6 +275,15 @@ pub struct IRImport
     pub imports: HashMap<String, (Type, usize)>
 }
 
+#[derive(Debug)]
+pub struct IRExtern
+{
+    pub loc: Location,
+    pub extern_name: String,
+    pub arg_types: Vec<Type>,
+    pub ret_type: Type
+}
+
 // Represents a module of the ir.
 #[derive(Debug)]
 pub struct IRModule
@@ -282,6 +292,7 @@ pub struct IRModule
     pub filename: String,
     pub imports: HashMap<String, IRImport>,
     pub exports: HashMap<String, (Location, Type)>,
+    pub externals: HashMap<String, IRExtern>,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
     pub types: HashMap<String, Type>,
@@ -305,6 +316,7 @@ impl IRModule
             filename: String::from(filename),
             imports: HashMap::with_capacity(0),
             exports: HashMap::with_capacity(0),
+            externals: HashMap::with_capacity(0),
 
             // TODO: make init_builtins() be called in only a prelude
             scope: Scope::new().init_builtins(),
@@ -988,6 +1000,41 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<
                     Location::new(span, filename),
                     a
                 ));
+            }
+        } else if let AST::Extern(span, c, n, t) = ast
+        {
+            let ts = t.get_span().clone();
+            let t = types::convert_ast_to_type(*t, &module.filename, &mut module.types);
+
+            // Check type
+            if let Type::UndeclaredTypeError(s) = t
+            {
+                errors.push(IRError::InvalidType(s));
+            } else if let Type::DuplicateTypeError(s1, s2, t2) = t
+            {
+                errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t2));
+            } else if !t.is_ffi_compatible(&module.types)
+            {
+                errors.push(IRError::InvalidFFIType(Location::new(ts, &module.filename), t));
+            } else
+            {
+                // Get arg types and return function
+                let mut arg_types = vec![];
+                let mut ret_type = t;
+
+                while let Type::Func(f, a) = ret_type
+                {
+                    arg_types.push(*f);
+                    ret_type = *a;
+                }
+
+                // Add external function
+                module.externals.insert(n, IRExtern {
+                    loc: Location::new(span, &module.filename),
+                    extern_name: c,
+                    arg_types,
+                    ret_type
+                });
             }
         } else
         {

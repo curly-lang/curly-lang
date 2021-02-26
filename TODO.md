@@ -1,10 +1,10 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
+- Bindings with C
 - Make local assignments lazy
 - Replace `with x = 2, y = 3, x + y` with `let x = 2, y = 3 in x + y`
 - Deal with types properly
-- Bindings with C
 - Tagged system for side effects
 - Fix memory leaks
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)

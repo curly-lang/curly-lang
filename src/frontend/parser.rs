@@ -1714,6 +1714,7 @@ fn externy(parser: &mut Parser) -> Result<AST, ParseError>
     let state = parser.save_state();
     consume_nosave!(parser, Extern, state, false, "");
     let (c_func, s) = consume_save!(parser, String, state, true, "Expected string literal after `extern`");
+    let c_func = c_func[1..c_func.len() - 1].to_owned();
 
     newline(parser);
     let (name, _) = consume_save!(parser, Symbol, state, true, "Expected symbol after external function declaration");

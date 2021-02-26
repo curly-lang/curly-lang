@@ -26,7 +26,7 @@ use curlyc::frontend::ir::{IR, IRError, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 struct CommandlineBuildOptions
 {
@@ -627,6 +627,15 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                                 .with_labels(vec![
                                     Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
                                     .with_message(format!("Annotation {} is unsupported", a)),
+                                ])
+                        }
+
+                        IRError::InvalidFFIType(s, t) => {
+                            diagnostic = diagnostic
+                                .with_message("Unsupported type used for FFI")
+                                .with_labels(vec![
+                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                    .with_message(format!("Type {} is unsupported by FFI", t))
                                 ])
                         }
                     }

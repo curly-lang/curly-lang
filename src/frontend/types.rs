@@ -117,6 +117,25 @@ impl Display for Type
 
 impl Type
 {
+    // is_ffi_compatible(&self, &HashMap<String, Type>) -> bool
+    // Returns true if function is ffi compatible.
+    pub fn is_ffi_compatible(&self, types: &HashMap<String, Type>) -> bool
+    {
+        match self
+        {
+            Type::Int => true,
+            Type::Float => true,
+            Type::Bool => true,
+            Type::Word => true,
+            Type::Char => true,
+            Type::Symbol(s) => types.get(s).unwrap().is_ffi_compatible(types),
+            Type::Func(f, a) => f.is_ffi_compatible(types) && a.is_ffi_compatible(types),
+            Type::Enum(_) => true,
+            Type::Pointer(_) => true,
+            _ => false
+        }
+    }
+
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
     pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, Type>) -> bool
