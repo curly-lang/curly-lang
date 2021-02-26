@@ -185,6 +185,9 @@ pub enum Token
     #[token("module")]
     Module,
 
+    #[token("extern")]
+    Extern,
+
     #[token("pass")]
     Pass,
 
@@ -361,7 +364,7 @@ pub enum AST
     // Enum (ie, atoms)
     Enum(Span, String),
 
-    // Annotations (@debug, @pure, @impure, @memoize, etc)
+    // Annotations (@pure, @impure, @memoize, etc)
     Annotation(Span, String),
 
     // Lists
@@ -408,7 +411,10 @@ pub enum AST
     QualifiedImport(Span, Box<AST>, String),
 
     // Header
-    Header(Span, Box<AST>, Vec<(Span, String, AST)>, Vec<AST>)
+    Header(Span, Box<AST>, Vec<(Span, String, AST)>, Vec<AST>),
+
+    // External functions
+    Extern(Span, String, String, Box<AST>)
 }
 
 impl AST
@@ -443,6 +449,7 @@ impl AST
                 | Self::Import(s, _, _)
                 | Self::QualifiedImport(s, _, _)
                 | Self::Header(s, _, _, _)
+                | Self::Extern(s, _, _, _)
                 => s.clone(),
         }
     }
@@ -453,7 +460,6 @@ pub struct ParseError
 {
     pub span: Span,
     pub msg: String,
-    pub continuable: bool,
     fatal: bool,
 }
 
@@ -466,7 +472,6 @@ impl ParseError
         Err(ParseError {
             span: Span { start: 0, end: 0 },
             msg: String::with_capacity(0),
-            continuable: false,
             fatal: false
         })
     }
@@ -492,7 +497,7 @@ macro_rules! call_func
 // Calls a function and returns a fatal error if unsuccessful.
 macro_rules! call_func_fatal
 {
-    ($func: ident, $parser: ident, $cont: literal, $format: literal $(,$vs: expr),*) => {
+    ($func: ident, $parser: ident, $format: literal $(,$vs: expr),*) => {
         match $func($parser)
         {
             Ok(v) => v,
@@ -500,7 +505,6 @@ macro_rules! call_func_fatal
             Err(_) => return Err(ParseError {
                 span: $parser.span(),
                 msg: format!($format $(,$vs),*),
-                continuable: $cont,
                 fatal: true
             })
         }
@@ -525,7 +529,7 @@ macro_rules! call_optional
 // Consumes a token without saving it, returning if an error was encountered.
 macro_rules! consume_nosave
 {
-    ($parser: ident, $token: ident, $state: ident, $cont: literal, $fatal: literal, $format: literal $(,$vs: expr),*) => {
+    ($parser: ident, $token: ident, $state: ident, $fatal: literal, $format: literal $(,$vs: expr),*) => {
         match $parser.peek()
         {
             Some((Token::$token, _)) => {
@@ -538,7 +542,6 @@ macro_rules! consume_nosave
                 return Err(ParseError {
                     span,
                     msg: format!($format $(,$vs),*),
-                    continuable: $cont,
                     fatal: $fatal
                 });
             }
@@ -550,7 +553,7 @@ macro_rules! consume_nosave
 // Consumes a token and saves it, returning if an error was encountered.
 macro_rules! consume_save
 {
-    ($parser: ident, $token: ident, $state: ident, $cont: literal, $fatal: literal, $format: literal $(,$vs: expr),*) => {
+    ($parser: ident, $token: ident, $state: ident, $fatal: literal, $format: literal $(,$vs: expr),*) => {
         match $parser.peek()
         {
             Some((Token::$token, s)) => {
@@ -565,7 +568,6 @@ macro_rules! consume_save
                 return Err(ParseError {
                     span,
                     msg: format!($format $(,$vs),*),
-                    continuable: $cont,
                     fatal: $fatal
                 })
             }
@@ -602,7 +604,7 @@ macro_rules! infix_op
                 $parser.next();
 
                 // Get right hand side
-                let right = call_func_fatal!($subfunc, $parser, false, "Expected value after infix operator");
+                let right = call_func_fatal!($subfunc, $parser, "Expected value after infix operator");
 
                 // Build ast
                 left = AST::Infix(Span {
@@ -636,7 +638,7 @@ fn newline(parser: &mut Parser)
 fn symbol(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (token, span) = consume_save!(parser, Symbol, state, false, false, "");
+    let (token, span) = consume_save!(parser, Symbol, state, false, "");
     Ok(AST::Symbol(span, token))
 }
 
@@ -705,7 +707,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
         let s = parser.span();
         let state = parser.save_state();
         parser.next();
-        let (t, s2) = consume_save!(parser, Symbol, state, true, false, "");
+        let (t, s2) = consume_save!(parser, Symbol, state, true, "");
         Ok(AST::Enum(Span { start: s.start, end: s2.end }, t))
 
     // True
@@ -737,7 +739,7 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError>
 
         // Get right parenthesis
         newline(parser);
-        consume_nosave!(parser, RParen, state, true, true, "");
+        consume_nosave!(parser, RParen, state, true, "");
         Ok(value)
 
     // Not a value
@@ -754,7 +756,7 @@ fn _as(parser: &mut Parser) -> Result<AST, ParseError>
     if let Some((Token::Colon, _)) = parser.peek()
     {
         parser.next();
-        let _type = call_func_fatal!(type_expr, parser, false, "Expected type after `:`");
+        let _type = call_func_fatal!(type_expr, parser, "Expected type after `:`");
 
         Ok(AST::As(Span {
             start: value.get_span().start,
@@ -805,7 +807,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
 
         // Get value
-        let value = call_func_fatal!(application, parser, false, "Expected value after prefix operator");
+        let value = call_func_fatal!(application, parser, "Expected value after prefix operator");
 
         Ok(AST::Prefix(Span {
             start: span.start,
@@ -818,7 +820,7 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
         parser.next();
 
         // Get value
-        let value = call_func_fatal!(application, parser, false, "Expected value after prefix operator");
+        let value = call_func_fatal!(application, parser, "Expected value after prefix operator");
 
         Ok(AST::Prefix(Span {
             start: span.start,
@@ -914,25 +916,25 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         newline(parser);
 
         // Get condition
-        let cond = call_func_fatal!(expression, parser, false, "Expected condition after if");
+        let cond = call_func_fatal!(expression, parser, "Expected condition after if");
 
         // Get then keyword
         newline(parser);
         let slice = parser.slice();
-        consume_nosave!(parser, Then, state, true, true, "Expected `then`, got `{}`", slice);
+        consume_nosave!(parser, Then, state, true, "Expected `then`, got `{}`", slice);
 
         // Get body
         newline(parser);
-        let then = call_func_fatal!(expression, parser, true, "Expected body after then");
+        let then = call_func_fatal!(expression, parser, "Expected body after then");
 
         // Get else keyword
         newline(parser);
         let slice = parser.slice();
-        consume_nosave!(parser, Else, state, true, true, "Expected `else`, got `{}`", slice);
+        consume_nosave!(parser, Else, state, true, "Expected `else`, got `{}`", slice);
 
         // Get else clause
         newline(parser);
-        let elsy = call_func_fatal!(expression, parser, true, "Expected body after else");
+        let elsy = call_func_fatal!(expression, parser, "Expected body after else");
 
         // Return success
         Ok(AST::If(Span {
@@ -952,7 +954,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
 fn list(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (_, start) = consume_save!(parser, LBrack, state, false, false, "");
+    let (_, start) = consume_save!(parser, LBrack, state, false, "");
     let mut list = vec![];
 
     loop
@@ -979,7 +981,7 @@ fn list(parser: &mut Parser) -> Result<AST, ParseError>
     }
 
     newline(parser);
-    let (_, end) = consume_save!(parser, RBrack, state, true, true, "Expected `[` after end of list");
+    let (_, end) = consume_save!(parser, RBrack, state, true, "Expected `[` after end of list");
 
     Ok(AST::List(Span {
         start: start.start,
@@ -993,7 +995,7 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
     let mut args = vec![];
-    let (_, span) = consume_save!(parser, Lambda, state, false, false, "");
+    let (_, span) = consume_save!(parser, Lambda, state, false, "");
 
     // Get arguments
     loop
@@ -1030,18 +1032,17 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError>
         return Err(ParseError {
             span: parser.span(),
             msg: String::from("Expected argument after `lambda`"),
-            continuable: false,
             fatal: true
         })
     }
 
     // Get the assign operator
     let slice = parser.slice();
-    consume_nosave!(parser, Assign, state, false, true, "Expected `=`, got `{}`", slice);
+    consume_nosave!(parser, Assign, state, true, "Expected `=`, got `{}`", slice);
 
     // Get the value
     newline(parser);
-    let body = call_func_fatal!(expression, parser, true, "Expected function body after `=`");
+    let body = call_func_fatal!(expression, parser, "Expected function body after `=`");
 
     Ok(AST::Lambda(Span {
         start: span.start,
@@ -1054,10 +1055,10 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError>
 fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (_, span) = consume_save!(parser, Match, state, false, false, "");
+    let (_, span) = consume_save!(parser, Match, state, false, "");
 
     // Get value
-    let value = call_func_fatal!(expression, parser, false, "Expected expression after `match`");
+    let value = call_func_fatal!(expression, parser, "Expected expression after `match`");
     let mut arms = vec![];
     newline(parser);
 
@@ -1070,11 +1071,11 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
         }
 
         parser.next();
-        let _type = call_func_fatal!(type_expr, parser, false, "Expected type after `to`");
+        let _type = call_func_fatal!(type_expr, parser, "Expected type after `to`");
         newline(parser);
-        consume_nosave!(parser, ThiccArrow, state, true, true, "Expected `=>` after type");
+        consume_nosave!(parser, ThiccArrow, state, true, "Expected `=>` after type");
         newline(parser);
-        let value = call_func_fatal!(expression, parser, true, "Expected expression after `=>`");
+        let value = call_func_fatal!(expression, parser, "Expected expression after `=>`");
         arms.push((_type, value));
         newline(parser);
     }
@@ -1088,7 +1089,6 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
                 end: value.get_span().end
             },
             msg: String::from("Expected `to` after match value"),
-            continuable: true,
             fatal: true
         });
     }
@@ -1129,7 +1129,7 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
 fn annotation(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (annotation, span) = consume_save!(parser, Annotation, state, false, false, "");
+    let (annotation, span) = consume_save!(parser, Annotation, state, false, "");
     Ok(AST::Annotation(span, annotation))
 }
 
@@ -1139,14 +1139,14 @@ fn assignment_raw(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
-    let (name, span) = consume_save!(parser, Symbol, state, false, false, "");
+    let (name, span) = consume_save!(parser, Symbol, state, false, "");
 
     // Get the assign operator
-    consume_nosave!(parser, Assign, state, false, false, "");
+    consume_nosave!(parser, Assign, state, false, "");
 
     // Get the value
     newline(parser);
-    let value = call_func_fatal!(expression, parser, true, "Expected value after `=`");
+    let value = call_func_fatal!(expression, parser, "Expected value after `=`");
 
     Ok(AST::Assign(Span {
         start: span.start,
@@ -1176,7 +1176,7 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
     {
         let state = parser.save_state();
         parser.next();
-        let (value, span2) = consume_save!(parser, Symbol, state, false, true, "Expected symbol after `enum`");
+        let (value, span2) = consume_save!(parser, Symbol, state, true, "Expected symbol after `enum`");
 
         Ok(AST::Prefix(Span {
             start: span.start,
@@ -1188,7 +1188,7 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
     {
         let state = parser.save_state();
         parser.next();
-        let (value, span2) = consume_save!(parser, Symbol, state, false, true, "Expected symbol after `enum`");
+        let (value, span2) = consume_save!(parser, Symbol, state, true, "Expected symbol after `ptr`");
 
         Ok(AST::Prefix(Span {
             start: span.start,
@@ -1213,7 +1213,7 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
 
         // Get right parenthesis
         newline(parser);
-        consume_nosave!(parser, RParen, state, true, true, "");
+        consume_nosave!(parser, RParen, state, true, "");
         Ok(AST::Prefix(span, String::with_capacity(0), Box::new(value)))
 
     // Not a value
@@ -1229,8 +1229,8 @@ fn type_tagged(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
     let s = call_func!(symbol, parser, state);
-    consume_nosave!(parser, Colon, state, false, false, "");
-    let t = call_func_fatal!(type_symbol, parser, false, "Expected type after `:`");
+    consume_nosave!(parser, Colon, state, false, "");
+    let t = call_func_fatal!(type_symbol, parser, "Expected type after `:`");
 
     Ok(AST::Infix(
         Span {
@@ -1294,7 +1294,7 @@ fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
             parser.next();
 
             // Get right hand side
-            let mut right = Some(call_func_fatal!(type_union, parser, false, "Expected value after infix operator"));
+            let mut right = Some(call_func_fatal!(type_union, parser, "Expected value after infix operator"));
 
             // Build ast
             match &mut acc
@@ -1356,17 +1356,17 @@ fn type_assignment(parser: &mut Parser) -> Result<AST, ParseError>
 {
     // Get type keyword
     let state = parser.save_state();
-    let (_, span) = consume_save!(parser, Type, state, false, false, "");
+    let (_, span) = consume_save!(parser, Type, state, false, "");
 
     // Get name of type
-    let (name, _) = consume_save!(parser, Symbol, state, false, true, "Expected symbol after type");
+    let (name, _) = consume_save!(parser, Symbol, state, true, "Expected symbol after type");
 
     // Get assignment operator
-    consume_nosave!(parser, Assign, state, false, true, "Expected `=` after type name");
+    consume_nosave!(parser, Assign, state, true, "Expected `=` after type name");
     newline(parser);
 
     // Get type
-    let _type = call_func_fatal!(type_expr, parser, true, "Expected type after `=`");
+    let _type = call_func_fatal!(type_expr, parser, "Expected type after `=`");
 
     // Successfully return
     Ok(AST::AssignType(Span {
@@ -1381,13 +1381,13 @@ fn declaration(parser: &mut Parser) -> Result<(Span, String, AST), ParseError>
 {
     // Get the variable name
     let state = parser.save_state();
-    let (name, span) = consume_save!(parser, Symbol, state, false, false, "");
+    let (name, span) = consume_save!(parser, Symbol, state, false, "");
 
     // Get the colon
-    consume_nosave!(parser, Colon, state, false, false, "");
+    consume_nosave!(parser, Colon, state, false, "");
 
     // Get the type
-    let type_val = call_func_fatal!(type_expr, parser, false, "Expected type after `:`");
+    let type_val = call_func_fatal!(type_expr, parser, "Expected type after `:`");
 
     Ok((span, name, type_val))
 }
@@ -1401,11 +1401,11 @@ fn assignment_typed(parser: &mut Parser) -> Result<AST, ParseError>
 
     // Get the assign operator
     let slice = parser.slice();
-    consume_nosave!(parser, Assign, state, false, true, "Expected `=`, got `{}`", slice);
+    consume_nosave!(parser, Assign, state, true, "Expected `=`, got `{}`", slice);
 
     // Get the value
     newline(parser);
-    let value = call_func_fatal!(expression, parser, true, "Expected value after `=`");
+    let value = call_func_fatal!(expression, parser, "Expected value after `=`");
 
     Ok(AST::AssignTyped(Span {
         start: span.start,
@@ -1420,7 +1420,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
     // Get the variable name
     let state = parser.save_state();
     let mut args = vec![];
-    let (name, span) = consume_save!(parser, Symbol, state, false, false, "");
+    let (name, span) = consume_save!(parser, Symbol, state, false, "");
 
     // Get arguments
     loop
@@ -1459,11 +1459,11 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError>
 
     // Get the assign operator
     let slice = parser.slice();
-    consume_nosave!(parser, Assign, state, false, true, "Expected `=`, got `{}`", slice);
+    consume_nosave!(parser, Assign, state, true, "Expected `=`, got `{}`", slice);
 
     // Get the value
     newline(parser);
-    let value = call_func_fatal!(expression, parser, true, "Expected function body after `=`");
+    let value = call_func_fatal!(expression, parser, "Expected function body after `=`");
 
     Ok(AST::AssignFunction(Span {
         start: span.start,
@@ -1494,7 +1494,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
     // Get the with keyword
     let state = parser.save_state();
     let span = parser.span();
-    consume_nosave!(parser, With, state, false, false, "");
+    consume_nosave!(parser, With, state, false, "");
 
     // Get assignments
     let mut assigns = vec![];
@@ -1510,7 +1510,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
 
         // Comma
         let slice = parser.slice();
-        consume_nosave!(parser, Comma, state, false, true, "Expected `,`, got `{}`", slice);
+        consume_nosave!(parser, Comma, state, true, "Expected `,`, got `{}`", slice);
         newline(parser);
     }
 
@@ -1535,7 +1535,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
 fn import(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (_, span) = consume_save!(parser, Import, state, false, false, "");
+    let (_, span) = consume_save!(parser, Import, state, false, "");
     let start = span.start;
     let qualified = if let Some((Token::Qualified, _)) = parser.peek()
     {
@@ -1545,7 +1545,7 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
     {
         false
     };
-    let name = call_func_fatal!(access_member, parser, false, "Expected module name after `import`");
+    let name = call_func_fatal!(access_member, parser, "Expected module name after `import`");
     let mut end = name.get_span().end;
 
     if qualified
@@ -1554,7 +1554,7 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
         if let Some((Token::As, _)) = parser.peek()
         {
             parser.next();
-            let (a, s) = consume_save!(parser, Symbol, state, true, false, "Expected alias after `as`");
+            let (a, s) = consume_save!(parser, Symbol, state, true, "Expected alias after `as`");
             end = s.end;
             alias = a
         }
@@ -1577,7 +1577,6 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
                         return Err(ParseError {
                             span: parser.span(),
                             msg: String::from("Expected imported item or right parenthesis, got end of file"),
-                            continuable: true,
                             fatal: true
                         });
                     }
@@ -1594,7 +1593,6 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
                             return Err(ParseError {
                                 span: parser.span(),
                                 msg: String::from("Expected imported item or right parenthesis"),
-                                continuable: true,
                                 fatal: true
                             });
                         }
@@ -1617,9 +1615,9 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
 fn header(parser: &mut Parser) -> Result<AST, ParseError>
 {
     let state = parser.save_state();
-    let (_, span) = consume_save!(parser, Module, state, false, false, "");
+    let (_, span) = consume_save!(parser, Module, state, false, "");
     let start = span.start;
-    let name = call_func_fatal!(access_member, parser, false, "Expected module name after `module`");
+    let name = call_func_fatal!(access_member, parser, "Expected module name after `module`");
     let mut end = name.get_span().end;
 
     let mut exports = vec![];
@@ -1654,7 +1652,6 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                     return Err(ParseError {
                         span,
                         msg: String::from("Expected exported item or right parenthesis, got end of file"),
-                        continuable: true,
                         fatal: true
                     });
                 }
@@ -1681,7 +1678,6 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
                         return Err(ParseError {
                             span,
                             msg: String::from("Expected exported item or right parenthesis"),
-                            continuable: true,
                             fatal: true
                         });
                     }
@@ -1711,6 +1707,25 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError>
     ))
 }
 
+// externy(&mut Parser) -> Result<AST, ParseError>
+// Parses an external function declaration.
+fn externy(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    consume_nosave!(parser, Extern, state, false, "");
+    let (c_func, s) = consume_save!(parser, String, state, true, "Expected string literal after `extern`");
+
+    newline(parser);
+    let (name, _) = consume_save!(parser, Symbol, state, true, "Expected symbol after external function declaration");
+    consume_nosave!(parser, Colon, state, true, "Expected `:` after foreign function declaration");
+    let _type = call_func_fatal!(type_expr, parser, "Expected type after `:`");
+
+    Ok(AST::Extern(Span {
+        start: s.start,
+        end: _type.get_span().end
+    }, c_func, name, Box::new(_type)))
+}
+
 // parse(&str) -> Result<AST, ParseError>
 // Parses curly code.
 pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
@@ -1737,6 +1752,9 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
         } else if let Ok(_type) = call_optional!(type_assignment, p)
         {
             lines.push(_type);
+        } else if let Ok(_extern) = call_optional!(externy, p)
+        {
+            lines.push(_extern);
         } else
         {
             lines.push(match expression(p)
@@ -1748,7 +1766,6 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
                     return Err(ParseError {
                         span: p.span(),
                         msg: format!("Unexpected `{}`", peeked),
-                        continuable: false,
                         fatal: true
                     })
                 }

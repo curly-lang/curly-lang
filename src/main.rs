@@ -366,6 +366,7 @@ impl CurlyREPLHelper
                     | Module
                     | Import
                     | Qualified
+                    | Extern
                     | As
                     | Stop
                     | Type

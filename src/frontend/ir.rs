@@ -423,8 +423,9 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             | AST::Import(_, _, _)
             | AST::QualifiedImport(_, _, _)
             | AST::Header(_, _, _, _)
+            | AST::Extern(_, _, _, _)
             => {
-            unreachable!("annotations, imports, and headers are already handled!");
+            unreachable!("annotations, imports, headers, and external declarations are already handled!");
         }
 
         // String

@@ -9,6 +9,10 @@ module Modules::Funcs
     # , type OptionInt
     )
 
+extern "div"
+__prim__div : Int -> Int -> Int
+div x: Int, y: Int = __prim__div x y
+
 sum x: Float, y: Float = x + y
 product x: Float, y: Float = x * y
 
