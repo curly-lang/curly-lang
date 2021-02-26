@@ -328,6 +328,79 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             }
         }
 
+        // External functions
+        SExpr::ExternalFunc(m, name, args) => {
+            // Get function references
+            let mut arg_refs = Vec::with_capacity(0);
+            for arg in args
+            {
+                let v = convert_sexpr(arg, root, func, types);
+                arg_refs.push(v);
+            }
+
+            // Push function declaration
+            let ret_type = if let Type::Enum(_) = m._type { "void" } else { get_c_type(&m._type, types) };
+            func.code.push_str(ret_type);
+            func.code.push(' ');
+            func.code.push_str(name);
+            func.code.push('(');
+            let mut comma = false;
+            for arg in args
+            {
+                if let Type::Enum(_) = arg.get_metadata()._type
+                {
+                    continue;
+                }
+
+                if comma
+                {
+                    func.code.push_str(", ");
+                } else
+                {
+                    comma = true;
+                }
+
+                func.code.push_str(get_c_type(&arg.get_metadata()._type, types));
+            }
+            func.code.push_str(");\n");
+
+            // Call function
+            let mut _ref = String::with_capacity(0);
+            if ret_type != "void"
+            {
+                _ref = format!("$${}", func.last_reference);
+                func.last_reference += 1;
+                func.code.push_str(ret_type);
+                func.code.push(' ');
+                func.code.push_str(&_ref);
+                func.code.push_str(" = ");
+            }
+
+            func.code.push_str(name);
+            func.code.push('(');
+            let mut comma = false;
+            for arg in arg_refs
+            {
+                if arg == ""
+                {
+                    continue;
+                }
+
+                if comma
+                {
+                    func.code.push_str(", ");
+                } else
+                {
+                    comma = true;
+                }
+
+                func.code.push_str(&arg);
+            }
+            func.code.push_str(");\n");
+
+            _ref
+        }
+
         // Prefix
         SExpr::Prefix(m, op, v) => {
             // Get name and value
@@ -1134,7 +1207,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                     func.code.push_str(");\n");
                                 } else
                                 {
-                                    func.code.push_str(" = ((");
+                                    func.code.push_str("((");
 
                                     // Create function pointer
                                     func.code.push_str(get_c_type(ftype, types));

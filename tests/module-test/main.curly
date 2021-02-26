@@ -4,6 +4,8 @@ import qualified Modules::Funcs
 main = with _ = debug (Modules::Funcs::sum 2.7 3.3),
             _ = debug (Modules::Funcs::product 43.3 24.2),
             _ = debug Modules::Funcs::x,
+            _ = debug Modules::Funcs::fact_10,
+            _ = debug (Modules::Funcs::div 15 3),
             0
 # debug (Funcs::OptionInt::Some 3)
 # debug Funcs::OptionInt::None

@@ -6,10 +6,11 @@ module Modules::Funcs
     , fact      : Int -> Int
     , fact_10   : Int
     , x         : Int
+    , div       : Int -> Int -> Int
     # , type OptionInt
     )
 
-extern "div"
+extern "divide"
 __prim__div : Int -> Int -> Int
 div x: Int, y: Int = __prim__div x y
 
