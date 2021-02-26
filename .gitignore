@@ -3,3 +3,5 @@
 Cargo.lock
 tags
 history.txt
+*.o
+*.a

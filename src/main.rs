@@ -26,12 +26,13 @@ use curlyc::frontend::ir::{IR, IRError, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = true;
+static DEBUG: bool = false;
 
 struct CommandlineBuildOptions
 {
     output: String,
-    inputs: Vec<String>
+    inputs: Vec<String>,
+    compiler_options: Vec<String>
 }
 
 fn main() -> Result<(), ()>
@@ -52,7 +53,8 @@ fn main() -> Result<(), ()>
             "build" => {
                 let mut options = CommandlineBuildOptions {
                     output: String::with_capacity(0),
-                    inputs: Vec::with_capacity(0)
+                    inputs: Vec::with_capacity(0),
+                    compiler_options: Vec::with_capacity(0)
                 };
 
                 while let Some(a) = args.next()
@@ -71,7 +73,13 @@ fn main() -> Result<(), ()>
                         }
 
                         _ => {
-                            options.inputs.push(a);
+                            if a.starts_with("-L") || a.starts_with("-l")
+                            {
+                                options.compiler_options.push(a);
+                            } else
+                            {
+                                options.inputs.push(a);
+                            }
                         }
                     }
                 }
@@ -142,7 +150,11 @@ fn main() -> Result<(), ()>
 
                 command.arg("-o");
                 command.arg(&format!(".build/{}", options.output));
-                command.spawn().expect("failed to execute gcc").wait().expect("failed to wait for gcc");
+                for arg in options.compiler_options
+                {
+                    command.arg(&arg);
+                }
+                command.spawn().expect("failed to execute cc").wait().expect("failed to wait for cc");
             }
 
             "check" => {
@@ -176,35 +188,10 @@ fn main() -> Result<(), ()>
                 }
             }
 
-            "run" => {
-                match args.next()
-                {
-                    Some(file) => {
-                        // Get file contents
-                        let _contents = match fs::read_to_string(&file)
-                        {
-                            Ok(v) => v,
-                            Err(e) => {
-                                eprintln!("Error reading file: {}", e);
-                                return Err(());
-                            }
-                        };
-
-                        // Execute file
-                        //let mut ir = IR::new();
-                        //execute(vec![file], vec![contents], &mut ir, None, 0);
-                    }
-
-                    None => {
-                        println!("usage:\n{} run [file]", &name);
-                    }
-                }
-            }
-
             _ => {
                 println!("usage:
-{} run [file]
-{} build [options] [file]
+{} check [files]
+{} build [options] [files]
 ", &name, &name);
             }
         }
