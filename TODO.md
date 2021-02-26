@@ -1,7 +1,6 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Bindings with C
 - Make local assignments lazy
 - Replace `with x = 2, y = 3, x + y` with `let x = 2, y = 3 in x + y`
 - Deal with types properly
@@ -10,7 +9,6 @@ These things are features and fixes I'd like to get completed for the third majo
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
 - `;` operator (chains actions together)
 - `:=` operator (creates a super local scope that only lasts for one infix operation)
-- Remove hacky `putch` function and replace it with an actual C function
 - See github issues
 
 ## Fourth official release:
