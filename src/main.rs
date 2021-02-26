@@ -848,6 +848,15 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
                         diagnostic = diagnostic
                             .with_message("No main function found");
                     }
+
+                    CorrectnessError::CurriedExternalFunc(s) => {
+                        diagnostic = diagnostic
+                            .with_message("Cannot curry external function")
+                            .with_labels(vec![
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                .with_message("Curried function found here")
+                            ])
+                    }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }

@@ -29,7 +29,8 @@ pub enum CorrectnessError
     MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type),
     VariableImportedTwice(Location, Location),
     ImportedValueNotExported(Location, String, String),
-    NoMainFunction
+    NoMainFunction,
+    CurriedExternalFunc(Location)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1475,6 +1476,7 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
 
             // Check body
             check_sexpr(&mut func.body, module, errors);
+            check_externals(&mut func.body, errors);
             func.checked = true;
 
             // Pop scope
@@ -1818,6 +1820,8 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
     }
 }
 
+// fix_arity(&mut SExpr, &mut Scope) -> ()
+// Fixes the arity of imported functions.
 fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
 {
     match sexpr
@@ -1894,6 +1898,61 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
                 fix_arity(&mut a.1, scope)
             }
             scope.pop_scope();
+        }
+
+        _ => ()
+    }
+}
+
+// check_externals(&SExpr, &mut Vec<CorrectnessError>)
+// Checks if external functions are applied fully.
+fn check_externals(sexpr: &SExpr, errors: &mut Vec<CorrectnessError>)
+{
+    match sexpr
+    {
+        SExpr::ExternalFunc(m, _, _) => {
+            if m.arity != 0
+            {
+                errors.push(CorrectnessError::CurriedExternalFunc(m.loc.clone()));
+            }
+        }
+
+        SExpr::Prefix(_, _, v)
+            | SExpr::As(_, v)
+            | SExpr::Assign(_, _, v)
+            => {
+            check_externals(v, errors)
+        }
+
+        SExpr::Infix(_, _, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
+            | SExpr::Application(_, l, r)
+            => {
+            check_externals(l, errors);
+            check_externals(r, errors);
+        }
+        SExpr::If(_, c, t, e) => {
+            check_externals(c, errors);
+            check_externals(t, errors);
+            check_externals(e, errors);
+        }
+
+        SExpr::With(_, a, v) => {
+            for a in a
+            {
+                check_externals(a, errors);
+            }
+            check_externals(v, errors);
+        }
+
+        SExpr::Match(_, v, a) => {
+            check_externals(v, errors);
+
+            for a in a
+            {
+                check_externals(&a.1, errors);
+            }
         }
 
         _ => ()
@@ -2015,6 +2074,7 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
         {
             convert_function_symbols(sexpr, &mut HashSet::from_iter(module.funcs.iter().map(|v| v.0.clone())));
             check_sexpr(sexpr, &mut module, &mut errors);
+            check_externals(sexpr, &mut errors);
         }
         swap(&mut module.sexprs, &mut sexprs);
         ir.modules.insert(name, module);
