@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::mem::swap;
 
-use super::ir::{BinOp, IR, IRExtern, IRFunction, IRModule, Location, PrefixOp, SExpr, SExprMetadata};
+use super::ir::{BinOp, IR, IRExtern, IRFunction, IRImport, IRModule, Location, PrefixOp, SExpr, SExprMetadata};
 use super::scopes::{FunctionName, Scope};
 use super::types::{HashSetWrapper, Type};
 
@@ -105,7 +105,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
                 None => {
                     let mut func = module.funcs.remove(f).unwrap();
-                    check_function_body(f, f, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals);
+                    check_function_body(f, f, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals, &module.imports);
 
                     module.scope.push_scope(true);
                     for a in func.args.iter()
@@ -970,9 +970,9 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
     }
 }
 
-// get_function_type(&SExpr, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>, &mut Vec<(String, Type)>, &HashMap<String, Type>, &HashMap<String, IRExtern>) -> Type
+// get_function_type(so many arguments aaaa) -> Type
 // Gets the function type, returning Type::Unknown if a type cannot be found.
-fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>, externals: &HashMap<String, IRExtern>) -> Type
+fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, captured: &mut HashMap<String, Type>, captured_names: &mut Vec<String>, types: &HashMap<String, Type>, externals: &HashMap<String, IRExtern>, imports: &HashMap<String, IRImport>) -> Type
 {
     match sexpr
     {
@@ -1002,7 +1002,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                 // Check child function
                 None => {
                     let mut func = funcs.remove(f).unwrap();
-                    check_function_body(f, f, module_name, &mut func, scope, funcs, errors, types, externals);
+                    check_function_body(f, f, module_name, &mut func, scope, funcs, errors, types, externals, imports);
                     funcs.insert(f.clone(), func);
                     scope.get_var(f).unwrap().0.clone()
                 }
@@ -1050,7 +1050,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             match op
             {
                 PrefixOp::Neg => {
-                    let vt = get_function_type(v, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+                    let vt = get_function_type(v, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
 
                     match scope.get_func_ret(FunctionName::Prefix(vt))
                     {
@@ -1065,8 +1065,8 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
 
         // Infix operators
         SExpr::Infix(_, op, l, r) => {
-            let lt = get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types, externals);
-            let rt = get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+            let lt = get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
+            let rt = get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt))
             {
@@ -1079,15 +1079,15 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
 
         // Boolean and/or
         SExpr::And(_, l, r) | SExpr::Or(_, l, r) => {
-            get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types, externals);
-            get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+            get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
+            get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
             Type::Bool
         }
 
         // If expressions
         SExpr::If(_, _, body, elsy) => {
-            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types, externals);
-            let et = get_function_type(elsy, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
+            let et = get_function_type(elsy, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
 
             if bt == Type::Unknown && et == Type::Unknown
             {
@@ -1137,12 +1137,12 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             {
                 if s == "debug"
                 {
-                    return get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+                    return get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
                 }
             }
 
             // Get function type
-            let mut ft = get_function_type(f, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+            let mut ft = get_function_type(f, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
             if let Type::Unknown = ft
             {
                 return Type::Unknown;
@@ -1175,7 +1175,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                 m._type.clone()
             } else
             {
-                get_function_type(value, module_name, scope, funcs, errors, captured, captured_names, types, externals)
+                get_function_type(value, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports)
             };
 
             if name != "_"
@@ -1193,11 +1193,11 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             // Populate scope with variable types
             for a in assigns
             {
-                get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+                get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
             }
 
             // Get the function type
-            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+            let bt = get_function_type(body, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
 
             // Pop the scope and return type
             scope.pop_scope();
@@ -1221,7 +1221,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                     None
                 };
 
-                let mut _type = get_function_type(&arm.1, module_name, scope, funcs, errors, captured, captured_names, types, externals);
+                let mut _type = get_function_type(&arm.1, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
 
                 if let Some(s) = name
                 {
@@ -1301,6 +1301,53 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
         }
 
         SExpr::MemberAccess(_, a) => {
+            // Get module
+            let mut module_name = String::new();
+            let mut pos = 0;
+            let types = types;
+            for a in a.iter().enumerate()
+            {
+                if module_name.len() != 0
+                {
+                    module_name.push_str("::");
+                }
+                module_name.push_str(a.1);
+
+                if imports.contains_key(&module_name)
+                {
+                    pos = a.0 + 1;
+                }
+            }
+
+            if pos > 0
+            {
+                module_name.clear();
+                for a in a.iter().enumerate()
+                {
+                    if a.0 == pos
+                    {
+                        break;
+                    }
+
+                    if module_name.len() != 0
+                    {
+                        module_name.push_str("::");
+                    }
+                    module_name.push_str(a.1);
+                }
+
+                if let Some(v) = imports.get(&module_name).unwrap().imports.get(&a[pos])
+                {
+                    return if a.len() > pos + 1
+                    {
+                        Type::Unknown
+                    } else
+                    {
+                        v.0.clone()
+                    };
+                }
+            }
+
             if let Some(t) = types.get(&a[0])
             {
                 if let Type::Sum(f) = t
@@ -1344,7 +1391,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
 
 // check_function_body(&str, &str, &str, &IRFunction, &mut Scope, &HashMap<String, IRFunction>, &mut Vec<CorrectnessError>) -> Vec<(String, Type)>
 // Checks a function body and determines the return type of the function.
-fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>, externals: &HashMap<String, IRExtern>)
+fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>, externals: &HashMap<String, IRExtern>, imports: &HashMap<String, IRImport>)
 {
     if scope.get_var(name).is_none() && scope.get_var(refr).is_none()
     {
@@ -1369,7 +1416,7 @@ fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRF
     // Get the type
     let mut captured = HashMap::with_capacity(0);
     let mut captured_names = Vec::with_capacity(0);
-    let _type = get_function_type(&func.body, module_name, scope, funcs, errors, &mut captured, &mut captured_names, types, externals);
+    let _type = get_function_type(&func.body, module_name, scope, funcs, errors, &mut captured, &mut captured_names, types, externals, imports);
     func.captured = captured;
     func.captured_names = captured_names;
     scope.pop_scope();
@@ -1450,7 +1497,7 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
         // Handle functions
         if let Some(mut func) = module.funcs.remove(&name.0)
         {
-            check_function_body(&name.0, &name.1, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals);
+            check_function_body(&name.0, &name.1, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals, &module.imports);
             module.funcs.insert(name.0, func);
         } else
         {
@@ -1569,6 +1616,28 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
     if let Type::Sum(_) = &m._type
     {
         save_single_type(id, &m._type, types);
+    } else if let Type::Func(l, r) = &m._type
+    {
+        if let Type::Sum(_) = &**l
+        {
+            save_single_type(id, l, types);
+        }
+
+        let mut t = &**r;
+        while let Type::Func(l, r) = t
+        {
+            if let Type::Sum(_) = &**l
+            {
+                save_single_type(id, &**l, types);
+            }
+
+            t = &**r;
+        }
+
+        if let Type::Sum(_) = t
+        {
+            save_single_type(id, t, types);
+        }
     }
 
     match sexpr
