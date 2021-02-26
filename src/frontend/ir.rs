@@ -151,6 +151,9 @@ pub enum SExpr
     // Functions
     Function(SExprMetadata, String),
 
+    // External function application
+    ExternalFunc(SExprMetadata, String, Vec<SExpr>),
+
     // Prefix expression
     Prefix(SExprMetadata, PrefixOp, Box<SExpr>),
 
@@ -203,6 +206,7 @@ impl SExpr
                 | Self::String(m, _)
                 | Self::List(m, _)
                 | Self::Function(m, _)
+                | Self::ExternalFunc(m, _, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
                 | Self::As(m, _)
@@ -236,6 +240,7 @@ impl SExpr
                 | Self::String(m, _)
                 | Self::List(m, _)
                 | Self::Function(m, _)
+                | Self::ExternalFunc(m, _, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
                 | Self::As(m, _)
