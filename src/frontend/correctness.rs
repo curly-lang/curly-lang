@@ -1016,7 +1016,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             {
                 Some(v) => {
                     // Check if captured
-                    if scope.is_captured(s) && !captured.contains_key(s) && s != "debug" && s != "putch"
+                    if scope.is_captured(s) && !captured.contains_key(s)
                     {
                         captured.insert(s.clone(), v.0.clone());
                         captured_names.push(s.clone());
@@ -1541,7 +1541,7 @@ fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     // Get the set of all global functions and globals
     let mut globals = HashSet::from_iter(module.scope.variables.iter().filter_map(|v| {
-        if v.0 != "debug" && v.0 != "putch"
+        if v.0 != "debug"
         {
             Some(v.0.clone())
         } else
@@ -2269,6 +2269,13 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                                         unreachable!("nya");
                                     }
                                 }
+
+                                // Update variable
+                                let var = module.scope.variables.get_mut(n).unwrap();
+                                var.1 = func.args.len();
+                                var.2 = Some(0);
+
+                                // Transfer metadata
                                 let mut meta = SExprMetadata::empty();
                                 let n = n.clone();
                                 swap(&mut meta, sexpr.get_mutable_metadata());
@@ -2279,6 +2286,18 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                 }
             }
 
+            // Fix arity (again)
+            for sexpr in module.sexprs.iter_mut()
+            {
+                fix_arity(sexpr, &mut module.scope);
+            }
+
+            for func in module.funcs.iter_mut()
+            {
+                fix_arity(&mut func.1.body, &mut module.scope);
+            }
+
+            // Reinsert module
             ir.modules.insert(name, module);
         }
 

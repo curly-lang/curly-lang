@@ -26,7 +26,7 @@ use curlyc::frontend::ir::{IR, IRError, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 struct CommandlineBuildOptions
 {

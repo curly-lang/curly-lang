@@ -771,13 +771,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                     {
                         panic!("Using debug on multiple arguments is not supported");
                     }
-                } else if v == "putch"
-                {
-                    let arg = convert_sexpr(&args[0], root, func, types);
-                    func.code.push_str("printf(\"%c\", (char) ");
-                    func.code.push_str(&arg);
-                    func.code.push_str(");\n");
-                    return arg;
                 }
             }
 
