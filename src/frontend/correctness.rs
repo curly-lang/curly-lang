@@ -2215,7 +2215,8 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
                         body: SExpr::True(SExprMetadata::empty()),
                         global: true,
                         checked: true,
-                        written: true
+                        written: true,
+                        impure: false
                     };
                     func.body.get_mutable_metadata()._type = i.1.0.clone();
                     module.funcs.insert(i.0.clone(), func);

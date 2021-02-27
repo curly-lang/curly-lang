@@ -90,7 +90,8 @@ pub struct SExprMetadata
     pub _type: Type,
     pub arity: usize,
     pub saved_argc: Option<usize>,
-    pub tailrec: bool
+    pub tailrec: bool,
+    pub impure: bool
 }
 
 impl SExprMetadata
@@ -106,8 +107,8 @@ impl SExprMetadata
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false
-
+            tailrec: false,
+            impure: false
         }
     }
 }
@@ -267,7 +268,8 @@ pub struct IRFunction
     pub body: SExpr,
     pub global: bool,
     pub checked: bool,
-    pub written: bool
+    pub written: bool,
+    pub impure: bool
 }
 
 #[derive(Debug)]
@@ -285,7 +287,8 @@ pub struct IRExtern
     pub loc: Location,
     pub extern_name: String,
     pub arg_types: Vec<Type>,
-    pub ret_type: Type
+    pub ret_type: Type,
+    pub impure: bool
 }
 
 // Represents a module of the ir.
@@ -345,7 +348,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Int,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, n),
 
         // Float
@@ -356,7 +360,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Float,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, n),
 
         // Word
@@ -367,7 +372,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Word,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, n),
 
         // Char
@@ -378,7 +384,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Char,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, c),
 
         // True
@@ -389,7 +396,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }),
  
         // False
@@ -400,7 +408,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }),
 
         AST::List(span, list) => SExpr::List(SExprMetadata {
@@ -410,7 +419,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, list.into_iter().map(|v| convert_node(v, filename, funcs, global, seen_funcs, types)).collect()),
 
         // Symbol
@@ -421,7 +431,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, s),
 
         // Enum
@@ -432,7 +443,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Enum(e.clone()),
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, e),
 
         AST::Annotation(_, _)
@@ -452,7 +464,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::String,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, s),
 
         // Prefix
@@ -471,7 +484,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, op, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)))
         }
 
@@ -487,7 +501,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false
+                    tailrec: false,
+                    impure: false
                 }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             } else if op == "or"
             {
@@ -498,7 +513,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false
+                    tailrec: false,
+                    impure: false
                 }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
 
             // Deal with accessing members
@@ -533,7 +549,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false
+                    tailrec: false,
+                    impure: false
                 }, accesses)
             } else
             {
@@ -568,7 +585,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false
+                    tailrec: false,
+                    impure: false
                 }, op, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             }
         }
@@ -580,7 +598,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: types::convert_ast_to_type(*_type, filename, types),
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, Box::new(convert_node(*value, filename, funcs, global, seen_funcs, types))),
 
         // If expression
@@ -591,7 +610,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, Box::new(convert_node(*cond, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*then, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*elsy, filename, funcs, global, seen_funcs, types))),
 
         // Application
@@ -602,7 +622,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false
+            tailrec: false,
+            impure: false
         }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types))),
 
         // Assignment
@@ -610,27 +631,60 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
             if global && name != "_"
             {
-                funcs.insert(name.clone(), IRFunction {
+                let func_name = if seen_funcs.contains_key(&name)
+                {
+                    let seen = seen_funcs.get_mut(&name).unwrap();
+                    *seen += 1;
+                    format!("{}${}", name, seen)
+                } else
+                {
+                    seen_funcs.insert(name.clone(), 0);
+                    name.clone()
+                };
+                funcs.insert(func_name.clone(), IRFunction {
                     loc: Location::new(span.clone(), filename),
                     args: Vec::with_capacity(0),
                     captured: HashMap::with_capacity(0),
                     captured_names: Vec::with_capacity(0),
-                    body: sexpr.clone(),
+                    body: sexpr,
                     global: true,
                     checked: false,
-                    written: false
+                    written: false,
+                    impure: false
                 });
-            }
 
-            SExpr::Assign(SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::empty(),
-                origin: String::with_capacity(0),
-                _type: Type::Error,
-                arity: 0,
-                saved_argc: None,
-                tailrec: false
-            }, name, Box::new(sexpr))
+                SExpr::Assign(SExprMetadata {
+                    loc: Location::new(span.clone(), filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, name, Box::new(SExpr::Function(SExprMetadata {
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, func_name)))
+            } else
+            {
+                SExpr::Assign(SExprMetadata {
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, name, Box::new(sexpr))
+            }
         }
 
         // Assignment with types
@@ -638,27 +692,62 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             let sexpr = convert_node(*val, filename, funcs, false, seen_funcs, types);
             if global && name != "_"
             {
-                funcs.insert(name.clone(), IRFunction {
+                let func_name = if seen_funcs.contains_key(&name)
+                {
+                    let seen = seen_funcs.get_mut(&name).unwrap();
+                    *seen += 1;
+                    format!("{}${}", name, seen)
+                } else
+                {
+                    seen_funcs.insert(name.clone(), 0);
+                    name.clone()
+                };
+                funcs.insert(func_name.clone(), IRFunction {
                     loc: Location::new(span.clone(), filename),
                     args: Vec::with_capacity(0),
                     captured: HashMap::with_capacity(0),
                     captured_names: Vec::with_capacity(0),
-                    body: sexpr.clone(),
+                    body: sexpr,
                     global: true,
                     checked: false,
-                    written: false
+                    written: false,
+                    impure: false
                 });
-            }
 
-            SExpr::Assign(SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::new(_type.get_span().clone(), filename),
-                origin: String::with_capacity(0),
-                _type: types::convert_ast_to_type(*_type, filename, types),
-                arity: 0,
-                saved_argc: None,
-                tailrec: false
-            }, name, Box::new(sexpr))
+                let ts = _type.get_span();
+                let _type = types::convert_ast_to_type(*_type, filename, types);
+                SExpr::Assign(SExprMetadata {
+                    loc: Location::new(span.clone(), filename),
+                    loc2: Location::new(ts.clone(), filename),
+                    origin: String::with_capacity(0),
+                    _type: _type.clone(),
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, name, Box::new(SExpr::Function(SExprMetadata {
+                    loc: Location::new(span, filename),
+                    loc2: Location::new(ts, filename),
+                    origin: String::with_capacity(0),
+                    _type,
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, func_name)))
+            } else
+            {
+                SExpr::Assign(SExprMetadata {
+                    loc: Location::new(span, filename),
+                    loc2: Location::new(_type.get_span().clone(), filename),
+                    origin: String::with_capacity(0),
+                    _type: types::convert_ast_to_type(*_type, filename, types),
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, name, Box::new(sexpr))
+            }
         }
 
         AST::AssignType(span, name, _type) => {
@@ -672,7 +761,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, name)
         }
 
@@ -698,7 +788,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, func_name.clone());
 
             // Create the function
@@ -713,7 +804,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 body: convert_node(*val, filename, funcs, false, seen_funcs, types),
                 global,
                 checked: false,
-                written: false
+                written: false,
+                impure: false
             };
 
             let mut _type = Type::Error;
@@ -739,7 +831,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type,
                 arity,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, name, Box::new(func_id))
         }
 
@@ -759,7 +852,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, func_name.clone());
 
             // Create the function
@@ -771,7 +865,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 body: convert_node(*val, filename, funcs, false, seen_funcs, types),
                 global: false,
                 checked: false,
-                written: false
+                written: false,
+                impure: false
             };
 
             let mut _type = Type::Error;
@@ -802,7 +897,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)),
                 a.into_iter().map(|a| {
                     let span2 = a.0.get_span().clone();
@@ -822,7 +918,8 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: v.get_metadata()._type.clone(),
                 arity: 0,
                 saved_argc: None,
-                tailrec: false
+                tailrec: false,
+                impure: false
             }, a.into_iter().map(|a| convert_node(a, filename, funcs, false, seen_funcs, types)).collect(), Box::new(v))
         }
     }
@@ -841,6 +938,14 @@ fn extract_types_to_ir(asts: &Vec<AST>, module: &mut IRModule)
     }
 }
 
+// Represents the purity of the next function.
+enum Purity
+{
+    Pure,
+    Impure,
+    Default
+}
+
 // convert_ast_to_ir(Vec<AST>) -> IR
 // Converts a list of asts into ir.
 pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<(), Vec<IRError>>
@@ -853,6 +958,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<
     let mut sexprs = vec![];
     let mut module_name = String::with_capacity(0);
     let mut errors = vec![];
+    let mut purity = Purity::Default;
 
     // Iterate over every ast node
     for ast in asts
@@ -997,7 +1103,14 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<
             }
         } else if let AST::Annotation(span, a) = ast
         {
-            if true
+            // Purity tags
+            if a == "@pure"
+            {
+                purity = Purity::Pure;
+            } else if a == "@impure"
+            {
+                purity = Purity::Impure;
+            } else
             {
                 errors.push(IRError::UnsupportedAnnotation(
                     Location::new(span, filename),
@@ -1036,12 +1149,33 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<
                     loc: Location::new(span, &module.filename),
                     extern_name: c,
                     arg_types,
-                    ret_type
+                    ret_type,
+                    impure: match purity
+                    {
+                        Purity::Default | Purity::Impure => true,
+                        Purity::Pure => false
+                    }
                 });
             }
+
+            purity = Purity::Default;
         } else
         {
-            sexprs.push(convert_node(ast, filename, &mut module.funcs, true, &mut seen_funcs, &mut module.types));
+            let v = convert_node(ast, filename, &mut module.funcs, true, &mut seen_funcs, &mut module.types);
+            if let SExpr::Assign(_, _, v) = &v
+            {
+                if let SExpr::Function(_, f) = &**v
+                {
+                    module.funcs.get_mut(f).unwrap().impure =
+                        match purity
+                        {
+                            Purity::Pure | Purity::Default => false,
+                            Purity::Impure => true
+                        };
+                }
+            }
+            sexprs.push(v);
+            purity = Purity::Default;
         }
     }
 

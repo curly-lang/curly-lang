@@ -2467,10 +2467,16 @@ typedef struct {
     {
         if let SExpr::Assign(m, n, v) = s
         {
-            if let SExpr::Function(_, _) = &**v
+            if let SExpr::Function(_, f) = &**v
             {
-            } else
-            {
+                // Get function
+                let v = module.funcs.get(f).unwrap();
+                if v.args.len() != 0
+                {
+                    continue;
+                }
+                let v = &v.body;
+
                 // Create getter
                 let is_enum = if let Type::Enum(_) = m._type { true } else { false };
                 let sanitised = sanitise_symbol(n);

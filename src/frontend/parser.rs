@@ -1751,12 +1751,9 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
         } else if let Ok(_type) = call_optional!(type_assignment, p)
         {
             lines.push(_type);
-        } else if let Ok(_extern) = call_optional!(externy, p)
-        {
-            lines.push(_extern);
         } else
         {
-            lines.push(match expression(p)
+            lines.push(match externy(p)
             {
                 Ok(v) => v,
                 Err(e) if e.fatal => return Err(e),
