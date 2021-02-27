@@ -26,13 +26,22 @@ use curlyc::frontend::ir::{IR, IRError, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = true;
+static DEBUG: bool = false;
+
+#[derive(PartialEq)]
+enum CompileMode
+{
+    Executable,
+    Dynamic,
+    Static
+}
 
 struct CommandlineBuildOptions
 {
     output: String,
     inputs: Vec<String>,
-    compiler_options: Vec<String>
+    compiler_options: Vec<String>,
+    mode: CompileMode
 }
 
 fn main() -> Result<(), ()>
@@ -54,7 +63,8 @@ fn main() -> Result<(), ()>
                 let mut options = CommandlineBuildOptions {
                     output: String::with_capacity(0),
                     inputs: Vec::with_capacity(0),
-                    compiler_options: Vec::with_capacity(0)
+                    compiler_options: Vec::with_capacity(0),
+                    mode: CompileMode::Executable
                 };
 
                 while let Some(a) = args.next()
@@ -70,6 +80,14 @@ fn main() -> Result<(), ()>
                                 println!("Must specify an output file");
                                 return Err(());
                             }
+                        }
+
+                        "--dyn" => {
+                            options.mode = CompileMode::Dynamic;
+                        }
+
+                        "--lib" => {
+                            options.mode = CompileMode::Static;
                         }
 
                         _ => {
@@ -100,7 +118,7 @@ fn main() -> Result<(), ()>
                         {
                             Ok(v) => v,
                             Err(e) => {
-                                eprintln!("Error reading file: {}", e);
+                                eprintln!("Error reading {}: {}", v, e);
                                 std::process::exit(1);
                             }
                         }
@@ -109,17 +127,14 @@ fn main() -> Result<(), ()>
                 let mut ir = IR {
                     modules: HashMap::with_capacity(0)
                 };
-                let mut c = compile(&options.inputs, &contents, &mut ir, None)?;
-                for c in c.iter_mut()
-                {
-                    c.0 = format!(".build/{}", c.0);
-                }
+                let c = compile(&options.inputs, &contents, &mut ir, None, options.mode == CompileMode::Executable)?;
 
                 // Create .build
                 match fs::remove_dir_all(".build")
                 {
                     _ => ()
                 }
+
                 match fs::create_dir(".build")
                 {
                     Ok(_) => (),
@@ -129,6 +144,7 @@ fn main() -> Result<(), ()>
                     }
                 }
 
+                std::env::set_current_dir(".build").expect("failed to move to .build");
                 for c in c.iter()
                 {
                     match fs::write(&c.0, &c.1)
@@ -143,18 +159,63 @@ fn main() -> Result<(), ()>
 
                 let mut command = Command::new("gcc");
 
-                for c in c
+                for c in c.iter()
                 {
                     command.arg(&c.0);
                 }
 
-                command.arg("-o");
-                command.arg(&format!(".build/{}", options.output));
                 for arg in options.compiler_options
                 {
                     command.arg(&arg);
                 }
+
+                match options.mode
+                {
+                    CompileMode::Executable => {
+                        command.arg("-o");
+                        command.arg(&options.output);
+                    }
+
+                    CompileMode::Static => {
+                        command.arg("-c");
+                    }
+
+                    CompileMode::Dynamic => {
+                        command.arg("-c");
+                        command.arg("-fPIC");
+                    }
+                }
+
                 command.spawn().expect("failed to execute cc").wait().expect("failed to wait for cc");
+
+                // Archive
+                if options.mode != CompileMode::Executable
+                {
+                    let mut command = Command::new("ar");
+                    command.arg("-rc");
+
+                    match options.mode
+                    {
+                        CompileMode::Static => {
+                            command.arg(&format!("lib{}.a", options.output));
+                        }
+
+                        CompileMode::Dynamic => {
+                            command.arg(&format!("lib{}.so", options.output));
+                        }
+
+                        CompileMode::Executable => unreachable!("no")
+                    }
+                    
+                    for c in c
+                    {
+                        if c.0.ends_with(".c")
+                        {
+                            command.arg(&format!("{}o", &c.0[..c.0.len() - 1]));
+                        }
+                    }
+                    command.spawn().expect("failed to execute ar").wait().expect("failed to wait for ar");
+                }
             }
 
             "check" => {
@@ -166,7 +227,7 @@ fn main() -> Result<(), ()>
                         {
                             Ok(v) => v,
                             Err(e) => {
-                                eprintln!("Error reading file: {}", e);
+                                eprintln!("Error reading {}: {}", file, e);
                                 return Err(());
                             }
                         };
@@ -175,7 +236,7 @@ fn main() -> Result<(), ()>
                         let mut ir = IR {
                             modules: HashMap::with_capacity(0)
                         };
-                        match check(&vec![file], &vec![contents], &mut ir)
+                        match check(&vec![file], &vec![contents], &mut ir, true)
                         {
                             Ok(_) => println!("No errors found"),
                             Err(_) => return Err(())
@@ -517,9 +578,9 @@ fn repl()
     rl.save_history("history.txt").unwrap();
 }
 
-// check(&str, &str, &mut IR) -> Result<(), ()>
+// check(&Vec<String>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
 // Checks whether given code is valid.
-fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<(), ()>
+fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main: bool) -> Result<(), ()>
 {
     // Set up codespan
     let mut files = SimpleFiles::new();
@@ -639,7 +700,7 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
     }
 
     // Check correctness
-    let err = correctness::check_correctness(ir);
+    let err = correctness::check_correctness(ir, require_main);
 
     // Print out the ir or the error
     match err
@@ -852,12 +913,12 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR) -> Result<()
     }
 }
 
-// compile(&str, &str, &mut IR, Option<&mut Vec<String>>) -> Result<String, ()>
+// compile(&str, &str, &mut IR, Option<&mut Vec<String>>, bool) -> Result<String, ()>
 // Compiles curly into C code.
-fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<&Vec<String>>) -> Result<Vec<(String, String)>, ()>
+fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, repl_vars: Option<&Vec<String>>, require_main: bool) -> Result<Vec<(String, String)>, ()>
 {
     // Check the file
-    check(filenames, codes, ir)?;
+    check(filenames, codes, ir, require_main)?;
 
     // Generate C code
     let c = codegen::convert_ir_to_c(&ir);

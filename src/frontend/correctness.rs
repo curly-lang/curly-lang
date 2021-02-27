@@ -2099,9 +2099,9 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
     }
 }
 
-// check_correctness(&mut IR) -> ()
+// check_correctness(&mut IR, bool) -> ()
 // Checks the correctness of module.
-pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
+pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<CorrectnessError>>
 {
     // Set up
     let mut errors = Vec::with_capacity(0);
@@ -2149,18 +2149,21 @@ pub fn check_correctness(ir: &mut IR) -> Result<(), Vec<CorrectnessError>>
         ir.modules.insert(name, module);
     }
 
-    let mut has_main = false;
-    for module in ir.modules.iter()
+    if require_main
     {
-        if module.1.name == "Main" && module.1.scope.variables.contains_key("main")
+        let mut has_main = false;
+        for module in ir.modules.iter()
         {
-            has_main = true;
+            if module.1.name == "Main" && module.1.scope.variables.contains_key("main")
+            {
+                has_main = true;
+            }
         }
-    }
 
-    if !has_main
-    {
-        errors.push(CorrectnessError::NoMainFunction);
+        if !has_main
+        {
+            errors.push(CorrectnessError::NoMainFunction);
+        }
     }
 
     // Return error if they exist, otherwise return success
