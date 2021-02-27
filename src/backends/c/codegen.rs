@@ -2652,7 +2652,7 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
             {
                 put_fn_declaration(&mut header, &module.name, f, types);
                 header.push_str(";\n\n");
-                header.push_str(get_c_type(f.ret_type, types));
+                header.push_str(if let Type::Enum(_) = f.ret_type { "void" } else { get_c_type(f.ret_type, types) });
                 header.push(' ');
                 header.push_str(&sanitise_symbol(&module.name));
                 header.push_str(&f.name);
