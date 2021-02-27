@@ -454,7 +454,6 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                 BinOp::GEQ => ">=",
                 BinOp::EQ => "==",
                 BinOp::NEQ => "!=",
-                BinOp::In => panic!("unsupported operator!"),
                 BinOp::And => "&",
                 BinOp::Or => "|",
                 BinOp::Xor => "^",

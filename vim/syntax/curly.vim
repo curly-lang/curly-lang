@@ -5,7 +5,7 @@ endif
 let b:current_syntax = "curly"
 
 " Keywords
-syntax keyword curlyKeyword with
+syntax keyword curlyKeyword let
 syntax keyword curlyKeyword for some all where pass stop
 syntax keyword curlyKeyword if then else
 syntax keyword curlyKeyword type enum ptr class match to

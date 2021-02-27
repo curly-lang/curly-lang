@@ -145,7 +145,7 @@ pub enum Token
     ThiccArrow,
 
     // Keywords
-    #[token("with")]
+    #[token("let")]
     With,
 
     #[token("for")]
@@ -584,6 +584,7 @@ macro_rules! infix_op
         {
             // Save current state
             let state2 = $parser.save_state();
+            newline($parser);
 
             // Check for operator
             if let Some(op) = $parser.peek()
@@ -598,6 +599,7 @@ macro_rules! infix_op
                     }
                 };
                 $parser.next();
+                newline($parser);
 
                 // Get right hand side
                 let right = call_func_fatal!($subfunc, $parser, "Expected value after infix operator");
@@ -855,7 +857,7 @@ fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
 // Gets the next comparison expression.
 fn compare(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, bitshift, Token::Compare, Token::In)
+    infix_op!(parser, bitshift, Token::Compare, Token::Unreachable)
 }
 
 // and(&mut Parser) -> Option<AST::Infix, ParseError>
@@ -1504,9 +1506,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
         };
         assigns.push(assign);
 
-        // Comma
-        let slice = parser.slice();
-        consume_nosave!(parser, Comma, state, true, "Expected `,`, got `{}`", slice);
+        // Newline
         newline(parser);
     }
 
@@ -1518,6 +1518,8 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError>
     }
 
     // Get the body
+    consume_nosave!(parser, In, state, true, "Expected `in` after let bindings");
+    newline(parser);
     let body = call_func!(expression, parser, state);
 
     Ok(AST::With(Span {

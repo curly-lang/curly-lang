@@ -2,7 +2,6 @@
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
 - Make local assignments lazy
-- Replace `with x = 2, y = 3, x + y` with `let x = 2, y = 3 in x + y`
 - Deal with types properly
 - Tagged system for side effects
 - Fix memory leaks
@@ -22,6 +21,7 @@ These things are features and fixes I'd like to get completed for the fourth maj
 These things are features and fixes I'd like to get completed in some point in the far future. Although these features are desired, they are not a priority due to either their complexity or dependencies. These are not in any particular order, and will be moved into an appropriate release when decided upon. These features, however, will be necessary to implement before an official v1.0.0.
 - Intersection types
 - Generics
+- Type classes/traits
 - Mutability
 - Laziness
 - Lists (defined as linked lists but optimised into vectors using `@vector`)
