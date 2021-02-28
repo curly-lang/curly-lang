@@ -556,6 +556,17 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     saved_argc: None,
                     tailrec: false
                 }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
+            } else if op == "$"
+            {
+                SExpr::Application(SExprMetadata {
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false
+                }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             } else
             {
                 // Get operator

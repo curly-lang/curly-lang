@@ -380,7 +380,8 @@ impl CurlyREPLHelper
                     | ColonColon
                     | Comma
                     | Dot
-                    | Semicolon =>
+                    | Semicolon
+                    | Dollar =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().bright_yellow())),
 
                 Int(_)

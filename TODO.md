@@ -1,6 +1,7 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
+- Fix applying impure functions to pure functions
 - Make local assignments lazy
 - Fix memory leaks with lifetime analysis
 - Compile as static/dynamic library

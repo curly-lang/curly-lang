@@ -90,6 +90,9 @@ pub enum Token
     #[token("^")]
     Caret,
 
+    #[token("$")]
+    Dollar,
+
     // Numbers
     #[regex(r"[0-9]+", |lex| lex.slice().parse())]
     #[regex(r"0x[0-9a-fA-F]+", |lex| i64::from_str_radix(&lex.slice()[2..], 16))]
@@ -126,7 +129,7 @@ pub enum Token
     Char(u8),
 
     // Symbols (variables and stuff)
-    #[regex(r"[$a-zA-Z_][a-zA-Z0-9_']*")]
+    #[regex(r"[a-zA-Z_][a-zA-Z0-9_']*")]
     Symbol,
 
     // Annotations
@@ -1207,6 +1210,13 @@ fn expression_values(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// apply_op(&mut Parser) -> Result<AST::Infix, ParseError>
+// Gets the next infix application.
+fn apply_op(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    infixr_op!(parser, expression_values, Token::Dollar, Token::Unreachable)
+}
+
 // walrus(&mut Parser) -> Result<AST, ParseError>
 // Parses a walrus operator.
 fn walrus(parser: &mut Parser) -> Result<AST, ParseError>
@@ -1217,7 +1227,7 @@ fn walrus(parser: &mut Parser) -> Result<AST, ParseError>
         let name = parser.slice();
         parser.next();
         consume_nosave!(parser, Walrus, state, false, "");
-        let v = call_func_fatal!(expression_values, parser, "Expected expression after `:=`");
+        let v = call_func_fatal!(apply_op, parser, "Expected expression after `:=`");
 
         Ok(AST::Walrus(Span {
             start: s.start,
@@ -1238,7 +1248,7 @@ fn walrus_wrapper(parser: &mut Parser) -> Result<AST, ParseError>
         Ok(v)
     } else
     {
-        expression_values(parser)
+        apply_op(parser)
     }
 }
 

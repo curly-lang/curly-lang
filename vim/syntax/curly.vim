@@ -29,6 +29,7 @@ syntax match curlyOperator "\v::?"
 syntax match curlyOperator "\v\(|\)|\[|\]|\{|\}"
 syntax match curlyOperator "\v\=\>|\-\>"
 syntax match curlyOperator "\v\.|,|;"
+syntax match curlyOperator "\v\$"
 highlight link curlyOperator Operator
 
 " Values
@@ -42,7 +43,7 @@ syntax match curlyConst "\v'(\\.|[^\\'])'"
 highlight link curlyConst Constant
 
 " Identifiers
-syntax match curlyIdent "\v((true|false)[a-zA-Z0-9_']@!)@![$@a-z_][a-zA-Z0-9_']*"
+syntax match curlyIdent "\v((true|false)[a-zA-Z0-9_']@!)@![@a-z_][a-zA-Z0-9_']*"
 highlight link curlyIdent Identifier
 syntax match curlyType "\v[A-Z][a-zA-Z0-9_']*"
 highlight link curlyType Type
