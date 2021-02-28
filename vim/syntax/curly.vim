@@ -28,7 +28,7 @@ syntax match curlyOperator "\v\^"
 syntax match curlyOperator "\v::?"
 syntax match curlyOperator "\v\(|\)|\[|\]|\{|\}"
 syntax match curlyOperator "\v\=\>|\-\>"
-syntax match curlyOperator "\v\.|,"
+syntax match curlyOperator "\v\.|,|;"
 highlight link curlyOperator Operator
 
 " Values

@@ -30,7 +30,8 @@ pub enum Token
     #[regex(r"([ \t\f\r]|\\\n)+", logos::skip)]
     Whitespace,
 
-    #[regex(r"#[^\n]*\n?", logos::skip)]
+    #[regex(r"#[^\n]*", logos::skip)]
+    #[regex(r"\{-([^\-]|-[^\}])*-\}", logos::skip)]
     Comment,
 
     // Error
@@ -46,6 +47,9 @@ pub enum Token
 
     #[token(",")]
     Comma,
+
+    #[token(";")]
+    Semicolon,
 
     #[token(".")]
     Dot,
@@ -571,9 +575,9 @@ macro_rules! consume_save
     }
 }
 
-// infix_op(ident, ident, pat, pat) -> Result<AST, ParseError>
-// Parses an infix operator.
-macro_rules! infix_op
+// infixl_op(ident, ident, pat, pat) -> Result<AST, ParseError>
+// Parses a left associative infix operator.
+macro_rules! infixl_op
 {
     ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
         // Set up
@@ -621,6 +625,82 @@ macro_rules! infix_op
     }}
 }
 
+// infixl_op(ident, ident, pat, pat) -> Result<AST, ParseError>
+// Parses a right associative infix operator.
+macro_rules! infixr_op
+{
+    ($parser: ident, $subfunc: ident, $op1: pat, $op2: pat) => {{
+        // Set up
+        use std::mem::swap;
+        let state = $parser.save_state();
+        let mut top = call_func!($subfunc, $parser, state);
+        let mut acc = &mut top;
+        let mut first = true;
+
+        loop
+        {
+            // Save current state
+            let state2 = $parser.save_state();
+            newline($parser);
+
+            // Check for operator
+            if let Some(op) = $parser.peek()
+            {
+                // Get operator
+                let op = match op.0
+                {
+                    $op1 | $op2 => String::from($parser.slice()),
+                    _ => {
+                        $parser.return_state(state2);
+                        break;
+                    }
+                };
+                $parser.next();
+                newline($parser);
+
+                // Get right hand side
+                let right = call_func_fatal!($subfunc, $parser, "Expected value after infix operator");
+
+                #[allow(unused_assignments)]
+                if first
+                {
+                    let mut t1 = AST::True(Span { start: 0, end: 0 });
+                    let mut t2 = AST::True(Span { start: 0, end: 0 });
+                    acc = &mut t1;
+                    swap(&mut t2, &mut top);
+                    top = AST::Infix(Span {
+                        start: t2.get_span().start,
+                        end: right.get_span().end
+                    }, op, Box::new(t2), Box::new(right));
+                    first = false;
+                    acc = &mut top;
+                } else
+                {
+                    let mut t = AST::True(Span { start: 0, end: 0 });
+                    if let AST::Infix(_, _, _, r) = acc
+                    {
+                        let r1 = &mut **r;
+                        swap(r1, &mut t);
+                        let ast = AST::Infix(Span {
+                            start: t.get_span().start,
+                            end: right.get_span().end
+                        }, op, Box::new(t), Box::new(right));
+                        *r1 = ast;
+                        acc = r1;
+                    }
+                }
+
+            // If there's no operator, break
+            } else
+            {
+                break;
+            }
+        }
+
+        Ok(top)
+    }}
+}
+
 // newline(&mut Parser) -> ()
 // Optionally parses newlines.
 fn newline(parser: &mut Parser)
@@ -644,7 +724,7 @@ fn symbol(parser: &mut Parser) -> Result<AST, ParseError>
 // Parses accessing a member.
 fn access_member(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, symbol, Token::ColonColon, Token::Unreachable)
+    infixl_op!(parser, symbol, Token::ColonColon, Token::Unreachable)
 }
 
 // value(&mut Parser) -> Result<AST, ParseError>
@@ -836,70 +916,70 @@ fn prefix(parser: &mut Parser) -> Result<AST, ParseError>
 // Gets the next multiplication/division/modulus expression.
 fn muldivmod(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, prefix, Token::Mul, Token::DivMod)
+    infixl_op!(parser, prefix, Token::Mul, Token::DivMod)
 }
 
 // addsub(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next addition/subtraction expression.
 fn addsub(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, muldivmod, Token::Add, Token::Sub)
+    infixl_op!(parser, muldivmod, Token::Add, Token::Sub)
 }
 
 // bitshift(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitshift expression.
 fn bitshift(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, addsub, Token::BitShift, Token::Unreachable)
+    infixl_op!(parser, addsub, Token::BitShift, Token::Unreachable)
 }
 
 // compare(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next comparison expression.
 fn compare(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, bitshift, Token::Compare, Token::Unreachable)
+    infixl_op!(parser, bitshift, Token::Compare, Token::Unreachable)
 }
 
 // and(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitwise and expression.
 fn and(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, compare, Token::Ampersand, Token::Unreachable)
+    infixl_op!(parser, compare, Token::Ampersand, Token::Unreachable)
 }
 
 // or(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitwise or expression.
 fn or(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, and, Token::Bar, Token::Unreachable) 
+    infixl_op!(parser, and, Token::Bar, Token::Unreachable) 
 }
 
 // xor(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next bitwise xor expression.
 fn xor(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, or, Token::Caret, Token::Unreachable) 
+    infixl_op!(parser, or, Token::Caret, Token::Unreachable) 
 }
 
 // bool_and(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next logical and expression.
 fn bool_and(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, xor, Token::And, Token::Or) 
+    infixl_op!(parser, xor, Token::And, Token::Or) 
 }
 
 // bool_or(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next logical or expression.
 fn bool_or(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, bool_and, Token::Or, Token::Unreachable)
+    infixl_op!(parser, bool_and, Token::Or, Token::Unreachable)
 }
 
 // bool_xor(&mut Parser) -> Option<AST::Infix, ParseError>
 // Gets the next logical xor expression.
 fn bool_xor(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, bool_or, Token::Xor, Token::Unreachable)
+    infixl_op!(parser, bool_or, Token::Xor, Token::Unreachable)
 }
 
 // if_expr(&mut Parser) -> Result<AST, ParseError>
@@ -1097,9 +1177,9 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
     }, Box::new(value), arms))
 }
 
-// expression(&mut Parser) -> Result<AST, ParseError>
+// expression_values(&mut Parser) -> Result<AST, ParseError>
 // Parses an expression.
-fn expression(parser: &mut Parser) -> Result<AST, ParseError>
+fn expression_values(parser: &mut Parser) -> Result<AST, ParseError>
 {
     if let Ok(iffy) = call_optional!(if_expr, parser)
     {
@@ -1120,6 +1200,11 @@ fn expression(parser: &mut Parser) -> Result<AST, ParseError>
     {
         bool_xor(parser)
     }
+}
+
+fn expression(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    infixr_op!(parser, expression_values, Token::Semicolon, Token::Unreachable)
 }
 
 // annotation(&mut Parser) -> Result<AST, ParseError>
@@ -1211,8 +1296,8 @@ fn type_symbol(parser: &mut Parser) -> Result<AST, ParseError>
 
         // Get right parenthesis
         newline(parser);
-        consume_nosave!(parser, RParen, state, true, "");
-        Ok(AST::Prefix(span, String::with_capacity(0), Box::new(value)))
+        consume_nosave!(parser, RParen, state, true, "Expected right parenthesis");
+        Ok(value)
 
     // Not a value
     } else
@@ -1258,94 +1343,14 @@ fn type_field(parser: &mut Parser) -> Result<AST, ParseError>
 // Parses a union type declaration.
 fn type_union(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infix_op!(parser, type_field, Token::Bar, Token::Unreachable)
+    infixl_op!(parser, type_field, Token::Bar, Token::Unreachable)
 }
 
 // type_expr(&mut Parser) -> Result<AST, ParseError>
 // Parses a type.
 fn type_expr(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    // Set up
-    use std::mem::swap;
-    let state = parser.save_state();
-    let mut top = call_func!(type_union, parser, state);
-    let mut acc = &mut top;
-
-    loop
-    {
-        // Save current state
-        let state2 = parser.save_state();
-
-        // Check for operator
-        if let Some(op) = parser.peek()
-        {
-            // Get operator
-            match op.0
-            {
-                Token::RightArrow => (),
-
-                _ => {
-                    parser.return_state(state2);
-                    break;
-                }
-            }
-            parser.next();
-
-            // Get right hand side
-            let mut right = Some(call_func_fatal!(type_union, parser, "Expected value after infix operator"));
-
-            // Build ast
-            match &mut acc
-            {
-                AST::Infix(_, op, _, r) if op.as_str() == "->" => {
-                    let mut left = Box::new(AST::False(Span { start: 0, end: 0 }));
-                    swap(r, &mut left);
-                    let right_unwrapped = right.unwrap();
-                    right = None;
-                    let mut new = Box::new(AST::Infix(Span {
-                        start: r.get_span().start,
-                        end: right_unwrapped.get_span().end
-                    }, String::from("->"), left, Box::new(right_unwrapped)));
-                    swap(r, &mut new);
-                }
-
-                _ => ()
-            }
-
-            // Adjust top node
-            if let AST::Prefix(span, s, v) = acc
-            {
-                #[allow(unused_assignments)]
-                if s == ""
-                {
-                    let mut temp = AST::True(span.clone());
-                    acc = &mut temp;
-                    top = *v.clone();
-                    acc = &mut top;
-                }
-            }
-
-            if right.is_some()
-            {
-                let right_unwrapped = right.unwrap();
-                top = AST::Infix(Span {
-                    start: top.get_span().start,
-                    end: right_unwrapped.get_span().end
-                }, String::from("->"), Box::new(top), Box::new(right_unwrapped));
-                acc = &mut top;
-            } else if let AST::Infix(_, _, _, r) = acc
-            {
-                acc = r;
-            }
-
-        // If there's no operator, break
-        } else
-        {
-            break;
-        }
-    }
-
-    Ok(top)
+    infixr_op!(parser, type_union, Token::RightArrow, Token::Unreachable)
 }
 
 // type_assignment(&mut Parser) -> Result<AST, ParseError>

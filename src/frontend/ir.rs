@@ -160,6 +160,10 @@ pub enum SExpr
     // Infix expression
     Infix(SExprMetadata, BinOp, Box<SExpr>, Box<SExpr>),
 
+
+    // Chain operator
+    Chain(SExprMetadata, Box<SExpr>, Box<SExpr>),
+
     // Casting
     As(SExprMetadata, Box<SExpr>),
 
@@ -209,6 +213,7 @@ impl SExpr
                 | Self::ExternalFunc(m, _, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
+                | Self::Chain(m, _, _)
                 | Self::As(m, _)
                 | Self::And(m, _, _)
                 | Self::Or(m, _, _)
@@ -243,6 +248,7 @@ impl SExpr
                 | Self::ExternalFunc(m, _, _)
                 | Self::Prefix(m, _, _)
                 | Self::Infix(m, _, _, _)
+                | Self::Chain(m, _, _)
                 | Self::As(m, _)
                 | Self::And(m, _, _)
                 | Self::Or(m, _, _)
@@ -552,6 +558,18 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     tailrec: false,
                     impure: false
                 }, accesses)
+            } else if op == ";"
+            {
+                SExpr::Chain(SExprMetadata {
+                    loc: Location::new(span, filename),
+                    loc2: Location::empty(),
+                    origin: String::with_capacity(0),
+                    _type: Type::Error,
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false
+                }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             } else
             {
                 // Get operator

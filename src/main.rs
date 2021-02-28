@@ -26,7 +26,7 @@ use curlyc::frontend::ir::{IR, IRError, IRModule, SExpr};
 use curlyc::frontend::parser::{self, Token};
 use curlyc::frontend::types::Type;
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 #[derive(PartialEq)]
 enum CompileMode
@@ -378,7 +378,8 @@ impl CurlyREPLHelper
                     | Colon
                     | ColonColon
                     | Comma
-                    | Dot =>
+                    | Dot
+                    | Semicolon =>
                     new_line.push_str(&format!("{}", line[t.1].to_owned().bright_yellow())),
 
                 Int(_)

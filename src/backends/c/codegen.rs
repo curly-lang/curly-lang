@@ -466,6 +466,11 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             name
         }
 
+        SExpr::Chain(_, l, r) => {
+            convert_sexpr(l, root, func, types);
+            convert_sexpr(r, root, func, types)
+        }
+
         // Boolean and
         SExpr::And(m, l, r) => {
             // Get name and left operand

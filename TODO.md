@@ -1,14 +1,14 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- Tagged system for side effects
-- Compile as static/dynamic library
-- Make local assignments lazy
-- Deal with exporting types properly
-- Fix memory leaks
-- Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
 - `;` operator (chains actions together)
 - `:=` operator (creates a super local scope that only lasts for one infix operation)
+- Tagged system for side effects
+- Make local assignments lazy
+- Fix memory leaks
+- Compile as static/dynamic library
+- Deal with exporting types properly
+- Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
 - See github issues
 
 ## Fourth official release:

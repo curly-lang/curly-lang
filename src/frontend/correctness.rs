@@ -238,6 +238,20 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             }
         }
 
+        SExpr::Chain(m, left, right) => {
+            // Check child nodes
+            check_sexpr(left, module, errors);
+            check_sexpr(right, module, errors);
+
+            // Check if an error occurred
+            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
+            {
+                return;
+            }
+
+            m._type = right.get_metadata()._type.clone();
+        }
+
         SExpr::As(m, v) => {
             // Check child node
             check_sexpr(v, module, errors);
@@ -906,6 +920,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
 
         // Infix operators
         SExpr::Infix(_, _, l, r)
+            | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
@@ -1073,6 +1088,11 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                 Some(v) => v.clone(),
                 None => Type::Unknown
             }
+        }
+
+        SExpr::Chain(_, l, r) => {
+            get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
+            get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports)
         }
 
         SExpr::As(m, _) => m._type.clone(),
@@ -1648,6 +1668,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
         }
 
         SExpr::Infix(_, _, l, r)
+            | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
@@ -1752,6 +1773,7 @@ fn is_called(sexpr: &mut SExpr, name: &str) -> bool
         }
 
         SExpr::Infix(_, _, l, r)
+            | SExpr::Chain(_, l, r)
             | SExpr::Application(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
@@ -1808,6 +1830,21 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
                 m.tailrec = true;
             }
 
+            true
+        }
+
+        SExpr::Chain(m, l, r) => {
+            if is_called(l, name)
+            {
+                return false;
+            }
+
+            if !check_tailrec(r, name, top)
+            {
+                return false;
+            }
+
+            m.tailrec = r.get_metadata().tailrec;
             true
         }
 
@@ -1913,6 +1950,7 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
         }
 
         SExpr::Infix(_, _, l, r)
+            | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
             => {
@@ -1995,6 +2033,7 @@ fn check_externals(sexpr: &SExpr, errors: &mut Vec<CorrectnessError>)
         }
 
         SExpr::Infix(_, _, l, r)
+            | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
