@@ -1,7 +1,12 @@
+module Main
+
 apply f: Int -> Int, x: Int = f x
 f x: Int = x + x
-debug (apply f)
-debug (apply f 3)
-apply_f = apply f
-debug apply_f
-debug (apply_f 7)
+
+main =
+    let _ = debug (apply f)
+        _ = debug (apply f 3)
+        apply_f = apply f
+        _ = debug apply_f
+        _ = debug (apply_f 7)
+    in 0

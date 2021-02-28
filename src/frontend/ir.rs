@@ -180,7 +180,7 @@ pub enum SExpr
     With(SExprMetadata, Vec<SExpr>, Box<SExpr>),
 
     // Match expressions
-    Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr)>),
+    Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr, Location)>),
 
     // Member access
     MemberAccess(SExprMetadata, Vec<String>)
@@ -718,7 +718,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 let _type = types::convert_ast_to_type(*_type, filename, types);
                 SExpr::Assign(SExprMetadata {
                     loc: Location::new(span.clone(), filename),
-                    loc2: Location::new(ts.clone(), filename),
+                    loc2: Location::new(ts, filename),
                     origin: String::with_capacity(0),
                     _type: _type.clone(),
                     arity: 0,
@@ -727,7 +727,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     impure: false
                 }, name, Box::new(SExpr::Function(SExprMetadata {
                     loc: Location::new(span, filename),
-                    loc2: Location::new(ts, filename),
+                    loc2: Location::empty(),
                     origin: String::with_capacity(0),
                     _type,
                     arity: 0,
@@ -902,9 +902,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             }, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)),
                 a.into_iter().map(|a| {
                     let span2 = a.0.get_span().clone();
-                    let mut v = (types::convert_ast_to_type(a.0, filename, types), convert_node(a.1, filename, funcs, global, seen_funcs, types));
-                    v.1.get_mutable_metadata().loc2.span = span2;
-                    v
+                    (types::convert_ast_to_type(a.0, filename, types), convert_node(a.1, filename, funcs, global, seen_funcs, types), Location::new(span2, filename))
                 }).collect()
             ),
 

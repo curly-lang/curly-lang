@@ -1,4 +1,7 @@
-type ListItem = Int | ((ListItem -> ListItem -> ListItem) -> ListItem)
+module Main
+import IO::Term
+
+type ListItem = Char | ((ListItem -> ListItem -> ListItem) -> ListItem)
 type List = (ListItem -> ListItem -> ListItem) -> ListItem
 
 cons x: ListItem, y: ListItem, f: ListItem -> ListItem -> ListItem = f x y
@@ -11,8 +14,8 @@ cdr list: ListItem =
     match list
     to l: List => l falsefn
 
-flag = cons 0x46 (cons 0x6c (cons 0x61 (cons 0x67 (cons 0x3a (cons 0x20 (cons 0xf0 (cons 0x9f (cons 0x8f (cons 0x81 0)))))))))
-exc = cons 0x21 (cons 0x21 (cons 0x31 0))
+flag = cons 'f' (cons 'l' (cons 'a' (cons 'g' '0')))
+exc = cons '\'' (cons '\'' (cons '.' '0'))
 
 _string_isutf8startchar x: ListItem = match x 
     to x: Int => if (x < 128) or (x >= 191) then 1 else 0
@@ -36,7 +39,8 @@ _print_char item: ListItem = match item
     to item: Int => putch item
 
 print str: ListItem = match str
-    to str: List => with _ = _print_char (car str), print (cdr str)
+    to str: List => let _ = _print_char (car str)
+        in print (cdr str)
     to Int => 0
 
-print (concat flag exc)
+main = print (concat flag exc)

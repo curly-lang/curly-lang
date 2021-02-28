@@ -1,7 +1,9 @@
+module Main
+
 slowadd x: Int, y: Int =
 	if x == 0 then
 		y
 	else
 		slowadd (x - 1) (y + 1)
 
-debug (slowadd 1000000 1000000)
+main = debug (slowadd 1000000 1000000)

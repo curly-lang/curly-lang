@@ -1,10 +1,14 @@
+module Main
+
 cons x: Float, y: Float, f: Float -> Float -> Float = f x y
 truefn x: Float, y: Float = x
 falsefn x: Float, y: Float = y
 car list: (Float -> Float -> Float) -> Float = list truefn
 cdr list: (Float -> Float -> Float) -> Float = list falsefn
 
-list = cons 2.0 5.7
-debug (car list)
-debug (cdr list)
+main =
+    let list = cons 2.0 5.7
+        _ = debug (car list)
+        _ = debug (cdr list)
+    in 0
 

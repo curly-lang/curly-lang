@@ -661,7 +661,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().loc.clone(),
                         _type.clone(),
-                        arm.1.get_metadata().loc2.clone(),
+                        arm.2.clone(),
                         arm.0.clone()
                     ));
                     module.scope.pop_scope();
@@ -1011,7 +1011,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
 
         // Symbols
         SExpr::Symbol(_, s) => {
-            // Check global scope
+            // Check scope
             match scope.get_var(s)
             {
                 Some(v) => {
@@ -1024,7 +1024,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                     v.0.clone()
                 }
 
-                // Check local scopes
+                // Check externals
                 None => {
                     if let Some(v) = externals.get(s)
                     {
@@ -1160,6 +1160,7 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
 
                 // Functions apply their arguments
                 Type::Func(_, r) => {
+                    get_function_type(a, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
                     *r.clone()
                 }
 
@@ -1512,7 +1513,7 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
         if let Some(mut func) = module.funcs.remove(&name.0)
         {
             // Push scope and add arguments
-            module.scope.push_scope(false);
+            module.scope.push_scope(true);
             for arg in &func.args
             {
                 if arg.0 != "_"

@@ -1,7 +1,9 @@
-fib n: Int =
-	if n < 2 then
-		n
-	else
-		fib (n - 1) + fib (n - 2)
+module Main
 
-debug (fib 40)
+fib n: Int =
+    if n < 2 then
+        n
+    else
+        fib (n - 1) + fib (n - 2)
+
+main = debug (fib 40)

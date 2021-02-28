@@ -833,6 +833,7 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
                     }
 
                     CorrectnessError::NonSubtypeOnMatch(s1, t1, s2, t2) => {
+                        println!("thing: {:?}", s2);
                         diagnostic = diagnostic
                             .with_message("Nonsubtype checked for in match arm")
                             .with_labels(vec![

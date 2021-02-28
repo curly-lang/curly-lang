@@ -1,12 +1,13 @@
 module Main
 
-main = with a = debug (enum A),
-            b = debug (take_enum a),
-            c = debug iffy_enum,
-            d = debug matchy_enum,
-            e = debug (curry_enum enum A),
-            f = debug (do_enum (curry_enum enum A)),
-            0
+main =
+    let a = debug (enum A)
+        b = debug (take_enum a)
+        c = debug iffy_enum
+        d = debug matchy_enum
+        e = debug (curry_enum enum A)
+        f = debug (do_enum (curry_enum enum A))
+    in 0
 
 take_enum a: enum A = a
 curry_enum a: enum A, b: enum A = b

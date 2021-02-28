@@ -236,7 +236,7 @@ impl Scope
             // Global scope is not captured
             if scope.parent.is_none()
             {
-                return false;
+                break false;
             }
 
             // Update new_func if in a new function
@@ -249,7 +249,7 @@ impl Scope
             // Return success if found
             if let Some(v) = scope.variables.get(name)
             {
-                return if let Type::Enum(_) = v.0
+                break if let Type::Enum(_) = v.0
                 {
                     false
                 } else
@@ -265,7 +265,6 @@ impl Scope
                 None => break false
             }
         }
-
     }
 }
 

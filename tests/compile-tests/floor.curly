@@ -1,3 +1,5 @@
+module Main
+
 powerInt x:Int, y:Int =
   if y <= 0 then
     1
@@ -26,4 +28,4 @@ _floor x:Float, currentNumSubt:Int =
 floorC x:Float = _floor x 0
 
 
-debug(floorC 9358410897383.456289374)
+main = debug(floorC 9358410897383.456289374)

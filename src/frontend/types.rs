@@ -21,8 +21,16 @@ impl<T: Hash + Eq> Eq for HashSetWrapper<T> { }
 
 impl<T: Hash + Eq> Hash for HashSetWrapper<T>
 {
-    fn hash<H: Hasher>(&self, _: &mut H)
+    fn hash<H: Hasher>(&self, h: &mut H)
     {
+        let mut hash: u64 = 0;
+        for v in self.0.iter()
+        {
+            let mut h_ = std::collections::hash_map::DefaultHasher::new();
+            v.hash(&mut h_);
+            hash ^= h_.finish();
+        }
+        hash.hash(h);
     }
 }
 

@@ -2134,6 +2134,11 @@ fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_str
 {
     for t in ir.types.iter()
     {
+        if types.get(t.1).is_none()
+        {
+            continue;
+        }
+
         let t = (t.1, types.get(t.1).unwrap());
 
         // Find symbols

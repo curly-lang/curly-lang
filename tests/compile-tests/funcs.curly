@@ -1,13 +1,15 @@
-sum x: Int, y: Int, z: Int = x + y + z
-debug sum
-sum_5 = sum 2 3
-debug sum_5
-debug (sum_5 4)
+module Main
 
-foo x: Int =
-	with bar x: Int, y: Int, z: Int = x+y+z,
-		bar
-baz = foo 2
-debug (baz 4 5 6)
-
-debug (foo 1 2 3 4)
+main =
+    let sum x: Int, y: Int, z: Int = x + y + z
+        _ = debug sum
+        sum_5 = sum 2 3
+        _ = debug sum_5
+        _ = debug (sum_5 4)
+        foo x: Int =
+            let bar x: Int, y: Int, z: Int = x+y+z
+            in bar
+        baz = foo 2
+        _ = debug (baz 4 5 6)
+        _ = debug (foo 1 2 3 4)
+    in 0

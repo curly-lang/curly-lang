@@ -1,3 +1,5 @@
+module Main
+
 type ListItem = Int | ((ListItem -> ListItem -> ListItem) -> ListItem)
 type List = (ListItem -> ListItem -> ListItem) -> ListItem
 
@@ -12,10 +14,6 @@ cdr list: ListItem =
 	to list: List => list falsefn
 
 list = cons 1 (cons 2 3)
-debug (car list)
-debug (cdr list)
-debug (car (cdr list))
-debug (cdr (cdr list))
 
 concat a: ListItem, b: ListItem = match a
     to a: List => cons (car a) (concat (cdr a) b)
@@ -28,5 +26,11 @@ map f: Int -> Int, list: ListItem = match list
     to list: List => cons (_map_item f (car list)) (map f (cdr list))
     to x: Int => x
 
-debug (car (map (lambda x: Int = x+2) (cons 2 0)))
+main =
+    let _ = debug (car list)
+        _ = debug (cdr list)
+        _ = debug (car (cdr list))
+        _ = debug (cdr (cdr list))
+        _ = debug (car (map (lambda x: Int = x+2) (cons 2 0)))
+    in 0
 

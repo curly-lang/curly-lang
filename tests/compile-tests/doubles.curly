@@ -1,2 +1,4 @@
+module Main
+
 sum x: Float, y: Float, z: Float = x + y + z
-sum 1.0 2.0 3.0
+main = debug (sum 1.0 2.0 3.0)

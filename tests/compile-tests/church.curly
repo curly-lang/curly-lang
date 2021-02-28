@@ -1,16 +1,21 @@
+module Main
+
 zero f: Int -> Int, x: Int = x
 one f: Int -> Int, x: Int = f x
 
 succ n: (Int -> Int) -> Int -> Int =
-	with next f: Int -> Int, x: Int = f (n f x),
-		next
+	let next f: Int -> Int, x: Int = f (n f x)
+	in next
 
 func_to_int n: (Int -> Int) -> Int -> Int =
-	with to_int x: Int = x + 1,
-		n to_int 0
+	let to_int x: Int = x + 1
+	in n to_int 0
 
-debug (func_to_int zero)
-debug (func_to_int one)
-debug (func_to_int (succ zero))
-debug (func_to_int (succ one))
-debug (func_to_int (succ (succ one)))
+main =
+	let _ = debug (func_to_int zero)
+		_ = debug (func_to_int one)
+		_ = debug (func_to_int (succ zero))
+		_ = debug (func_to_int (succ one))
+		_ = debug (func_to_int (succ (succ one)))
+	in 0
+

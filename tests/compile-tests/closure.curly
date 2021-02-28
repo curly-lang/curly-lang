@@ -1,3 +1,7 @@
-foo x: Int = with bar y: Int = x+y, bar
+module Main
 
-debug (foo 2 3)
+foo x: Int =
+	let bar y: Int = x+y
+	in bar
+
+main = debug (foo 2 3)
