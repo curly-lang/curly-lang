@@ -1476,14 +1476,21 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
         // With expressions
         SExpr::With(m, a, b) => {
             // Get name
-            let name = format!("$${}", func.last_reference);
-            func.last_reference += 1;
+            let mut name = String::with_capacity(0);
 
             // Declare variable
-            func.code.push_str(&get_c_type(&m._type, types));
-            func.code.push(' ');
-            func.code.push_str(&name);
-            func.code.push_str(";\n{\n");
+            let is_enum = if let Type::Enum(_) = m._type { true } else { false };
+            if !is_enum
+            {
+                name = format!("$${}", func.last_reference);
+                func.last_reference += 1;
+                func.code.push_str(&get_c_type(&m._type, types));
+                func.code.push(' ');
+                func.code.push_str(&name);
+                func.code.push_str(";\n");
+            }
+
+            func.code.push_str("{\n");
 
             // Assignments
             let mut astrs = vec![];
@@ -1494,24 +1501,29 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 
             // Body
             let body = convert_sexpr(b, root, func, types);
-            let ptr = format!("$${}", func.last_reference);
-            func.last_reference += 1;
-            func.code.push_str(&get_c_type(&m._type, types));
-            func.code.push_str("* ");
-            func.code.push_str(&ptr);
-            func.code.push_str(" = &");
-            func.code.push_str(&body);
-            func.code.push_str(";\n");
+            let mut ptr = String::with_capacity(0);
 
-            // Increment body reference count
-            match m._type
+            if !is_enum
             {
-                Type::Func(_, _) => {
-                    func.code.push_str(&ptr);
-                    func.code.push_str("->refc++;\n");
-                }
+                ptr = format!("$${}", func.last_reference);
+                func.last_reference += 1;
+                func.code.push_str(&get_c_type(&m._type, types));
+                func.code.push_str("* ");
+                func.code.push_str(&ptr);
+                func.code.push_str(" = &");
+                func.code.push_str(&body);
+                func.code.push_str(";\n");
 
-                _ => ()
+                // Increment body reference count
+                match m._type
+                {
+                    Type::Func(_, _) => {
+                        func.code.push_str(&ptr);
+                        func.code.push_str("->refc++;\n");
+                    }
+
+                    _ => ()
+                }
             }
 
             // Decrement assignment reference counts and free if necessary
@@ -1541,12 +1553,16 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             }
 
             // Copy data from ptr
-            func.code.push_str(&name);
-            func.code.push_str(" = *");
-            func.code.push_str(&ptr);
+            if !is_enum
+            {
+                func.code.push_str(&name);
+                func.code.push_str(" = *");
+                func.code.push_str(&ptr);
+                func.code.push_str(";\n");
+            }
 
             // Exit block and return success
-            func.code.push_str(";\n}\n");
+            func.code.push_str("}\n");
             name
         }
 
