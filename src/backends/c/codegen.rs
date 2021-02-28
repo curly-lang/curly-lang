@@ -599,12 +599,16 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                     let id = ctype.get_hashmap().unwrap().get(&v.get_metadata()._type).unwrap();
                     func.code.push_str(&format!("{}", id));
                     func.code.push_str(";\n");
-                    func.code.push_str(&name);
-                    func.code.push_str(".values.$$");
-                    func.code.push_str(&format!("{}", id));
-                    func.code.push_str(" = ");
-                    func.code.push_str(&value);
-                    func.code.push_str(";\n");
+
+                    if value != ""
+                    {
+                        func.code.push_str(&name);
+                        func.code.push_str(".values.$$");
+                        func.code.push_str(&format!("{}", id));
+                        func.code.push_str(" = ");
+                        func.code.push_str(&value);
+                        func.code.push_str(";\n");
+                    }
                 }
 
                 // Everything else is unsupported
@@ -2704,7 +2708,38 @@ typedef struct {
 
     if module.name == "Main" && module.funcs.contains_key("main")
     {
-        code_string.push_str("int main(void) {\n    Main$main$$GET$$();\n    return 0;\n}\n");
+        code_string.push_str("int_t main(void) {\n    ");
+        let _type = &module.funcs.get("main").unwrap().body.get_metadata()._type;
+        if *_type == Type::Int
+        {
+            code_string.push_str("return Main$main$$GET$$();\n");
+        } else if let Type::Enum(v) = _type
+        {
+            code_string.push_str("Main$main$$GET$$();\n    ");
+            if v == "Ok"
+            {
+                code_string.push_str("return 0;\n");
+            } else
+            {
+                code_string.push_str("return 1;\n");
+            }
+        } else if let Type::Sum(v) = _type
+        {
+            if v.0.contains(&Type::Enum(String::from("Ok")))
+            {
+                code_string.push_str(get_c_type(_type, types));
+                code_string.push_str(" v = Main$main$$GET$$();\n    if (v.tag == ");
+                code_string.push_str(&format!("{}", types.get(_type).unwrap().get_hashmap().unwrap().get(&Type::Enum(String::from("Ok"))).unwrap()));
+                code_string.push_str(") \n        return 0;\n    else\n        return 1;\n");
+            } else
+            {
+                code_string.push_str("Main$main$$GET$$();\n    return 1;\n");
+            }
+        } else
+        {
+            code_string.push_str("Main$main$$GET$$();\n    return 1;\n");
+        }
+        code_string.push_str("}\n");
     }
 
     code_string
