@@ -90,8 +90,7 @@ pub struct SExprMetadata
     pub _type: Type,
     pub arity: usize,
     pub saved_argc: Option<usize>,
-    pub tailrec: bool,
-    pub impure: bool
+    pub tailrec: bool
 }
 
 impl SExprMetadata
@@ -107,8 +106,7 @@ impl SExprMetadata
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }
     }
 }
@@ -357,8 +355,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Int,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, n),
 
         // Float
@@ -369,8 +366,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Float,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, n),
 
         // Word
@@ -381,8 +377,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Word,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, n),
 
         // Char
@@ -393,8 +388,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Char,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, c),
 
         // True
@@ -405,8 +399,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }),
  
         // False
@@ -417,8 +410,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Bool,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }),
 
         AST::List(span, list) => SExpr::List(SExprMetadata {
@@ -428,8 +420,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, list.into_iter().map(|v| convert_node(v, filename, funcs, global, seen_funcs, types)).collect()),
 
         // Symbol
@@ -440,8 +431,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, s),
 
         // Enum
@@ -452,8 +442,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Enum(e.clone()),
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, e),
 
         AST::Annotation(_, _)
@@ -473,8 +462,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::String,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, s),
 
         // Prefix
@@ -493,8 +481,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, op, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)))
         }
 
@@ -510,8 +497,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             } else if op == "or"
             {
@@ -522,8 +508,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
 
             // Deal with accessing members
@@ -558,8 +543,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, accesses)
             } else if op == ";"
             {
@@ -570,8 +554,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             } else
             {
@@ -606,8 +589,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, op, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types)))
             }
         }
@@ -619,8 +601,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: types::convert_ast_to_type(*_type, filename, types),
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, Box::new(convert_node(*value, filename, funcs, global, seen_funcs, types))),
 
         // If expression
@@ -631,8 +612,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, Box::new(convert_node(*cond, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*then, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*elsy, filename, funcs, global, seen_funcs, types))),
 
         // Application
@@ -643,8 +623,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             _type: Type::Error,
             arity: 0,
             saved_argc: None,
-            tailrec: false,
-            impure: false
+            tailrec: false
         }, Box::new(convert_node(*l, filename, funcs, global, seen_funcs, types)), Box::new(convert_node(*r, filename, funcs, global, seen_funcs, types))),
 
         // Assignment
@@ -681,8 +660,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, name, Box::new(SExpr::Function(SExprMetadata {
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
@@ -690,8 +668,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, func_name)))
             } else
             {
@@ -702,8 +679,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: Type::Error,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, name, Box::new(sexpr))
             }
         }
@@ -744,8 +720,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: _type.clone(),
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, name, Box::new(SExpr::Function(SExprMetadata {
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
@@ -753,8 +728,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type,
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, func_name)))
             } else
             {
@@ -765,8 +739,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     _type: types::convert_ast_to_type(*_type, filename, types),
                     arity: 0,
                     saved_argc: None,
-                    tailrec: false,
-                    impure: false
+                    tailrec: false
                 }, name, Box::new(sexpr))
             }
         }
@@ -782,8 +755,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, name)
         }
 
@@ -809,8 +781,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, func_name.clone());
 
             // Create the function
@@ -852,8 +823,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type,
                 arity,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, name, Box::new(func_id))
         }
 
@@ -873,8 +843,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, func_name.clone());
 
             // Create the function
@@ -919,8 +888,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, a.into_iter().map(|a| convert_node(a, filename, funcs, false, seen_funcs, types)).collect(), Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)))
         }
 
@@ -932,8 +900,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, a, Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)))
         }
 
@@ -945,8 +912,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 _type: Type::Error,
                 arity: 0,
                 saved_argc: None,
-                tailrec: false,
-                impure: false
+                tailrec: false
             }, Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)),
                 a.into_iter().map(|a| {
                     let span2 = a.0.get_span().clone();

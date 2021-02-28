@@ -1,10 +1,8 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- `:=` operator (creates a super local scope that only lasts for one infix operation)
-- Tagged system for side effects
 - Make local assignments lazy
-- Fix memory leaks
+- Fix memory leaks with lifetime analysis
 - Compile as static/dynamic library
 - Deal with exporting types properly
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)
@@ -21,6 +19,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Intersection types
 - Generics
 - Type classes/traits
+- Leaving `;` early
 - Overridable operators
 - Mutability
 - Laziness

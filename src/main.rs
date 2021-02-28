@@ -908,6 +908,26 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
                                 .with_message("Curried function found here")
                             ])
                     }
+
+                    CorrectnessError::ImpureInPure(s1, s2) => {
+                        diagnostic = diagnostic
+                            .with_message("Cannot use impure function in pure function")
+                            .with_labels(vec![
+                                Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                .with_message("Function defined as pure"),
+                                Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                .with_message("Impurity found here")
+                            ])
+                    }
+
+                    CorrectnessError::UnnecessaryImpure(s) => {
+                        diagnostic = diagnostic
+                            .with_message("Unnecessary impurity")
+                            .with_labels(vec![
+                                Label::secondary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                .with_message("Function defined as impure but has no impurities")
+                            ])
+                    }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }

@@ -30,7 +30,9 @@ pub enum CorrectnessError
     VariableImportedTwice(Location, Location),
     ImportedValueNotExported(Location, String, String),
     NoMainFunction,
-    CurriedExternalFunc(Location)
+    CurriedExternalFunc(Location),
+    ImpureInPure(Location, Location),
+    UnnecessaryImpure(Location)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -2110,7 +2112,7 @@ fn check_externals(sexpr: &SExpr, errors: &mut Vec<CorrectnessError>)
             | SExpr::Assign(_, _, v)
             | SExpr::Walrus(_, _, v)
             => {
-            check_externals(v, errors)
+            check_externals(v, errors);
         }
 
         SExpr::Infix(_, _, l, r)
@@ -2146,6 +2148,82 @@ fn check_externals(sexpr: &SExpr, errors: &mut Vec<CorrectnessError>)
         }
 
         _ => ()
+    }
+}
+
+// check_purity(&SExpr, &IRModule) -> Result<(), Location>
+// Checks the purity of a sexpression, erroring with the location if an impurity is found.
+fn check_purity(sexpr: &SExpr, module: &IRModule) -> Result<(), Location>
+{
+    match sexpr
+    {
+        SExpr::ExternalFunc(m, f, a) => {
+            if module.externals.get(f).unwrap().impure
+            {
+                Err(m.loc.clone())
+            } else
+            {
+                for a in a
+                {
+                    check_purity(a, module)?;
+                }
+                Ok(())
+            }
+        }
+
+        SExpr::Function(m, f) => {
+            if module.funcs.get(f).unwrap().impure
+            {
+                Err(m.loc.clone())
+            } else
+            {
+                Ok(())
+            }
+        }
+
+        SExpr::Prefix(_, _, v)
+            | SExpr::As(_, v)
+            | SExpr::Assign(_, _, v)
+            | SExpr::Walrus(_, _, v)
+            => {
+            check_purity(v, module)
+        }
+
+        SExpr::Infix(_, _, l, r)
+            | SExpr::Chain(_, l, r)
+            | SExpr::And(_, l, r)
+            | SExpr::Or(_, l, r)
+            | SExpr::Application(_, l, r)
+            => {
+            check_purity(l, module)?;
+            check_purity(r, module)
+        }
+
+        SExpr::If(_, c, t, e) => {
+            check_purity(c, module)?;
+            check_purity(t, module)?;
+            check_purity(e, module)
+        }
+
+        SExpr::With(_, a, v) => {
+            for a in a
+            {
+                check_purity(a, module)?;
+            }
+            check_purity(v, module)
+        }
+
+        SExpr::Match(_, v, a) => {
+            check_purity(v, module)?;
+
+            for a in a
+            {
+                check_purity(&a.1, module)?;
+            }
+            Ok(())
+        }
+
+        _ => Ok(())
     }
 }
 
@@ -2256,6 +2334,21 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
 
         // Check globals
         check_globals(&mut module, &mut errors);
+
+        // Check for impurity in pure functions
+        for f in module.funcs.iter()
+        {
+            if let Err(s) = check_purity(&f.1.body, &module)
+            {
+                if !f.1.impure
+                {
+                    errors.push(CorrectnessError::ImpureInPure(f.1.loc.clone(), s));
+                }
+            } else if f.1.impure
+            {
+                errors.push(CorrectnessError::UnnecessaryImpure(f.1.loc.clone()));
+            }
+        }
 
         // Check sexpressions
         let mut sexprs = Vec::with_capacity(0);
