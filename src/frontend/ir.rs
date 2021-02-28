@@ -182,6 +182,7 @@ pub enum SExpr
 
     // Scoping
     With(SExprMetadata, Vec<SExpr>, Box<SExpr>),
+    Walrus(SExprMetadata, String, Box<SExpr>),
 
     // Match expressions
     Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr, Location)>),
@@ -221,6 +222,7 @@ impl SExpr
                 | Self::Application(m, _, _)
                 | Self::Assign(m, _, _)
                 | Self::With(m, _, _)
+                | Self::Walrus(m, _, _)
                 | Self::Match(m, _, _)
                 | Self::MemberAccess(m, _)
                 => m
@@ -256,6 +258,7 @@ impl SExpr
                 | Self::Application(m, _, _)
                 | Self::Assign(m, _, _)
                 | Self::With(m, _, _)
+                | Self::Walrus(m, _, _)
                 | Self::Match(m, _, _)
                 | Self::MemberAccess(m, _)
                 => m
@@ -907,6 +910,33 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             func_id
         }
 
+        // With expressions
+        AST::With(span, a, v) => {
+            SExpr::With(SExprMetadata {
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
+                _type: Type::Error,
+                arity: 0,
+                saved_argc: None,
+                tailrec: false,
+                impure: false
+            }, a.into_iter().map(|a| convert_node(a, filename, funcs, false, seen_funcs, types)).collect(), Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)))
+        }
+
+        AST::Walrus(span, a, v) => {
+            SExpr::Walrus(SExprMetadata {
+                loc: Location::new(span, filename),
+                loc2: Location::empty(),
+                origin: String::with_capacity(0),
+                _type: Type::Error,
+                arity: 0,
+                saved_argc: None,
+                tailrec: false,
+                impure: false
+            }, a, Box::new(convert_node(*v, filename, funcs, false, seen_funcs, types)))
+        }
+
         AST::Match(span, v, a) =>
             SExpr::Match(SExprMetadata {
                 loc: Location::new(span, filename),
@@ -923,21 +953,6 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     (types::convert_ast_to_type(a.0, filename, types), convert_node(a.1, filename, funcs, global, seen_funcs, types), Location::new(span2, filename))
                 }).collect()
             ),
-
-        // With expressions
-        AST::With(span, a, v) => {
-            let v = convert_node(*v, filename, funcs, false, seen_funcs, types);
-            SExpr::With(SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::empty(),
-                origin: String::with_capacity(0),
-                _type: v.get_metadata()._type.clone(),
-                arity: 0,
-                saved_argc: None,
-                tailrec: false,
-                impure: false
-            }, a.into_iter().map(|a| convert_node(a, filename, funcs, false, seen_funcs, types)).collect(), Box::new(v))
-        }
     }
 }
 

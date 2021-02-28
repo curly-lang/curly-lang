@@ -1,7 +1,6 @@
 # List of things to do
 ## Third official release
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
-- `;` operator (chains actions together)
 - `:=` operator (creates a super local scope that only lasts for one infix operation)
 - Tagged system for side effects
 - Make local assignments lazy
@@ -15,7 +14,6 @@ These things are features and fixes I'd like to get completed for the third majo
 These things are features and fixes I'd like to get completed for the fourth major release (v0.4.0) of Curly.
 - Product types
 - Span (`**`) for product types
-- Overridable operators
 - Associated functions
 
 ## Future releases
@@ -23,6 +21,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Intersection types
 - Generics
 - Type classes/traits
+- Overridable operators
 - Mutability
 - Laziness
 - Lists (defined as linked lists but optimised into vectors using `@vector`)

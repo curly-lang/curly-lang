@@ -239,9 +239,20 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
         }
 
         SExpr::Chain(m, left, right) => {
+            // Add scope if left is a walrus operator
+            if let SExpr::Walrus(_, _, _) = **left
+            {
+                module.scope.push_scope(false);
+            }
+
             // Check child nodes
             check_sexpr(left, module, errors);
             check_sexpr(right, module, errors);
+
+            if let SExpr::Walrus(_, _, _) = **left
+            {
+                module.scope.pop_scope();
+            }
 
             // Check if an error occurred
             if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
@@ -625,6 +636,18 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             module.scope.pop_scope();
         }
 
+        SExpr::Walrus(m, name, value) => {
+            check_sexpr(value, module, errors);
+            m._type = value.get_metadata()._type.clone();
+            m.arity = value.get_metadata().arity;
+            m.saved_argc = value.get_metadata().saved_argc;
+
+            if name != "_"
+            {
+                module.scope.put_var(&name, &m._type, m.arity, m.saved_argc, &m.loc, true, &module.filename);
+            }
+        }
+
         SExpr::Match(m, value, arms) => {
             // Check value
             check_sexpr(value, module, errors);
@@ -920,13 +943,33 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
 
         // Infix operators
         SExpr::Infix(_, _, l, r)
-            | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
             | SExpr::Application(_, l, r)
             => {
             convert_function_symbols(l, funcs);
             convert_function_symbols(r, funcs);
+        }
+
+        SExpr::Chain(_, l, r) => {
+            let removed = if let SExpr::Walrus(_, n, _) = &**l
+            {
+                funcs.remove(n)
+            } else
+            {
+                false
+            };
+
+            convert_function_symbols(l, funcs);
+            convert_function_symbols(r, funcs);
+
+            if let SExpr::Walrus(_, n, _) = &**l
+            {
+                if removed
+                {
+                    funcs.insert(n.clone());
+                }
+            }
         }
 
         // Casting
@@ -1091,8 +1134,17 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
         }
 
         SExpr::Chain(_, l, r) => {
+            if let SExpr::Walrus(_, _, _) = **l
+            {
+                scope.push_scope(false);
+            }
             get_function_type(l, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
-            get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports)
+            let v = get_function_type(r, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
+            if let SExpr::Walrus(_, _, _) = **l
+            {
+                scope.pop_scope();
+            }
+            v
         }
 
         SExpr::As(m, _) => m._type.clone(),
@@ -1223,6 +1275,15 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             // Pop the scope and return type
             scope.pop_scope();
             bt
+        }
+
+        SExpr::Walrus(m, name, value) => {
+            let t = get_function_type(value, module_name, scope, funcs, errors, captured, captured_names, types, externals, imports);
+            if name != "_"
+            {
+                scope.put_var(&name, &t, 0, None, &Location::new(Span { start: 0, end: 0 }, &m.loc.filename), true, "");
+            }
+            t
         }
 
         SExpr::Match(_, _, arms) => {
@@ -1699,6 +1760,10 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize)
             save_types(v, types, id);
         }
 
+        SExpr::Walrus(_, _, v) => {
+            save_types(v, types, id);
+        }
+
         SExpr::Match(_, v, a) => {
             save_types(v, types, id);
             for a in a.iter()
@@ -1796,6 +1861,10 @@ fn is_called(sexpr: &mut SExpr, name: &str) -> bool
             is_called(v, name)
         }
 
+        SExpr::Walrus(_, _, v) => {
+            is_called(v, name)
+        }
+
         SExpr::Match(_, v, a) => {
             if is_called(v, name)
             {
@@ -1846,6 +1915,16 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
 
             m.tailrec = r.get_metadata().tailrec;
             true
+        }
+
+        SExpr::Walrus(_, n, v) => {
+            if name != n
+            {
+                check_tailrec(v, name, top)
+            } else
+            {
+                false
+            }
         }
 
         SExpr::If(m, c, t, e) => {
@@ -1945,6 +2024,7 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
         SExpr::Prefix(_, _, v)
             | SExpr::As(_, v)
             | SExpr::Assign(_, _, v)
+            | SExpr::Walrus(_, _, v)
             => {
             fix_arity(v, scope);
         }
@@ -2028,6 +2108,7 @@ fn check_externals(sexpr: &SExpr, errors: &mut Vec<CorrectnessError>)
         SExpr::Prefix(_, _, v)
             | SExpr::As(_, v)
             | SExpr::Assign(_, _, v)
+            | SExpr::Walrus(_, _, v)
             => {
             check_externals(v, errors)
         }

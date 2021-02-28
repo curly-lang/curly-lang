@@ -466,9 +466,44 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             name
         }
 
-        SExpr::Chain(_, l, r) => {
+        SExpr::Chain(m, l, r) => {
+            let a = format!("$${}", func.last_reference);
+            func.last_reference += 1;
+            if let Type::Enum(_) = m._type { }
+            else
+            {
+                func.code.push_str(get_c_type(&m._type, types));
+                func.code.push(' ');
+                func.code.push_str(&a);
+                func.code.push_str(";\n");
+            }
+
+            if let SExpr::Walrus(_, _, _) = **l
+            {
+                func.code.push_str("{\n");
+            }
+
             convert_sexpr(l, root, func, types);
-            convert_sexpr(r, root, func, types)
+            let v = convert_sexpr(r, root, func, types);
+
+            if let SExpr::Walrus(_, _, _) = **l
+            {
+                if let Type::Enum(_) = m._type
+                {
+                    func.code.push_str("}\n");
+                    v
+                } else
+                {
+                    func.code.push_str(&a);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&v);
+                    func.code.push_str(";\n}\n");
+                    a
+                }
+            } else
+            {
+                v
+            }
         }
 
         // Boolean and
@@ -1569,6 +1604,24 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             // Exit block and return success
             func.code.push_str("}\n");
             name
+        }
+
+        SExpr::Walrus(m, n, v) => {
+            let v = convert_sexpr(v, root, func, types);
+            if let Type::Enum(_) = m._type
+            {
+                v
+            } else
+            {
+                let a = sanitise_symbol(n);
+                func.code.push_str(get_c_type(&m._type, types));
+                func.code.push(' ');
+                func.code.push_str(&a);
+                func.code.push_str(" = ");
+                func.code.push_str(&v);
+                func.code.push_str(";\n");
+                a
+            }
         }
 
         SExpr::Match(m, v, a) => {

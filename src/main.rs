@@ -373,6 +373,7 @@ impl CurlyREPLHelper
                     | Caret
                     | Range
                     | Assign
+                    | Walrus
                     | RightArrow
                     | ThiccArrow
                     | Colon

@@ -1,0 +1,7 @@
+module Main
+
+main =
+    x := 2;
+    debug x;
+    debug x;
+    x

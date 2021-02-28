@@ -60,6 +60,9 @@ pub enum Token
     #[token("=")]
     Assign,
 
+    #[token(":=")]
+    Walrus,
+
     #[token("*")]
     Mul,
 
@@ -405,6 +408,7 @@ pub enum AST
 
     // Scoping
     With(Span, Vec<AST>, Box<AST>),
+    Walrus(Span, String, Box<AST>),
 
     // Imports
     Import(Span, Box<AST>, Vec<String>),
@@ -446,6 +450,7 @@ impl AST
                 | Self::Match(s, _, _)
                 | Self::Lambda(s, _, _)
                 | Self::With(s, _, _)
+                | Self::Walrus(s, _, _)
                 | Self::Import(s, _, _)
                 | Self::QualifiedImport(s, _, _)
                 | Self::Header(s, _, _, _)
@@ -1202,9 +1207,46 @@ fn expression_values(parser: &mut Parser) -> Result<AST, ParseError>
     }
 }
 
+// walrus(&mut Parser) -> Result<AST, ParseError>
+// Parses a walrus operator.
+fn walrus(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    let state = parser.save_state();
+    if let Some((Token::Symbol, s)) = parser.peek()
+    {
+        let name = parser.slice();
+        parser.next();
+        consume_nosave!(parser, Walrus, state, false, "");
+        let v = call_func_fatal!(expression_values, parser, "Expected expression after `:=`");
+
+        Ok(AST::Walrus(Span {
+            start: s.start,
+            end: v.get_span().end
+        }, name, Box::new(v)))
+    } else
+    {
+        ParseError::empty()
+    }
+}
+
+// walrus_wrapper(&mut Parser) -> Result<AST, ParseError>
+// Parses either a walrus operator or an expression.
+fn walrus_wrapper(parser: &mut Parser) -> Result<AST, ParseError>
+{
+    if let Ok(v) = call_optional!(walrus, parser)
+    {
+        Ok(v)
+    } else
+    {
+        expression_values(parser)
+    }
+}
+
+// expression(&mut Parser) -> Result<AST, ParseError>
+// Parses expressions chained by ;.
 fn expression(parser: &mut Parser) -> Result<AST, ParseError>
 {
-    infixr_op!(parser, expression_values, Token::Semicolon, Token::Unreachable)
+    infixr_op!(parser, walrus_wrapper, Token::Semicolon, Token::Unreachable)
 }
 
 // annotation(&mut Parser) -> Result<AST, ParseError>
