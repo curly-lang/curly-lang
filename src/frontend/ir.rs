@@ -285,7 +285,7 @@ pub struct IRImport
     pub name: String,
     pub loc: Location,
     pub qualified: bool,
-    pub imports: HashMap<String, (Type, usize)>
+    pub imports: HashMap<String, (Type, usize, bool)>
 }
 
 #[derive(Debug)]
@@ -1090,7 +1090,7 @@ pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<
                         name: name.join("::"),
                         loc: Location::new(s, filename),
                         qualified: false,
-                        imports: HashMap::from_iter(imports.into_iter().map(|v| (v, (Type::Unknown, 0))))
+                        imports: HashMap::from_iter(imports.into_iter().map(|v| (v, (Type::Unknown, 0, false))))
                     };
                 } else
                 {

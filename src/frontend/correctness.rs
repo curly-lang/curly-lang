@@ -2264,7 +2264,25 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                         ));
                     } else if exporter.contains_key(i.0)
                     {
-                        *i.1 = (exporter.get(i.0).unwrap().1.clone(), 0);
+                        let mut impure = false;
+                        for s in ir.modules.get(&import.1.name).unwrap().sexprs.iter()
+                        {
+                            if let SExpr::Assign(_, n, v) = s
+                            {
+                                if n == i.0
+                                {
+                                    if let SExpr::Function(_, f) = &**v
+                                    {
+                                        if ir.modules.get(&import.1.name).unwrap().funcs.get(f).unwrap().impure
+                                        {
+                                            impure = true;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        *i.1 = (exporter.get(i.0).unwrap().1.clone(), 0, impure);
                         module.scope.put_var(i.0, &i.1.0, 0, None, &import.1.loc, true, &import.1.name);
                     } else
                     {
@@ -2289,8 +2307,26 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                         ));
                     } else
                     {
+                        let mut impure = false;
+                        for s in ir.modules.get(&import.1.name).unwrap().sexprs.iter()
+                        {
+                            if let SExpr::Assign(_, n, v) = s
+                            {
+                                if n == i.0
+                                {
+                                    if let SExpr::Function(_, f) = &**v
+                                    {
+                                        if ir.modules.get(&import.1.name).unwrap().funcs.get(f).unwrap().impure
+                                        {
+                                            impure = true;
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
                         module.scope.put_var(i.0, &i.1.1, 0, None, &i.1.0, true, &import.1.name);
-                        import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0));
+                        import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0, impure));
                     }
                 }
             }
@@ -2300,7 +2336,25 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
         {
             for i in ir.modules.get(&import.1.name).unwrap().exports.iter()
             {
-                import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0));
+                let mut impure = false;
+                for s in ir.modules.get(&import.1.name).unwrap().sexprs.iter()
+                {
+                    if let SExpr::Assign(_, n, v) = s
+                    {
+                        if n == i.0
+                        {
+                            if let SExpr::Function(_, f) = &**v
+                            {
+                                if ir.modules.get(&import.1.name).unwrap().funcs.get(f).unwrap().impure
+                                {
+                                    impure = true;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                import.1.imports.insert(i.0.clone(), (i.1.1.clone(), 0, impure));
             }
         }
     }
@@ -2426,7 +2480,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                         global: true,
                         checked: true,
                         written: true,
-                        impure: false
+                        impure: i.1.2
                     };
                     func.body.get_mutable_metadata()._type = i.1.0.clone();
                     module.funcs.insert(i.0.clone(), func);
@@ -2511,6 +2565,11 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             // Check for impurity in pure functions
             for f in module.funcs.iter()
             {
+                if f.1.written
+                {
+                    continue;
+                }
+
                 if let Err(s) = check_purity(&f.1.body, &module)
                 {
                     if !f.1.impure
