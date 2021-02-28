@@ -2158,17 +2158,25 @@ fn check_purity(sexpr: &SExpr, module: &IRModule) -> Result<(), Location>
     match sexpr
     {
         SExpr::ExternalFunc(m, f, a) => {
-            if module.externals.get(f).unwrap().impure
+            for e in module.externals.iter()
             {
-                Err(m.loc.clone())
-            } else
-            {
-                for a in a
+                if e.1.extern_name == *f
                 {
-                    check_purity(a, module)?;
+                    if e.1.impure
+                    {
+                        return Err(m.loc.clone())
+                    } else
+                    {
+                        break;
+                    }
                 }
-                Ok(())
             }
+
+            for a in a
+            {
+                check_purity(a, module)?;
+            }
+            Ok(())
         }
 
         SExpr::Function(m, f) => {
@@ -2335,21 +2343,6 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
         // Check globals
         check_globals(&mut module, &mut errors);
 
-        // Check for impurity in pure functions
-        for f in module.funcs.iter()
-        {
-            if let Err(s) = check_purity(&f.1.body, &module)
-            {
-                if !f.1.impure
-                {
-                    errors.push(CorrectnessError::ImpureInPure(f.1.loc.clone(), s));
-                }
-            } else if f.1.impure
-            {
-                errors.push(CorrectnessError::UnnecessaryImpure(f.1.loc.clone()));
-            }
-        }
-
         // Check sexpressions
         let mut sexprs = Vec::with_capacity(0);
         swap(&mut module.sexprs, &mut sexprs);
@@ -2515,11 +2508,32 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                 fix_arity(&mut func.1.body, &mut module.scope);
             }
 
+            // Check for impurity in pure functions
+            for f in module.funcs.iter()
+            {
+                if let Err(s) = check_purity(&f.1.body, &module)
+                {
+                    if !f.1.impure
+                    {
+                        errors.push(CorrectnessError::ImpureInPure(f.1.loc.clone(), s));
+                    }
+                } else if f.1.impure
+                {
+                    errors.push(CorrectnessError::UnnecessaryImpure(f.1.loc.clone()));
+                }
+            }
+
             // Reinsert module
             ir.modules.insert(name, module);
         }
 
-        Ok(())
+        if errors.len() != 0
+        {
+            Err(errors)
+        } else
+        {
+            Ok(())
+        }
     } else
     {
         Err(errors)
