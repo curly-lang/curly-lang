@@ -836,7 +836,6 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
                     }
 
                     CorrectnessError::NonSubtypeOnMatch(s1, t1, s2, t2) => {
-                        println!("thing: {:?}", s2);
                         diagnostic = diagnostic
                             .with_message("Nonsubtype checked for in match arm")
                             .with_labels(vec![
@@ -927,6 +926,15 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
                             .with_labels(vec![
                                 Label::secondary(*file_hash.get(&s.filename).unwrap(), s.span)
                                 .with_message("Function defined as impure but has no impurities")
+                            ])
+                    }
+
+                    CorrectnessError::AppliedImpureToPure(s) => {
+                        diagnostic = diagnostic
+                            .with_message("Applied impure function to pure function")
+                            .with_labels(vec![
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                .with_message("Function defined as impure but passed to pure function")
                             ])
                     }
                 }

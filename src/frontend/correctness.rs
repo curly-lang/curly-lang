@@ -32,7 +32,8 @@ pub enum CorrectnessError
     NoMainFunction,
     CurriedExternalFunc(Location),
     ImpureInPure(Location, Location),
-    UnnecessaryImpure(Location)
+    UnnecessaryImpure(Location),
+    AppliedImpureToPure(Location)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -2151,9 +2152,9 @@ fn check_externals(sexpr: &SExpr, errors: &mut Vec<CorrectnessError>)
     }
 }
 
-// check_purity(&SExpr, &IRModule) -> Result<(), Location>
+// check_purity(&mut SExpr, &IRModule, &mut Vec<CorrectnessError>) -> Result<(), Location>
 // Checks the purity of a sexpression, erroring with the location if an impurity is found.
-fn check_purity(sexpr: &SExpr, module: &IRModule) -> Result<(), Location>
+fn check_purity(sexpr: &mut SExpr, module: &IRModule, errors: &mut Vec<CorrectnessError>) -> Result<(), Location>
 {
     match sexpr
     {
@@ -2164,6 +2165,7 @@ fn check_purity(sexpr: &SExpr, module: &IRModule) -> Result<(), Location>
                 {
                     if e.1.impure
                     {
+                        m.impure = true;
                         return Err(m.loc.clone())
                     } else
                     {
@@ -2174,15 +2176,22 @@ fn check_purity(sexpr: &SExpr, module: &IRModule) -> Result<(), Location>
 
             for a in a
             {
-                check_purity(a, module)?;
+                check_purity(a, module, errors)?;
             }
             Ok(())
         }
 
         SExpr::Function(m, f) => {
-            if module.funcs.get(f).unwrap().impure
+            if let Some(f) = module.funcs.get(f)
             {
-                Err(m.loc.clone())
+                if f.impure
+                {
+                    m.impure = true;
+                    Err(m.loc.clone())
+                } else
+                {
+                    Ok(())
+                }
             } else
             {
                 Ok(())
@@ -2194,39 +2203,57 @@ fn check_purity(sexpr: &SExpr, module: &IRModule) -> Result<(), Location>
             | SExpr::Assign(_, _, v)
             | SExpr::Walrus(_, _, v)
             => {
-            check_purity(v, module)
+            check_purity(v, module, errors)
         }
 
         SExpr::Infix(_, _, l, r)
             | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
-            | SExpr::Application(_, l, r)
             => {
-            check_purity(l, module)?;
-            check_purity(r, module)
+            check_purity(l, module, errors)?;
+            check_purity(r, module, errors)
+        }
+
+        SExpr::Application(m, l, r) => {
+            let vl = check_purity(l, module, errors);
+            let vr = check_purity(r, module, errors);
+
+            if r.get_metadata().arity > 0 && vr.is_err() && vl.is_ok()
+            {
+                errors.push(CorrectnessError::AppliedImpureToPure(m.loc.clone()));
+            }
+            m.impure = l.get_metadata().impure;
+
+            if let Err(e) = vl
+            {
+                Err(e)
+            } else
+            {
+                vr
+            }
         }
 
         SExpr::If(_, c, t, e) => {
-            check_purity(c, module)?;
-            check_purity(t, module)?;
-            check_purity(e, module)
+            check_purity(c, module, errors)?;
+            check_purity(t, module, errors)?;
+            check_purity(e, module, errors)
         }
 
         SExpr::With(_, a, v) => {
             for a in a
             {
-                check_purity(a, module)?;
+                check_purity(a, module, errors)?;
             }
-            check_purity(v, module)
+            check_purity(v, module, errors)
         }
 
         SExpr::Match(_, v, a) => {
-            check_purity(v, module)?;
+            check_purity(v, module, errors)?;
 
             for a in a
             {
-                check_purity(&a.1, module)?;
+                check_purity(&mut a.1, module, errors)?;
             }
             Ok(())
         }
@@ -2563,23 +2590,30 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             }
 
             // Check for impurity in pure functions
-            for f in module.funcs.iter()
+            let keys: Vec<String> = module.funcs.keys().cloned().collect();
+            for k in keys
             {
-                if f.1.written
+                let mut f = module.funcs.remove(&k).unwrap();
+                if f.written
                 {
                     continue;
                 }
+                let mut temp = SExpr::True(SExprMetadata::empty());
+                swap(&mut temp, &mut f.body);
 
-                if let Err(s) = check_purity(&f.1.body, &module)
+                if let Err(s) = check_purity(&mut temp, &module, &mut errors)
                 {
-                    if !f.1.impure
+                    if !f.impure
                     {
-                        errors.push(CorrectnessError::ImpureInPure(f.1.loc.clone(), s));
+                        errors.push(CorrectnessError::ImpureInPure(f.loc.clone(), s));
                     }
-                } else if f.1.impure
+                } else if f.impure
                 {
-                    errors.push(CorrectnessError::UnnecessaryImpure(f.1.loc.clone()));
+                    errors.push(CorrectnessError::UnnecessaryImpure(f.loc.clone()));
                 }
+
+                swap(&mut temp, &mut f.body);
+                module.funcs.insert(k, f);
             }
 
             // Reinsert module
