@@ -2421,8 +2421,16 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
         cf.code.push_str(";\n");
     }
 
-    // Define structures and helper functions
+
+    // Import modules
     let mut code_string = format!("#include \"{}.h\"\n\n", sanitise_symbol(&module.name));
+    for import in module.imports.iter()
+    {
+        code_string.push_str("#include \"");
+        code_string.push_str(&sanitise_symbol(&import.1.name));
+        code_string.push_str(".h\"\n");
+    }
+    code_string.push('\n');
 
     // Declare all functions
     for f in funcs.iter()
@@ -2592,14 +2600,6 @@ fn generate_header_files(module: &IRModule, funcs: &HashMap<String, CFunction>, 
     // Include Curly stuff
     let mut filename = sanitise_symbol(&module.name);
     let mut header = format!("#ifndef {}_H\n#define {}_H\n#include \"curly.h\"\n#include \"types.h\"\n", filename, filename);
-
-    for import in module.imports.iter()
-    {
-        header.push_str("#include \"");
-        header.push_str(&sanitise_symbol(&import.1.name));
-        header.push_str(".h\"\n");
-    }
-    header.push('\n');
 
     for export in module.exports.iter()
     {
