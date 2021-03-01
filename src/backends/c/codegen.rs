@@ -2133,6 +2133,8 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
                         Type::Int => types_string.push_str("        int_t"),
                         Type::Float => types_string.push_str("        float_t"),
                         Type::Bool => types_string.push_str("        bool"),
+                        Type::Char => types_string.push_str("        char"),
+                        Type::Word => types_string.push_str("        word_t"),
                         Type::Func(_, _) => types_string.push_str("        func_t"),
 
                         Type::Enum(_) => {
