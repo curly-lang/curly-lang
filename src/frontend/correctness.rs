@@ -2596,12 +2596,11 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                 let mut f = module.funcs.remove(&k).unwrap();
                 if f.written
                 {
+                    module.funcs.insert(k, f);
                     continue;
                 }
-                let mut temp = SExpr::True(SExprMetadata::empty());
-                swap(&mut temp, &mut f.body);
 
-                if let Err(s) = check_purity(&mut temp, &module, &mut errors)
+                if let Err(s) = check_purity(&mut f.body, &module, &mut errors)
                 {
                     if !f.impure
                     {
@@ -2612,7 +2611,6 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                     errors.push(CorrectnessError::UnnecessaryImpure(f.loc.clone()));
                 }
 
-                swap(&mut temp, &mut f.body);
                 module.funcs.insert(k, f);
             }
 
