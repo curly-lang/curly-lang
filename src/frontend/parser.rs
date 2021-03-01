@@ -116,7 +116,7 @@ pub enum Token
     })]
     Word(u64),
 
-    #[regex(r#"'([^\\']|\\[nrt'"])'"#, |lex| match lex.slice()
+    #[regex(r#"'([^\\']|\\[nrt'"0])'"#, |lex| match lex.slice()
     {
         "'\\\\'" => '\\' as u8,
         "'\\\"'" => '\"' as u8,
@@ -124,6 +124,7 @@ pub enum Token
         "'\\n'" => '\n' as u8,
         "'\\r'" => '\r' as u8,
         "'\\t'" => '\t' as u8,
+        "'\\0'" => '\0' as u8,
         _ => lex.slice().chars().skip(1).next().unwrap() as u8
     })]
     Char(u8),
