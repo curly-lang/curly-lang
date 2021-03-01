@@ -696,7 +696,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
 
                 // Nonsubtypes are errors
-                if !atype.is_subtype(&_type, &module.types)
+                if !atype.is_subtype(&_type, &module.types) || atype == _type
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().loc.clone(),
