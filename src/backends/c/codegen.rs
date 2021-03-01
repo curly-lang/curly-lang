@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::iter::FromIterator;
 
 use crate::frontend::ir::{BinOp, IR, IRModule, PrefixOp, SExpr};
