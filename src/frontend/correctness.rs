@@ -958,6 +958,8 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
         }
 
         SExpr::Chain(_, l, r) => {
+            convert_function_symbols(l, funcs);
+
             let removed = if let SExpr::Walrus(_, n, _) = &**l
             {
                 funcs.remove(n)
@@ -966,7 +968,6 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
                 false
             };
 
-            convert_function_symbols(l, funcs);
             convert_function_symbols(r, funcs);
 
             if let SExpr::Walrus(_, n, _) = &**l
@@ -1018,6 +1019,10 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
 
         // Check assignments
         SExpr::Assign(_, _, value) => {
+            convert_function_symbols(value, funcs);
+        }
+
+        SExpr::Walrus(_, _, value) => {
             convert_function_symbols(value, funcs);
         }
 
