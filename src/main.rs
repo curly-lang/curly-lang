@@ -14,7 +14,7 @@ use curlyc::frontend::ir;
 use curlyc::frontend::ir::{IR, IRError};
 use curlyc::frontend::parser;
 
-static DEBUG: bool = false;
+static DEBUG: bool = true;
 
 #[derive(PartialEq)]
 enum CompileMode

@@ -826,6 +826,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     }
                     module_name.push_str(a.1);
                 }
+                m.origin = module.imports.get(&module_name).unwrap().name.clone();
 
                 if let Some(v) = module.imports.get(&module_name).unwrap().imports.get(&a[pos])
                 {
@@ -839,13 +840,15 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     } else
                     {
                         m._type = v.0.clone();
-                        m.origin = module.imports.get(&module_name).unwrap().name.clone();
                         let mut meta = SExprMetadata::empty();
                         swap(&mut meta, m);
                         *sexpr = SExpr::Function(meta, a[pos].clone());
                     }
                     return;
                 }
+            } else
+            {
+                m.origin = module.name.clone();
             }
 
             // Get type

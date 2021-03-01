@@ -2205,20 +2205,13 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
     }
 }
 
-// collect_type_functions(&IRModule, &HashMap<Type, CType>, &mut String) -> ()
+// collect_type_functions(&IRModule, &HashMap<Type, CType>, &mut String, &mut String) -> ()
 // Collect type functions (ie, in type Option 'a = Some: 'a | enum None, Option::Some is a type
 // function).
-fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_string: &mut String)
+fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, header: &mut String, bodies: &mut String)
 {
-    for t in ir.types.iter()
+    for t in types.iter()
     {
-        if types.get(t.1).is_none()
-        {
-            continue;
-        }
-
-        let t = (t.1, types.get(t.1).unwrap());
-
         // Find symbols
         if let Type::Symbol(tname) = t.0
         {
@@ -2252,22 +2245,32 @@ fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, types_str
                             code: String::with_capacity(0),
                             last_reference: 0
                         };
-                        put_fn_declaration(types_string, &ir.name, &cf, types);
+
+                        put_fn_declaration(header, &ir.name, &cf, types);
+                        header.push_str(";\n\n");
+                        header.push_str(if let Type::Enum(_) = cf.ret_type { "void" } else { get_c_type(cf.ret_type, types) });
+                        header.push(' ');
+                        header.push_str(&sanitise_symbol(&ir.name));
+                        header.push_str(&cf.name);
+                        header.push_str("$WRAPPER$$");
+                        header.push_str("(func_t* f);\n\n");
+
+                        put_fn_declaration(bodies, &ir.name, &cf, types);
                         let mut last_reference = 0;
 
                         // Build function
-                        types_string.push_str(" {\n");
-                        fix_argument(&(&aname, &**t2), ir, types_string, types, &mut last_reference);
-                        types_string.push_str(get_c_type(t.0, types));
-                        types_string.push_str(" result;\nresult.tag = ");
+                        bodies.push_str(" {\n");
+                        fix_argument(&(&aname, &**t2), ir, bodies, types, &mut last_reference);
+                        bodies.push_str(get_c_type(t.0, types));
+                        bodies.push_str(" result;\nresult.tag = ");
                         let id = *types.get(t.0).unwrap().get_hashmap().unwrap().get(v).unwrap();
-                        types_string.push_str(&format!("{}", id));
-                        types_string.push_str(";\nresult.values.$$");
-                        types_string.push_str(&format!("{}", id));
-                        types_string.push_str(" = arg$;\nreturn result;\n}\n");
+                        bodies.push_str(&format!("{}", id));
+                        bodies.push_str(";\nresult.values.$$");
+                        bodies.push_str(&format!("{}", id));
+                        bodies.push_str(" = arg$;\nreturn result;\n}\n");
 
                         // Build wrapper
-                        put_fn_wrapper(types_string, &ir.name, &cf, types)
+                        put_fn_wrapper(bodies, &ir.name, &cf, types)
                     }
                 }
             }
@@ -2418,93 +2421,8 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
         cf.code.push_str(";\n");
     }
 
-    // Create the main function
-    /*
-    let mut main_func = CFunction {
-        name: String::from(""),
-        args: Vec::with_capacity(0),
-        ret_type: if let Some(v) = module.sexprs.iter().last()
-        {
-            &v.get_metadata()._type
-        } else
-        {
-            &Type::Int
-        },
-        code: String::new(),
-        last_reference: 0
-    };
-
-    // Populate the main function
-    let mut cleanup = vec![];
-    for s in module.sexprs.iter()
-    {
-        if let SExpr::TypeAlias(_, _) = s
-        {
-            cleanup.push(String::with_capacity(0));
-            continue;
-        }
-
-        let v = convert_sexpr(s, module, &mut main_func, &types);
-
-        // Debug print
-        /*
-        if let Some(_) = repl_vars
-        {
-            put_debug_fn(&mut main_func.code, &v, &s.get_metadata()._type, module, &types, true);
-        }*/
-
-        // Deallocation
-        match s.get_metadata()._type
-        {
-            Type::Func(_, _) => {
-            }
-
-            _ => ()
-        }
-
-        cleanup.push(v);
-    }*/
-
     // Define structures and helper functions
     let mut code_string = format!("#include \"{}.h\"\n\n", sanitise_symbol(&module.name));
-
-    // Define repl value struct
-    /*
-    if let Some(_) = repl_vars
-    {
-        code_string.push_str("
-typedef struct {
-    unsigned int tag;
-    union {
-        int_t i;
-        float_t d;
-        char b;
-        func_t f;
-");
-
-    let mut set = HashSet::with_capacity(0);
-    for _type in types.iter()
-    {
-        let name = _type.1.get_c_name();
-        if let Type::Sum(_) = &_type.0
-        {
-            if !set.contains(name)
-            {
-                code_string.push_str("        ");
-                code_string.push_str(name);
-                code_string.push(' ');
-                code_string.push_str(&name[7..]);
-                code_string.push_str(";\n");
-                set.insert(name);
-            }
-        }
-    }
-    code_string.push_str(
-"    } vals;
-} repl_value_t;
-
-");
-    }*/
 
     // Declare all functions
     for f in funcs.iter()
@@ -2628,89 +2546,6 @@ typedef struct {
         }
     }
 
-    // Retrieve previous arguments
-    /*
-    if let Some(vec) = &repl_vars
-    {
-        code_string.push_str(get_c_type(main_func.ret_type, &types));
-
-        code_string.push_str(" __repl_line(repl_value_t** vars) {\n");
-        for v in vec.iter().enumerate()
-        {
-            code_string.push_str(get_c_type(&module.scope.get_var(v.1).unwrap().0, &types));
-            code_string.push(' ');
-            code_string.push_str(&sanitise_symbol(&v.1));
-            code_string.push_str(" = vars[");
-            code_string.push_str(&format!("{}", v.0));
-            code_string.push_str("]->vals.");
-
-            let mut _type = &module.scope.get_var(v.1).unwrap().0;
-            while let Type::Symbol(v) = _type
-            {
-                _type = module.types.get(v).unwrap();
-            }
-
-            let c = match _type
-            {
-                Type::Int => "i",
-                Type::Float => "d",
-                Type::Bool => "b",
-                Type::Func(_, _) => "f",
-                Type::Sum(_) => {
-                    code_string.push_str(&format!("{}", &types.get(_type).unwrap().get_c_name()[7..]));
-                    ""
-                }
-                _ => panic!("unsupported type!")
-            };
-            code_string.push_str(c);
-
-            code_string.push_str(";\n");
-        }
-    } else
-    {
-        code_string.push_str("int main() {\n");
-    }
-
-    // Main function code
-    code_string.push_str(&main_func.code);
-
-    // Deallocate everything
-    for v in module.sexprs.iter().enumerate()
-    {
-        if let SExpr::Assign(m, _, _) = v.1
-        {
-            match m._type
-            {
-                Type::Func(_, _) => {
-                    code_string.push_str("if (");
-                    code_string.push_str(&cleanup[v.0]);
-                    code_string.push_str(".refc != 0) {\n");
-                    code_string.push_str(&cleanup[v.0]);
-                    code_string.push_str(".refc = 0;\nfree_func(&");
-                    code_string.push_str(&cleanup[v.0]);
-                    code_string.push_str(");\n}\n");
-                }
-
-                _ => ()
-            }
-        }
-    }
-
-    // End main function
-    if let Some(_) = repl_vars
-    {
-        code_string.push_str("return ");
-        match cleanup.last()
-        {
-            Some(v) => code_string.push_str(v),
-            None => code_string.push_str("0")
-        }
-        code_string.push_str(";\n}\n");
-    } else
-    {
-        code_string.push_str("return 0;\n}\n");
-    }*/
-
     if module.name == "Main" && module.funcs.contains_key("main")
     {
         code_string.push_str("int_t main(void) {\n    ");
@@ -2816,13 +2651,14 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
 
     // Create and populate types
     let mut last_reference = 0;
-    let mut types_string = String::from("#ifndef TYPES_H\n#define TYPES_H\n#include \"curly.h\"\n\n");
+    let mut types_header = String::from("#ifndef TYPES_H\n#define TYPES_H\n#include \"curly.h\"\n\n");
+    let mut types_body = String::from("#include \"types.h\"\n\n");
     let mut types = HashMap::new();
 
     for module in ir.modules.iter()
     {
-        collect_types(module.1, &mut types, &mut types_string, &mut last_reference);
-        collect_type_functions(module.1, &types, &mut types_string);
+        collect_types(module.1, &mut types, &mut types_header, &mut last_reference);
+        collect_type_functions(module.1, &types, &mut types_header, &mut types_body);
     }
 
     for module in ir.modules.iter()
@@ -2850,8 +2686,9 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)>
         files.push(generate_header_files(module.1, &cfs, &types));
     }
 
-    types_string.push_str("#endif\n");
-    files.push((String::from("types.h"), types_string));
+    types_header.push_str("#endif\n");
+    files.push((String::from("types.h"), types_header));
+    files.push((String::from("types.c"), types_body));
     let ptr_size = std::mem::size_of::<&char>();
     files.push((String::from("curly.h"), format!("
 #ifndef CURLY_H
