@@ -2558,6 +2558,7 @@ typedef struct {
                 {
                     continue;
                 }
+                let impure = v.impure;
                 let v = &v.body;
 
                 // Create getter
@@ -2565,7 +2566,7 @@ typedef struct {
                 let sanitised = sanitise_symbol(n);
                 let mod_name = sanitise_symbol(&module.name);
 
-                if !is_enum
+                if !is_enum && !impure
                 {
                     code_string.push_str(get_c_type(&v.get_metadata()._type, types));
                     code_string.push(' ');
@@ -2583,7 +2584,7 @@ typedef struct {
                 code_string.push_str(&sanitised);
                 code_string.push_str("$GET$$() {\n");
 
-                if !is_enum
+                if !is_enum && !impure
                 {
                     code_string.push_str("if (");
                     code_string.push_str(&mod_name);
@@ -2606,14 +2607,18 @@ typedef struct {
 
                 if !is_enum
                 {
-                    code_string.push_str(&mod_name);
-                    code_string.push_str(&sanitised);
-                    code_string.push_str("$SAVED$$ = 1;\n");
-                    code_string.push_str(&mod_name);
-                    code_string.push_str(&sanitised);
-                    code_string.push_str("$VALUE$$ = ");
-                    code_string.push_str(&ret);
-                    code_string.push_str(";\nreturn ");
+                    if !impure
+                    {
+                        code_string.push_str(&mod_name);
+                        code_string.push_str(&sanitised);
+                        code_string.push_str("$SAVED$$ = 1;\n");
+                        code_string.push_str(&mod_name);
+                        code_string.push_str(&sanitised);
+                        code_string.push_str("$VALUE$$ = ");
+                        code_string.push_str(&ret);
+                        code_string.push_str(";\n");
+                    }
+                    code_string.push_str("return ");
                     code_string.push_str(&ret);
                     code_string.push_str(";\n");
                 }
