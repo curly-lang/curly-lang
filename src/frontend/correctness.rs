@@ -696,7 +696,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
 
                 // Nonsubtypes are errors
-                if !atype.is_subtype(&_type, &module.types) || atype == _type
+                if !atype.is_subtype(&_type, &module.types) || atype.equals(_type, &module.types)
                 {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().loc.clone(),
@@ -1170,9 +1170,15 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             if bt == Type::Unknown && et == Type::Unknown
             {
                 Type::Unknown
-            } else if bt == et || et == Type::Unknown
+            } else if bt.equals(&et, types) || et == Type::Unknown
             {
-                bt
+                if let Type::Symbol(_) = bt
+                {
+                    bt
+                } else
+                {
+                    et
+                }
             } else if bt == Type::Unknown
             {
                 et
@@ -1527,7 +1533,7 @@ fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRF
 
         if let Some(v) = scope.variables.remove(refr)
         {
-            if v.0 != Type::Unknown && v.0 != acc
+            if v.0 != Type::Unknown && !v.0.equals(&acc, types)
             {
                 errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                     v.3,
@@ -1540,7 +1546,7 @@ fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRF
         }
         if let Some(v) = scope.variables.remove(name)
         {
-            if v.0 != Type::Unknown && v.0 != acc
+            if v.0 != Type::Unknown && !v.0.equals(&acc, types)
             {
                 errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                     v.3,

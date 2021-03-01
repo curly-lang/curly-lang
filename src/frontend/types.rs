@@ -79,7 +79,7 @@ impl Display for Type
             Type::Enum(e) => { write!(f, "enum {}", e)?; }
             Type::Pointer(p) => { write!(f, "ptr {}", p)?; }
 
-            // Fuction types
+            // Function types
             Type::Func(func, a) => {
                 if let Type::Func(_, _) = **func
                 {
@@ -140,6 +140,40 @@ impl Type
             Type::Func(f, a) => f.is_ffi_compatible(types) && a.is_ffi_compatible(types),
             Type::Enum(_) => true,
             Type::Pointer(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn equals(&self, other: &Type, types: &HashMap<String, Type>) -> bool
+    {
+        let mut _type = self;
+        while let Type::Symbol(s) = _type
+        {
+            _type = types.get(s).unwrap();
+        }
+
+        let mut other = other;
+        while let Type::Symbol(s) = other
+        {
+            other = types.get(s).unwrap();
+        }
+
+        match (_type, other)
+        {
+            (Type::Int, Type::Int)
+                | (Type::Float, Type::Float)
+                | (Type::Bool, Type::Bool)
+                | (Type::Word, Type::Word)
+                | (Type::Char, Type::Char)
+                | (Type::String, Type::String)
+                => true,
+
+            (Type::Func(a1, f1), Type::Func(a2, f2)) => a1.equals(a2, types) && f1.equals(f2, types),
+            (Type::Sum(v1), Type::Sum(v2)) => v1 == v2,
+            (Type::Enum(v1), Type::Enum(v2)) => v1 == v2,
+            (Type::Pointer(v1), Type::Pointer(v2)) => v1 == v2,
+            (Type::Tag(s1, t1), Type::Tag(s2, t2)) => s1 == s2 && t1.equals(t2, types),
+
             _ => false
         }
     }

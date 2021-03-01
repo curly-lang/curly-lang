@@ -2078,6 +2078,30 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
     // Iterate over every type
     for _type in ir.types.iter().filter(|v| if let Type::Symbol(_) = v.1 { false } else { true })
     {
+        // Check if the type was actually already added
+        // This is necessary if you define types like so:
+        // type A = Int
+        // type B = A -> Int
+        // type C = Int -> A
+        // type D = Int -> Int
+        // type E = A -> A
+        // B, C, D, and E are all the same type
+        let mut add = None;
+        for t in types.iter()
+        {
+            if _type.1.equals(t.0, &ir.types)
+            {
+                add = Some(t.1.clone());
+                break;
+            }
+        }
+
+        if let Some(add) = add
+        {
+            types.insert(_type.1.clone(), add);
+            continue;
+        }
+
         match _type.1
         {
             // Primitives get mapped to old type
