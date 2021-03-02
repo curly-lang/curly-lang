@@ -1246,7 +1246,7 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                     func.code.push_str("((");
 
                                     // Create function pointer
-                                    func.code.push_str(get_c_type(ftype, types));
+                                    func.code.push_str(if let Type::Enum(_) = ftype { "void" } else { get_c_type(ftype, types) });
                                     func.code.push_str(" (*)(");
                                     let mut comma = false;
                                     for i in 0..saved_argc + f.get_metadata().arity

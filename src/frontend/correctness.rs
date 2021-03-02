@@ -925,20 +925,18 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
 // convert_function_symbols(&mut SExpr, &mut HashSet<String>) -> ()
 // Converts function symbols in a sexpression into function references.
-fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
+fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashMap<String, String>)
 {
     match sexpr
     {
         // Check symbol for functions
         SExpr::Symbol(m, s) => {
-            if funcs.contains(s)
+            if funcs.contains_key(s)
             {
                 let mut meta = SExprMetadata::empty();
 
                 swap(&mut meta, m);
-                let mut id = String::with_capacity(0);
-                swap(&mut id, s);
-                *sexpr = SExpr::Function(meta, id);
+                *sexpr = SExpr::Function(meta, funcs.get(s).unwrap().clone());
             }
         }
 
@@ -965,16 +963,16 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
                 funcs.remove(n)
             } else
             {
-                false
+                None
             };
 
             convert_function_symbols(r, funcs);
 
             if let SExpr::Walrus(_, n, _) = &**l
             {
-                if removed
+                if let Some(v) = removed
                 {
-                    funcs.insert(n.clone());
+                    funcs.insert(n.clone(), v);
                 }
             }
         }
@@ -992,7 +990,7 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
         // Check scope
         SExpr::With(_, assigns, body) => {
             // Save removed funcs
-            let mut removed = HashSet::with_capacity(0);
+            let mut removed = HashMap::with_capacity(0);
 
             // Check assigns
             for a in assigns.iter_mut()
@@ -1005,16 +1003,19 @@ fn convert_function_symbols(sexpr: &mut SExpr, funcs: &mut HashSet<String>)
             {
                 if let SExpr::Assign(_, a, _) = a
                 {
-                    if funcs.remove(a)
+                    if let Some(v) = funcs.remove(a)
                     {
-                        removed.insert(a.clone());
+                        removed.insert(a.clone(), v);
                     }
                 }
             }
 
             // Check body
             convert_function_symbols(body, funcs);
-            *funcs = HashSet::from_iter(funcs.union(&removed).cloned());
+            for (a, v) in removed
+            {
+                funcs.insert(a, v);
+            }
         }
 
         // Check assignments
@@ -1642,40 +1643,38 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
 fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>)
 {
     // Get the set of all global functions and globals
-    let mut globals = HashSet::from_iter(module.scope.variables.iter().filter_map(|v| {
-        if v.0 != "debug"
+    let mut globals = HashMap::from_iter(module.funcs.iter().map(|v| {
+        (v.1.name.clone(), v.0.clone())
+    }));
+
+    // Add imported functions
+    for v in module.scope.variables.iter()
+    {
+        if !globals.contains_key(v.0) && v.0 != "debug"
         {
-            Some(v.0.clone())
-        } else
-        {
-            None
+            globals.insert(v.0.clone(), v.0.clone());
         }
-    }).chain(module.funcs.iter().filter_map(|v| {
-        if v.0 != "_" && v.1.global
-        {
-            Some(v.0.clone())
-        } else
-        {
-            None
-        }
-    })));
+    }
 
     // Iterate over every function
     for func in module.funcs.iter_mut()
     {
         // Remove arguments
-        let mut removed = HashSet::with_capacity(0);
+        let mut removed = HashMap::with_capacity(0);
         for a in func.1.args.iter()
         {
-            if globals.remove(&a.0)
+            if let Some(v) = globals.remove(&a.0)
             {
-                removed.insert(a.0.clone());
+                removed.insert(a.0.clone(), v);
             }
         }
 
         convert_function_symbols(&mut func.1.body, &mut globals);
 
-        globals = HashSet::from_iter(globals.union(&removed).cloned());
+        for (a, v) in removed
+        {
+            globals.insert(a, v);
+        }
     }
 
     for sexpr in module.sexprs.iter_mut()
@@ -2028,16 +2027,23 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool
 
 // fix_arity(&mut SExpr, &mut Scope) -> ()
 // Fixes the arity of imported functions.
-fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
+fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope, funcs: &HashMap<String, IRFunction>)
 {
     match sexpr
     {
-        SExpr::Symbol(m, s)
-            | SExpr::Function(m, s) => {
+        SExpr::Symbol(m, s) => {
             if let Some(v) = scope.get_var(s)
             {
                 m.arity = v.1;
                 m.saved_argc = v.2;
+            }
+        }
+
+        SExpr::Function(m, f) => {
+            if let Some(v) = funcs.get(f)
+            {
+                m.arity = v.args.len();
+                m.saved_argc = Some(0);
             }
         }
 
@@ -2046,20 +2052,24 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
             | SExpr::Assign(_, _, v)
             | SExpr::Walrus(_, _, v)
             => {
-            fix_arity(v, scope);
+            fix_arity(v, scope, funcs);
         }
 
         SExpr::Infix(_, _, l, r)
-            | SExpr::Chain(_, l, r)
             | SExpr::And(_, l, r)
             | SExpr::Or(_, l, r)
             => {
-            fix_arity(l, scope);
-            fix_arity(r, scope);
+            fix_arity(l, scope, funcs);
+            fix_arity(r, scope, funcs);
+        }
+
+        SExpr::Chain(_, l, r) => {
+            fix_arity(l, scope, funcs);
+            fix_arity(r, scope, funcs);
         }
 
         SExpr::Application(m, l, r) => {
-            fix_arity(l, scope);
+            fix_arity(l, scope, funcs);
 
             if l.get_metadata().arity > 0
             {
@@ -2077,33 +2087,44 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope)
                 {
                     m.saved_argc = None;
                 }
+            } else
+            {
+                m.arity = 0;
+                m.saved_argc = None;
             }
 
-            fix_arity(r, scope);
+            fix_arity(r, scope, funcs);
+        }
+
+        SExpr::ExternalFunc(_, _, v) => {
+            for v in v
+            {
+                fix_arity(v, scope, funcs);
+            }
         }
 
         SExpr::If(_, c, t, e) => {
-            fix_arity(c, scope);
-            fix_arity(t, scope);
-            fix_arity(e, scope);
+            fix_arity(c, scope, funcs);
+            fix_arity(t, scope, funcs);
+            fix_arity(e, scope, funcs);
         }
 
         SExpr::With(_, a, v) => {
             scope.push_scope(false);
             for a in a
             {
-                fix_arity(a, scope);
+                fix_arity(a, scope, funcs);
             }
-            fix_arity(v, scope);
+            fix_arity(v, scope, funcs);
             scope.pop_scope();
         }
 
         SExpr::Match(_, v, a) => {
-            fix_arity(v, scope);
+            fix_arity(v, scope, funcs);
             scope.push_scope(false);
             for a in a.iter_mut()
             {
-                fix_arity(&mut a.1, scope)
+                fix_arity(&mut a.1, scope, funcs)
             }
             scope.pop_scope();
         }
@@ -2446,7 +2467,6 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
         swap(&mut module.sexprs, &mut sexprs);
         for sexpr in sexprs.iter_mut()
         {
-            convert_function_symbols(sexpr, &mut HashSet::from_iter(module.funcs.iter().map(|v| v.0.clone())));
             check_sexpr(sexpr, &mut module, &mut errors);
             check_externals(sexpr, &mut errors);
         }
@@ -2462,6 +2482,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             if module.1.name == "Main" && module.1.scope.variables.contains_key("main")
             {
                 has_main = true;
+                break;
             }
         }
 
@@ -2517,6 +2538,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                 {
                     let mut func = IRFunction {
                         args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
+                        name: i.0.clone(),
                         loc: Location::empty(),
                         captured: HashMap::with_capacity(0),
                         captured_names: Vec::with_capacity(0),
@@ -2542,54 +2564,66 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             // Fix arity
             for sexpr in module.sexprs.iter_mut()
             {
-                fix_arity(sexpr, &mut module.scope);
+                fix_arity(sexpr, &mut module.scope, &module.funcs);
             }
 
-            for func in module.funcs.iter_mut()
+            let keys: Vec<String> = module.funcs.keys().cloned().collect();
+            for key in keys
             {
-                fix_arity(&mut func.1.body, &mut module.scope);
+                let mut func = module.funcs.remove(&key).unwrap();
+                fix_arity(&mut func.body, &mut module.scope, &module.funcs);
+                module.funcs.insert(key, func);
             }
 
             // Eta reduced functions are optimised away
-            for sexpr in module.sexprs.iter_mut()
+            for f in module.funcs.iter_mut()
             {
-                if let SExpr::Assign(_, n, v) = sexpr
+                let func = f.1;
+                if let SExpr::Application(m, _, _) = &func.body
                 {
-                    if let SExpr::Application(m, _, _) = &**v
+                    if m.arity > 0 && m.saved_argc.is_some()
                     {
-                        if let Some(func) = module.funcs.get_mut(n)
+                        let mut arity = m.arity;
+                        while arity > 0
                         {
-                            if m.arity != 0 && func.args.len() == 0
+                            if let Type::Func(a, r) = &func.body.get_metadata()._type
                             {
-                                let mut arity = m.arity;
-                                while arity > 0
-                                {
-                                    if let Type::Func(a, r) = &func.body.get_metadata()._type
-                                    {
-                                        func.args.push((format!("$${}", arity), *a.clone()));
-                                        let mut temp = SExpr::True(SExprMetadata::empty());
-                                        let _type = *r.clone();
-                                        swap(&mut func.body, &mut temp);
-                                        func.body = SExpr::Application(SExprMetadata::empty(), Box::new(temp), Box::new(SExpr::Symbol(SExprMetadata::empty(), format!("$${}", arity))));
-                                        func.body.get_mutable_metadata()._type = _type;
-                                        arity -= 1;
-                                    } else
-                                    {
-                                        unreachable!("nya");
-                                    }
-                                }
-
-                                // Update variable
-                                let var = module.scope.variables.get_mut(n).unwrap();
-                                var.1 = func.args.len();
-                                var.2 = Some(0);
-
-                                // Transfer metadata
-                                let mut meta = SExprMetadata::empty();
-                                let n = n.clone();
-                                swap(&mut meta, sexpr.get_mutable_metadata());
-                                *sexpr = SExpr::Function(meta, n);
+                                func.args.push((format!("$${}", arity), *a.clone()));
+                                let mut temp = SExpr::True(SExprMetadata::empty());
+                                let _type = *r.clone();
+                                let _t2 = *a.clone();
+                                swap(&mut func.body, &mut temp);
+                                func.body = SExpr::Application(SExprMetadata {
+                                    loc: Location::empty(),
+                                    loc2: Location::empty(),
+                                    origin: String::with_capacity(0),
+                                    _type,
+                                    arity,
+                                    saved_argc: Some(temp.get_metadata().saved_argc.unwrap() + 1),
+                                    tailrec: false,
+                                    impure: false
+                                }, Box::new(temp), Box::new(SExpr::Symbol(SExprMetadata {
+                                    loc: Location::empty(),
+                                    loc2: Location::empty(),
+                                    origin: String::with_capacity(0),
+                                    _type: _t2,
+                                    arity: 0,
+                                    saved_argc: None,
+                                    tailrec: false,
+                                    impure: false
+                                }, format!("$${}", arity))));
+                                arity -= 1;
+                            } else
+                            {
+                                unreachable!("nya");
                             }
+                        }
+
+                        // Update variable if available
+                        if let Some(var) = module.scope.variables.get_mut(&func.name)
+                        {
+                            var.1 = func.args.len();
+                            var.2 = Some(0);
                         }
                     }
                 }
@@ -2598,12 +2632,15 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             // Fix arity (again)
             for sexpr in module.sexprs.iter_mut()
             {
-                fix_arity(sexpr, &mut module.scope);
+                fix_arity(sexpr, &mut module.scope, &module.funcs);
             }
 
-            for func in module.funcs.iter_mut()
+            let keys: Vec<String> = module.funcs.keys().cloned().collect();
+            for key in keys
             {
-                fix_arity(&mut func.1.body, &mut module.scope);
+                let mut func = module.funcs.remove(&key).unwrap();
+                fix_arity(&mut func.body, &mut module.scope, &module.funcs);
+                module.funcs.insert(key, func);
             }
 
             // Check for impurity in pure functions

@@ -271,6 +271,7 @@ impl SExpr
 pub struct IRFunction
 {
     pub loc: Location,
+    pub name: String,
     pub args: Vec<(String, Type)>,
     pub captured: HashMap<String, Type>,
     pub captured_names: Vec<String>,
@@ -676,6 +677,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 };
                 funcs.insert(func_name.clone(), IRFunction {
                     loc: Location::new(span.clone(), filename),
+                    name: name.clone(),
                     args: Vec::with_capacity(0),
                     captured: HashMap::with_capacity(0),
                     captured_names: Vec::with_capacity(0),
@@ -737,6 +739,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                 };
                 funcs.insert(func_name.clone(), IRFunction {
                     loc: Location::new(span.clone(), filename),
+                    name: name.clone(),
                     args: Vec::with_capacity(0),
                     captured: HashMap::with_capacity(0),
                     captured_names: Vec::with_capacity(0),
@@ -831,6 +834,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
                     start: span.start,
                     end: func_id.get_metadata().loc.span.start
                 }, filename),
+                name: name.clone(),
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types))).collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
@@ -892,6 +896,7 @@ fn convert_node(ast: AST, filename: &str, funcs: &mut HashMap<String, IRFunction
             // Create the function
             let func = IRFunction {
                 loc: Location::new(span, filename),
+                name: String::with_capacity(0),
                 args: args.into_iter().map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types))).collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
