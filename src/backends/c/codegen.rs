@@ -310,12 +310,19 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                         func.code.push_str(&v);
                         func.code.push_str(";\n");
                     }
+                } else if m.tailrec
+                {
+                    func.code.push_str("$$LOOP$$ = 1;\n");
                 } else
                 {
-                    func.code.push_str(get_c_type(&f.body.get_metadata()._type, types));
-                    func.code.push(' ');
-                    func.code.push_str(&name);
-                    func.code.push_str(" = ");
+                    if let Type::Enum(_) = f.body.get_metadata()._type { }
+                    else
+                    {
+                        func.code.push_str(get_c_type(&f.body.get_metadata()._type, types));
+                        func.code.push(' ');
+                        func.code.push_str(&name);
+                        func.code.push_str(" = ");
+                    }
                     func.code.push_str(&mod_name);
                     func.code.push_str(&s);
                     func.code.push_str("$GET$$();\n");
@@ -621,14 +628,21 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
         // If expressions
         SExpr::If(m, c, b, e) => {
             // Get name
-            let name = format!("$${}", func.last_reference);
-            func.last_reference += 1;
+            let name = if let Type::Enum(_) = m._type
+            {
+                String::with_capacity(0)
+            } else
+            {
+                let name = format!("$${}", func.last_reference);
+                func.last_reference += 1;
 
-            // Declare variable
-            func.code.push_str(&get_c_type(&m._type, types));
-            func.code.push(' ');
-            func.code.push_str(&name);
-            func.code.push_str(";\n");
+                // Declare variable
+                func.code.push_str(&get_c_type(&m._type, types));
+                func.code.push(' ');
+                func.code.push_str(&name);
+                func.code.push_str(";\n");
+                name
+            };
 
             // Get condition
             let cond = convert_sexpr(c, root, func, types);
@@ -659,10 +673,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             // Save
             if mtype == btype
             {
-                func.code.push_str(&name);
-                func.code.push_str(" = ");
-                func.code.push_str(&body);
-                func.code.push_str(";\n");
+                if let Type::Enum(_) = mtype { }
+                else
+                {
+                    func.code.push_str(&name);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&body);
+                    func.code.push_str(";\n");
+                }
             } else if let Type::Sum(_) = btype
             {
                 let map = types.get(mtype).unwrap().get_hashmap().unwrap();
@@ -724,10 +742,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
             // Save
             if mtype == etype
             {
-                func.code.push_str(&name);
-                func.code.push_str(" = ");
-                func.code.push_str(&elsy);
-                func.code.push_str(";\n");
+                if let Type::Enum(_) = mtype { }
+                else
+                {
+                    func.code.push_str(&name);
+                    func.code.push_str(" = ");
+                    func.code.push_str(&elsy);
+                    func.code.push_str(";\n");
+                }
             } else if let Type::Sum(_) = etype
             {
                 let map = types.get(mtype).unwrap().get_hashmap().unwrap();
@@ -2434,6 +2456,11 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
         {
             for a in cf.args.iter()
             {
+                if let Type::Enum(_) = a.1
+                {
+                    continue;
+                }
+
                 cf.code.push_str(get_c_type(a.1, &types));
                 cf.code.push(' ');
                 cf.code.push_str(&sanitise_symbol(a.0));
@@ -2456,6 +2483,11 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
         {
             for a in cf.args.iter()
             {
+                if let Type::Enum(_) = a.1
+                {
+                    continue;
+                }
+
                 cf.code.push_str(&sanitise_symbol(a.0));
                 cf.code.push_str(" = ");
                 cf.code.push_str(&sanitise_symbol(a.0));
@@ -2594,6 +2626,12 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
                 code_string.push_str(&sanitised);
                 code_string.push_str("$GET$$() {\n");
 
+                // Tail call optimisation
+                if v.get_metadata().tailrec
+                {
+                    code_string.push_str("bool $$LOOP$$ = 1;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
+                }
+
                 if !is_enum && !impure
                 {
                     code_string.push_str("if (");
@@ -2615,19 +2653,25 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
                 let ret = convert_sexpr(v, module, &mut func, types);
                 code_string = func.code;
 
+                if !impure && !is_enum
+                {
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$SAVED$$ = 1;\n");
+                    code_string.push_str(&mod_name);
+                    code_string.push_str(&sanitised);
+                    code_string.push_str("$VALUE$$ = ");
+                    code_string.push_str(&ret);
+                    code_string.push_str(";\n");
+                }
+
+                if v.get_metadata().tailrec
+                {
+                    code_string.push_str("}\n");
+                }
+
                 if !is_enum
                 {
-                    if !impure
-                    {
-                        code_string.push_str(&mod_name);
-                        code_string.push_str(&sanitised);
-                        code_string.push_str("$SAVED$$ = 1;\n");
-                        code_string.push_str(&mod_name);
-                        code_string.push_str(&sanitised);
-                        code_string.push_str("$VALUE$$ = ");
-                        code_string.push_str(&ret);
-                        code_string.push_str(";\n");
-                    }
                     code_string.push_str("return ");
                     code_string.push_str(&ret);
                     code_string.push_str(";\n");

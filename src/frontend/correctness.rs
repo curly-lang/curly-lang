@@ -2513,7 +2513,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
         {
             if module.1.name == "Main" && module.1.scope.variables.contains_key("main")
             {
-                has_main = true;
+                has_main = module.1.scope.variables.get("main").unwrap().1 == 0;
                 break;
             }
         }
