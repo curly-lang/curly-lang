@@ -46,7 +46,8 @@ pub enum IRError
     DoubleExport(Location, Location, String),
     RedefineImportAlias(Location, Location, String),
     UnsupportedAnnotation(Location, String),
-    InvalidFFIType(Location, Type)
+    InvalidFFIType(Location, Type),
+    DuplicateModule(String)
 }
 
 // Represents a prefix operator.
@@ -1237,8 +1238,14 @@ pub fn convert_ast_to_ir(filename: &str, contents: &str, asts: Vec<AST>, ir: &mu
     module.name = module_name.clone();
     module.sexprs = sexprs;
 
-    // Add module to ir root
-    ir.modules.insert(module_name, module);
+    // Add module to ir root and error if already exists
+    if ir.modules.contains_key(&module_name)
+    {
+        errors.push(IRError::DuplicateModule(module_name));
+    } else
+    {
+        ir.modules.insert(module_name, module);
+    }
 
     if errors.len() == 0
     {

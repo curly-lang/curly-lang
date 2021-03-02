@@ -359,6 +359,11 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
                                     .with_message(format!("Type {} is unsupported by FFI", t))
                                 ])
                         }
+
+                        IRError::DuplicateModule(v) => {
+                            diagnostic = diagnostic
+                                .with_message(format!("Duplicate module `{}`", v))
+                        }
                     }
                     term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
                 }
