@@ -132,7 +132,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                             m._type = v.0.clone();
                         } else
                         {
-                            panic!("{} doesnt have a type :(", f);
+                            panic!("{} doesnt have a type in {} :(", f, module.name);
                         }
 
                         m.origin = module.name.clone();
@@ -855,9 +855,6 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         *sexpr = SExpr::Function(meta, a[pos].clone());
                     }
                     return;
-                } else
-                {
-                    panic!("if this is the error ill be sad :(");
                 }
             } else
             {
