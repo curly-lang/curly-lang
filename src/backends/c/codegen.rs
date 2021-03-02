@@ -2236,7 +2236,7 @@ fn collect_types(ir: &IRModule, types: &mut HashMap<Type, CType>, types_string: 
 // function).
 fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, header: &mut String, bodies: &mut String)
 {
-    for t in types.iter()
+    'a: for t in types.iter()
     {
         // Find symbols
         if let Type::Symbol(tname) = t.0
@@ -2251,7 +2251,13 @@ fn collect_type_functions(ir: &IRModule, types: &HashMap<Type, CType>, header: &
             let mut t = t;
             while let Type::Symbol(s) = t.0
             {
-                t.0 = ir.types.get(s).unwrap();
+                if let Some(v) = ir.types.get(s)
+                {
+                    t.0 = v;
+                } else
+                {
+                    continue 'a;
+                }
             }
 
             // Find sum types
