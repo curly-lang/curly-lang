@@ -1195,10 +1195,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
                                 }
 
                                 func.code.push_str("$$LOOP$$ = 1;\n");
-                                func.code.push_str(get_c_type(ftype, types));
-                                func.code.push(' ');
-                                func.code.push_str(&name);
-                                func.code.push_str(";\n");
+                                if let Type::Enum(_) = ftype { }
+                                else
+                                {
+                                    func.code.push_str(get_c_type(ftype, types));
+                                    func.code.push(' ');
+                                    func.code.push_str(&name);
+                                    func.code.push_str(";\n");
+                                }
                             } else
                             {
                                 let saved_argc = f.get_metadata().saved_argc.unwrap();
@@ -2437,8 +2441,13 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
             }
 
             cf.code.push_str("bool $$LOOP$$ = 1;\n");
-            cf.code.push_str(get_c_type(&f.1.body.get_metadata()._type, &types));
-            cf.code.push_str(" $$RET$$;\nwhile ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
+			if let Type::Enum(_) = f.1.body.get_metadata()._type { }
+            else
+            {
+                cf.code.push_str(get_c_type(&f.1.body.get_metadata()._type, &types));
+                cf.code.push_str(" $$RET$$;\n");
+            }
+            cf.code.push_str("while ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
         }
 
         let last = convert_sexpr(&f.1.body, module, cf, &types);
@@ -2454,9 +2463,14 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
                 cf.code.push_str(";\n");
             }
 
-            cf.code.push_str("$$RET$$ = ");
-            cf.code.push_str(&last);
-            cf.code.push_str(";\n}\n");
+            if let Type::Enum(_) = f.1.body.get_metadata()._type { }
+            else
+            {
+                cf.code.push_str("$$RET$$ = ");
+                cf.code.push_str(&last);
+                cf.code.push_str(";\n");
+            }
+            cf.code.push_str("}\n");
         }
 
         // Deallocate functions
@@ -2476,15 +2490,19 @@ fn convert_module_to_c(module: &IRModule, funcs: &mut HashMap<String, CFunction>
         }
 
         // Return statement
-        cf.code.push_str("return ");
-        if f.1.body.get_metadata().tailrec
+        if let Type::Enum(_) = f.1.body.get_metadata()._type { }
+        else
         {
-            cf.code.push_str("$$RET$$");
-        } else
-        {
-            cf.code.push_str(&last);
+            cf.code.push_str("return ");
+            if f.1.body.get_metadata().tailrec
+            {
+                cf.code.push_str("$$RET$$");
+            } else
+            {
+                cf.code.push_str(&last);
+            }
+            cf.code.push_str(";\n");
         }
-        cf.code.push_str(";\n");
     }
 
 
