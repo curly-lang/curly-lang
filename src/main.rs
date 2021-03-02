@@ -81,7 +81,7 @@ fn main() -> Result<(), ()>
                         }
 
                         _ => {
-                            if a.starts_with("-L") || a.starts_with("-l")
+                            if a.starts_with("-L") || a.starts_with("-l") || a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3"
                             {
                                 options.compiler_options.push(a);
                             } else
@@ -290,7 +290,7 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
 
         // Print out the ast
         if DEBUG { println!("{:#?}", &ast); }
-        match ir::convert_ast_to_ir(&file.1, ast, ir)
+        match ir::convert_ast_to_ir(&file.1, code, ast, ir)
         {
             Ok(_) if DEBUG => { dbg!(&ir); }
             Ok(_) => (),

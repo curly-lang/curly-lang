@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
-use crate::frontend::ir::{BinOp, IR, IRModule, PrefixOp, SExpr};
+use crate::frontend::ir::{BinOp, IR, IRModule, Location, PrefixOp, SExpr};
 use crate::frontend::types::Type;
 
 // Represents a function in C.
@@ -801,12 +801,12 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 
             // Quick hack for debug function
             // TODO: Make this not a hack
-            if let SExpr::Symbol(_, v) = f
+            if let SExpr::Symbol(m, v) = f
             {
                 if v == "debug"
                 {
                     let arg = convert_sexpr(&args[0], root, func, types);
-                    put_debug_fn(&mut func.code, &arg, &args[0].get_metadata()._type, root, types, true);
+                    put_debug_fn(&m.loc, &mut func.code, &arg, &args[0].get_metadata()._type, root, types, true);
                     if args.len() == 1
                     {
                         return arg;
@@ -1958,10 +1958,31 @@ fn put_fn_declaration(s: &mut String, mod_name: &str, func: &CFunction, types: &
     s.push(')');
 }
 
+// get_lino(&Location, &str) -> usize
+// Gets the line number of the span.
+fn get_lino(span: &Location, contents: &str) -> usize
+{
+    let mut lino = 1;
+    for c in contents.bytes().enumerate()
+    {
+        if c.1 == '\n' as u8
+        {
+            lino += 1;
+        }
+        if span.span.start <= c.0 && c.0 <= span.span.end
+        {
+            break;
+        }
+    }
+
+    lino
+}
+
 // put_debug_fn(&mut String, &str, &Type, &IRModule, &HashMap<Type, CType>, bool) -> ()
 // Puts a debug function in the built string.
-fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: &HashMap<Type, CType>, newline: bool)
+fn put_debug_fn(span: &Location, code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: &HashMap<Type, CType>, newline: bool)
 {
+    code.push_str(&format!("printf(\"[{}:{}] = \");\n", &ir.filename, get_lino(span, &ir.contents)));
     let original_type = _type;
     let mut _type = _type;
     while let Type::Symbol(v) = _type
@@ -2034,7 +2055,7 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: 
                 for field in fields.iter()
                 {
                     code.push_str(&format!("case {}: {{\n", field.1));
-                    put_debug_fn(code, &format!("{}.values.$${}", v, field.1), &field.0, ir, types, false);
+                    put_debug_fn(span, code, &format!("{}.values.$${}", v, field.1), &field.0, ir, types, false);
                     code.push_str("break;\n}\n");
                 }
             }
@@ -2058,7 +2079,7 @@ fn put_debug_fn(code: &mut String, v: &str, _type: &Type, ir: &IRModule, types: 
             code.push_str("printf(\"{ ");
             code.push_str(s);
             code.push_str(" = \");\n");
-            put_debug_fn(code, v, t, ir, types, false);
+            put_debug_fn(span, code, v, t, ir, types, false);
             code.push_str("printf(\" }\");\n");
         }
 

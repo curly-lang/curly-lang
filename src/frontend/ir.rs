@@ -307,6 +307,7 @@ pub struct IRModule
 {
     pub name: String,
     pub filename: String,
+    pub contents: String,
     pub imports: HashMap<String, IRImport>,
     pub exports: HashMap<String, (Location, Type)>,
     pub externals: HashMap<String, IRExtern>,
@@ -326,11 +327,12 @@ impl IRModule
 {
     // new() -> IRModule
     // Creates a new IRModule.
-    pub fn new(filename: &str) -> IRModule
+    pub fn new(filename: &str, contents: &str) -> IRModule
     {
         IRModule {
             name: String::with_capacity(0),
             filename: String::from(filename),
+            contents: String::from(contents),
             imports: HashMap::with_capacity(0),
             exports: HashMap::with_capacity(0),
             externals: HashMap::with_capacity(0),
@@ -996,10 +998,10 @@ enum Purity
 
 // convert_ast_to_ir(Vec<AST>) -> IR
 // Converts a list of asts into ir.
-pub fn convert_ast_to_ir(filename: &str, asts: Vec<AST>, ir: &mut IR) -> Result<(), Vec<IRError>>
+pub fn convert_ast_to_ir(filename: &str, contents: &str, asts: Vec<AST>, ir: &mut IR) -> Result<(), Vec<IRError>>
 {
     // Set up
-    let mut module = IRModule::new(filename);
+    let mut module = IRModule::new(filename, contents);
     extract_types_to_ir(&asts, &mut module);
     let mut seen_funcs = HashMap::new();
     seen_funcs.insert(String::with_capacity(0), 0);
