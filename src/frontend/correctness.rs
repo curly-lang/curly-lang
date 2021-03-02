@@ -2513,6 +2513,32 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
+        for (_, module) in ir.modules.iter_mut()
+        {
+            // Save types
+            let mut id = 0;
+            while let Some(_) = module.types.get(&format!("{}", id))
+            {
+                id += 1;
+            }
+
+            for sexpr in module.sexprs.iter()
+            {
+                save_types(sexpr, &mut module.types, &mut id);
+            }
+
+            for f in module.funcs.iter()
+            {
+                save_types(&f.1.body, &mut module.types, &mut id);
+            }
+
+            // Check for tail recursion
+            for f in module.funcs.iter_mut()
+            {
+                check_tailrec(&mut f.1.body, &f.0, true);
+            }
+        }
+
         for _ in 0..2
         {
             let keys: Vec<String> = ir.modules.keys().cloned().collect();
@@ -2520,28 +2546,6 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             {
                 let mut module = ir.modules.remove(&name).unwrap();
 
-                // Save types
-                let mut id = 0;
-                while let Some(_) = module.types.get(&format!("{}", id))
-                {
-                    id += 1;
-                }
-
-                for sexpr in module.sexprs.iter()
-                {
-                    save_types(sexpr, &mut module.types, &mut id);
-                }
-
-                for f in module.funcs.iter()
-                {
-                    save_types(&f.1.body, &mut module.types, &mut id);
-                }
-
-                // Check for tail recursion
-                for f in module.funcs.iter_mut()
-                {
-                    check_tailrec(&mut f.1.body, &f.0, true);
-                }
 
                 // Import functions
                 for import in module.imports.iter_mut()
