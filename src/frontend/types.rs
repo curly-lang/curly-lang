@@ -144,6 +144,8 @@ impl Type
         }
     }
 
+    // equals(&self, &Type, &HashMap<String, Type>) -> bool
+    // Returns true if the two types are equal, accounting for type aliases.
     pub fn equals(&self, other: &Type, types: &HashMap<String, Type>) -> bool
     {
         let mut _type = self;
@@ -194,7 +196,7 @@ impl Type
             supertype = types.get(s).unwrap();
         }
 
-        if _type == supertype
+        if _type.equals(supertype, types)
         {
             return true;
         }
@@ -213,7 +215,7 @@ impl Type
             Type::Func(sf, sa) =>
                 if let Type::Func(f, a) = _type
                 {
-                    f == sf && a == sa
+                    f.equals(sf, types) && a.equals(sa, types)
                 } else
                 {
                     false

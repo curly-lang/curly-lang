@@ -109,32 +109,40 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
 
                 None => {
-                    let mut func = module.funcs.remove(f).unwrap();
-                    check_function_body(f, f, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals, &module.imports);
-
-                    module.scope.push_scope(true);
-                    for a in func.args.iter()
+                    if let Some(mut func) = module.funcs.remove(f)
                     {
-                        if a.0 != "_"
+                        if !func.checked
                         {
-                            module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
-                        }
-                    }
-                    check_sexpr(&mut func.body, module, errors);
-                    module.scope.pop_scope();
+                            check_function_body(f, f, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals, &module.imports);
 
-                    if let Some(v) = module.scope.get_var(f)
-                    {
-                        m._type = v.0.clone();
+                            module.scope.push_scope(true);
+                            for a in func.args.iter()
+                            {
+                                if a.0 != "_"
+                                {
+                                    module.scope.put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
+                                }
+                            }
+                            check_sexpr(&mut func.body, module, errors);
+                            module.scope.pop_scope();
+                        }
+
+                        if let Some(v) = module.scope.get_var(f)
+                        {
+                            m._type = v.0.clone();
+                        } else
+                        {
+                            panic!("{} doesnt have a type :(", f);
+                        }
+
+                        m.origin = module.name.clone();
+                        m.arity = func.args.len();
+                        m.saved_argc = Some(func.captured.len());
+                        module.funcs.insert(f.clone(), func);
                     } else
                     {
-                        return;
+                        panic!("{} not found in {:?} or {:?}", f, module.scope.variables.keys(), module.funcs.keys());
                     }
-
-                    m.origin = module.name.clone();
-                    m.arity = func.args.len();
-                    m.saved_argc = Some(func.captured.len());
-                    module.funcs.insert(f.clone(), func);
                 }
             }
         }
@@ -420,7 +428,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             {
                 if let Type::Func(l, r) = &mut m1._type
                 {
-                    if **l == arg.get_metadata()._type
+                    if l.equals(&arg.get_metadata()._type, &module.types)
                     {
                         let mut temp = SExpr::True(SExprMetadata::empty());
                         swap(&mut temp, arg);
@@ -847,6 +855,9 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         *sexpr = SExpr::Function(meta, a[pos].clone());
                     }
                     return;
+                } else
+                {
+                    panic!("if this is the error ill be sad :(");
                 }
             } else
             {
@@ -1202,26 +1213,26 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
             } else
             {
                 let mut set = Vec::with_capacity(0);
-                if let Type::Sum(v) = &body.get_metadata()._type
+                if let Type::Sum(v) = bt
                 {
-                    set = v.0.iter().collect();
+                    set = v.0.into_iter().collect();
                 } else
                 {
-                    set.push(&body.get_metadata()._type);
+                    set.push(bt);
                 }
 
-                if let Type::Sum(v) = &elsy.get_metadata()._type
+                if let Type::Sum(v) = et
                 {
-                    for v in v.0.iter()
+                    for v in v.0
                     {
                         set.push(v);
                     }
                 } else
                 {
-                    set.push(&elsy.get_metadata()._type);
+                    set.push(et);
                 }
 
-                Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter().cloned())))
+                Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter())))
             }
         }
 
@@ -1498,6 +1509,11 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
 // Checks a function body and determines the return type of the function.
 fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRFunction, scope: &mut Scope, funcs: &mut HashMap<String, IRFunction>, errors: &mut Vec<CorrectnessError>, types: &HashMap<String, Type>, externals: &HashMap<String, IRExtern>, imports: &HashMap<String, IRImport>)
 {
+    if func.checked
+    {
+        return
+    }
+
     if scope.get_var(name).is_none() && scope.get_var(refr).is_none()
     {
         // Put function in scope
@@ -1589,6 +1605,7 @@ fn check_function_body(name: &str, refr: &str, module_name: &str, func: &mut IRF
         }
         scope.put_var_raw(String::from(name), acc, func.args.len(), Some(func.captured.len()), func.loc.clone(), false, String::from(module_name));
     }
+    func.checked = true;
 }
 
 // check_function_group(T, &HashMap<String, IRFunction>, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1604,9 +1621,6 @@ fn check_function_group<T>(names: T, module: &mut IRModule, errors: &mut Vec<Cor
         {
             check_function_body(&name.0, &name.1, &module.name, &mut func, &mut module.scope, &mut module.funcs, errors, &module.types, &module.externals, &module.imports);
             module.funcs.insert(name.0, func);
-        } else
-        {
-            unreachable!("uwu");
         }
     }
 
@@ -2205,7 +2219,7 @@ fn check_purity(sexpr: &mut SExpr, module: &IRModule, errors: &mut Vec<Correctne
                 {
                     if e.1.impure
                     {
-                        m.impure = true;
+                        m.impure = m.arity > 0;
                         return Err(m.loc.clone())
                     } else
                     {
