@@ -132,7 +132,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                             m._type = v.0.clone();
                         } else
                         {
-                            panic!("{} doesnt have a type in {} :(", f, module.name);
+                            // panic!("{} doesnt have a type in {} :(", f, module.name);
                         }
 
                         m.origin = module.name.clone();
@@ -141,7 +141,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         module.funcs.insert(f.clone(), func);
                     } else
                     {
-                        panic!("{} not found in {:?} or {:?}", f, module.scope.variables.keys(), module.funcs.keys());
+                        // panic!("{} not found in {:?} or {:?}", f, module.scope.variables.keys(), module.funcs.keys());
                     }
                 }
             }
@@ -2237,7 +2237,7 @@ fn check_purity(sexpr: &mut SExpr, module: &IRModule, errors: &mut Vec<Correctne
             {
                 if f.impure
                 {
-                    m.impure = true;
+                    m.impure = f.args.len() > 0;
                     Err(m.loc.clone())
                 } else
                 {
@@ -2491,12 +2491,15 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
         }
         swap(&mut module.sexprs, &mut sexprs);
 
-        // Check if all globals are implemented
+        // Check if all exports are implemented
         for v in module.exports.iter()
         {
-            if !module.scope.variables.get(v.0).unwrap().4
+            if let Some(a) = module.scope.variables.get(v.0)
             {
-                errors.push(CorrectnessError::UnimplementedExport(v.1.0.clone(), v.0.clone()));
+                if !a.4
+                {
+                    errors.push(CorrectnessError::UnimplementedExport(v.1.0.clone(), v.0.clone()));
+                }
             }
         }
 
