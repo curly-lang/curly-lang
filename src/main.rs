@@ -28,6 +28,7 @@ struct CommandlineBuildOptions
 {
     output: String,
     inputs: Vec<String>,
+    compiled_mods: Vec<String>,
     compiler_options: Vec<String>,
     mode: CompileMode
 }
@@ -53,6 +54,7 @@ fn main() -> Result<(), ()>
                 let mut options = CommandlineBuildOptions {
                     output: String::with_capacity(0),
                     inputs: Vec::with_capacity(0),
+                    compiled_mods: Vec::with_capacity(0),
                     compiler_options: Vec::with_capacity(0),
                     mode: CompileMode::Executable
                 };
@@ -67,7 +69,7 @@ fn main() -> Result<(), ()>
                                 options.output = v;
                             } else
                             {
-                                println!("Must specify an output file");
+                                eprintln!("Must specify an output file");
                                 return Err(());
                             }
                         }
@@ -78,6 +80,17 @@ fn main() -> Result<(), ()>
 
                         "--lib" => {
                             options.mode = CompileMode::Static;
+                        }
+
+                        "-m" => {
+                            if let Some(v) = args.next()
+                            {
+                                options.compiled_mods.push(v);
+                            } else
+                            {
+                                eprintln!("must specify a module file");
+                                return Err(());
+                            }
                         }
 
                         _ => {
@@ -94,7 +107,17 @@ fn main() -> Result<(), ()>
 
                 if options.inputs.len() == 0
                 {
-                    println!("usage:\n{} build [options] [file]\noptions:\n-o - Sets the output file", &name);
+                    println!("usage:
+{} build [options] [file]
+options:
+    -o output           - Sets the output file
+    -m file             - Adds file as a compiled module (must include corresponding compiled library)
+    --lib               - Compiles as a static library
+    --dyn               - Compiles as a dynamic library
+    -On                 - Compiles with the given optimisation level; n can be 0, 1, 2, or 3
+    -L/path/to/dir      - Adds /path/to/dir as a directory where cc can look for libraries
+    -llib               - adds lib as a library
+", &name);
                     return Err(());
                 }
 
@@ -117,7 +140,7 @@ fn main() -> Result<(), ()>
                 let mut ir = IR {
                     modules: HashMap::with_capacity(0)
                 };
-                let c = compile(&options.inputs, &contents, &mut ir, options.mode == CompileMode::Executable)?;
+                let c = compile(&options.inputs.iter().map(|v| (v.clone(), false)).chain(options.compiled_mods.into_iter().map(|v| (v, true))).collect(), &contents, &mut ir, options.mode == CompileMode::Executable)?;
 
                 // Create .build
                 match fs::remove_dir_all(".build")
@@ -134,7 +157,7 @@ fn main() -> Result<(), ()>
                     }
                 }
 
-                std::env::set_current_dir(".build").expect("failed to move to .build");
+                std::env::set_current_dir(".build").expect("failed to cd into .build");
                 for c in c.iter()
                 {
                     match fs::write(&c.0, &c.1)
@@ -173,6 +196,7 @@ fn main() -> Result<(), ()>
                     CompileMode::Dynamic => {
                         command.arg("-c");
                         command.arg("-fPIC");
+                        command.arg("-shared");
                     }
                 }
 
@@ -205,6 +229,19 @@ fn main() -> Result<(), ()>
                         }
                     }
                     command.spawn().expect("failed to execute ar").wait().expect("failed to wait for ar");
+
+                    // Generate module file
+                    let filename = format!("{}.mod.curly", options.output);
+                    let contents = codegen::generate_module_file(&ir);
+                    if DEBUG { println!("================ {} ================\n{}\n\n", filename, contents); }
+                    match fs::write(&filename, contents)
+                    {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Error writing {}: {}", filename, e);
+                            return Err(());
+                        }
+                    }
                 }
             }
 
@@ -226,7 +263,7 @@ fn main() -> Result<(), ()>
                         let mut ir = IR {
                             modules: HashMap::with_capacity(0)
                         };
-                        match check(&vec![file], &vec![contents], &mut ir, true)
+                        match check(&vec![(file, false)], &vec![contents], &mut ir, true)
                         {
                             Ok(_) => println!("No errors found"),
                             Err(_) => return Err(())
@@ -234,14 +271,18 @@ fn main() -> Result<(), ()>
                     }
 
                     None => {
-                        println!("usage:\n{} check [file]", &name);
+                        println!("usage:
+{} check [options] [file]
+options:
+    -m file             - Adds file as a compiled module
+", &name);
                     }
                 }
             }
 
             _ => {
                 println!("usage:
-{} check [files]
+{} check [options] [files]
 {} build [options] [files]
 ", &name, &name);
             }
@@ -251,16 +292,16 @@ fn main() -> Result<(), ()>
     }
 }
 
-// check(&Vec<String>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
+// check(&Vec<(String, bool)>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
 // Checks whether given code is valid.
-fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main: bool) -> Result<(), ()>
+fn check(filenames: &Vec<(String, bool)>, codes: &Vec<String>, ir: &mut IR, require_main: bool) -> Result<(), ()>
 {
     // Set up codespan
     let mut files = SimpleFiles::new();
     let mut file_hash = HashMap::new();
     for file in filenames.iter().enumerate()
     {
-        file_hash.insert(file.1, files.add(file.1, codes[file.0].clone()));
+        file_hash.insert(&file.1.0, files.add(&file.1.0, codes[file.0].clone()));
     }
     let file_hash = file_hash;
 
@@ -271,103 +312,109 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
     for file in filenames.iter().enumerate()
     {
         let code = &codes[file.0];
-        let file_id = *file_hash.get(file.1).unwrap();
+        let file_id = *file_hash.get(&file.1.0).unwrap();
 
         // Generate the ast
-        let ast = match parser::parse(code)
+        if file.1.1
         {
-            Ok(v) => v,
-            Err(e) => {
-                let diagnostic = Diagnostic::error()
-                                    .with_message(&e.msg)
-                                    .with_labels(vec![
-                                        Label::primary(file_id, e.span)
-                                    ]);
-                term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
-                return Err(());
-            }
-        };
-
-        // Print out the ast
-        if DEBUG { println!("{:#?}", &ast); }
-        match ir::convert_ast_to_ir(&file.1, code, ast, ir)
+            unimplemented!("gotta do this :/");
+        } else
         {
-            Ok(_) if DEBUG => { dbg!(&ir); }
-            Ok(_) => (),
-            Err(e) => {
-                for e in e
-                {
-                    let mut diagnostic = Diagnostic::error();
-                    match e
-                    {
-                        IRError::InvalidType(s) => {
-                            diagnostic = diagnostic
-                                .with_message("Invalid type used")
-                                .with_labels(vec![
-                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                    .with_message("Undeclared type")
-                                ])
-                        }
-
-                        IRError::DuplicateTypeInUnion(s1, s2, t) => {
-                            diagnostic = diagnostic
-                                .with_message("Duplicate type in union type declaration")
-                                .with_labels(vec![
-                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                    .with_message("Type used here first"),
-                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                    .with_message(format!("Type `{}` used a second time here", t))
-                                ])
-                        }
-
-                        IRError::DoubleExport(s1, s2, e) => {
-                            diagnostic = diagnostic
-                                .with_message("Value exported twice")
-                                .with_labels(vec![
-                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                    .with_message("Value exported here first"),
-                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                    .with_message(format!("Value {} exported a second time here", e)),
-                                ])
-                        }
-
-                        IRError::RedefineImportAlias(s1, s2, a) => {
-                            diagnostic = diagnostic
-                                .with_message("Alias defined twice")
-                                .with_labels(vec![
-                                    Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
-                                    .with_message("Alias defined here first"),
-                                    Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
-                                    .with_message(format!("Alias {} defined a second time here", a)),
-                                ])
-                        }
-
-                        IRError::UnsupportedAnnotation(s, a) => {
-                            diagnostic = diagnostic
-                                .with_message("Unsupported annotation used")
-                                .with_labels(vec![
-                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                    .with_message(format!("Annotation {} is unsupported", a)),
-                                ])
-                        }
-
-                        IRError::InvalidFFIType(s, t) => {
-                            diagnostic = diagnostic
-                                .with_message("Unsupported type used for FFI")
-                                .with_labels(vec![
-                                    Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
-                                    .with_message(format!("Type {} is unsupported by FFI", t))
-                                ])
-                        }
-
-                        IRError::DuplicateModule(v) => {
-                            diagnostic = diagnostic
-                                .with_message(format!("Duplicate module `{}`", v))
-                        }
-                    }
+            let ast = match parser::parse(code)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    let diagnostic = Diagnostic::error()
+                                        .with_message(&e.msg)
+                                        .with_labels(vec![
+                                            Label::primary(file_id, e.span)
+                                        ]);
                     term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                    return Err(());
                 }
-                fail = true;
+            };
+
+            // Print out the ast
+            if DEBUG { println!("{:#?}", &ast); }
+            match ir::convert_ast_to_ir(&file.1.0, code, ast, ir)
+            {
+                Ok(_) if DEBUG => { dbg!(&ir); }
+                Ok(_) => (),
+                Err(e) => {
+                    for e in e
+                    {
+                        let mut diagnostic = Diagnostic::error();
+                        match e
+                        {
+                            IRError::InvalidType(s) => {
+                                diagnostic = diagnostic
+                                    .with_message("Invalid type used")
+                                    .with_labels(vec![
+                                        Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                        .with_message("Undeclared type")
+                                    ])
+                            }
+
+                            IRError::DuplicateTypeInUnion(s1, s2, t) => {
+                                diagnostic = diagnostic
+                                    .with_message("Duplicate type in union type declaration")
+                                    .with_labels(vec![
+                                        Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                        .with_message("Type used here first"),
+                                        Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                        .with_message(format!("Type `{}` used a second time here", t))
+                                    ])
+                            }
+
+                            IRError::DoubleExport(s1, s2, e) => {
+                                diagnostic = diagnostic
+                                    .with_message("Value exported twice")
+                                    .with_labels(vec![
+                                        Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                        .with_message("Value exported here first"),
+                                        Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                        .with_message(format!("Value {} exported a second time here", e)),
+                                    ])
+                            }
+
+                            IRError::RedefineImportAlias(s1, s2, a) => {
+                                diagnostic = diagnostic
+                                    .with_message("Alias defined twice")
+                                    .with_labels(vec![
+                                        Label::secondary(*file_hash.get(&s1.filename).unwrap(), s1.span)
+                                        .with_message("Alias defined here first"),
+                                        Label::primary(*file_hash.get(&s2.filename).unwrap(), s2.span)
+                                        .with_message(format!("Alias {} defined a second time here", a)),
+                                    ])
+                            }
+
+                            IRError::UnsupportedAnnotation(s, a) => {
+                                diagnostic = diagnostic
+                                    .with_message("Unsupported annotation used")
+                                    .with_labels(vec![
+                                        Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                        .with_message(format!("Annotation {} is unsupported", a)),
+                                    ])
+                            }
+
+                            IRError::InvalidFFIType(s, t) => {
+                                diagnostic = diagnostic
+                                    .with_message("Unsupported type used for FFI")
+                                    .with_labels(vec![
+                                        Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                        .with_message(format!("Type {} is unsupported by FFI", t))
+                                    ])
+                            }
+
+                            IRError::DuplicateModule(v) => {
+                                diagnostic = diagnostic
+                                    .with_message(format!("Duplicate module `{}`", v))
+                            }
+                        }
+                        term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                    }
+                    fail = true;
+                }
             }
         }
     }
@@ -638,9 +685,9 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
     }
 }
 
-// compile(&str, &str, &mut IR, bool) -> Result<String, ()>
+// compile(&Vec<(String, bool)>, &Vec<(String, bool)>, &mut IR, bool) -> Result<String, ()>
 // Compiles curly into C code.
-fn compile(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main: bool) -> Result<Vec<(String, String)>, ()>
+fn compile(filenames: &Vec<(String, bool)>, codes: &Vec<String>, ir: &mut IR, require_main: bool) -> Result<Vec<(String, String)>, ()>
 {
     // Check the file
     check(filenames, codes, ir, require_main)?;
