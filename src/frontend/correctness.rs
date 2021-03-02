@@ -2513,181 +2513,170 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
     // Return error if they exist, otherwise return success
     if errors.len() == 0
     {
-        let keys: Vec<String> = ir.modules.keys().cloned().collect();
-        for name in keys
+        for _ in 0..2
         {
-            let mut module = ir.modules.remove(&name).unwrap();
-
-            // Save types
-            let mut id = 0;
-            while let Some(_) = module.types.get(&format!("{}", id))
+            let keys: Vec<String> = ir.modules.keys().cloned().collect();
+            for name in keys
             {
-                id += 1;
-            }
+                let mut module = ir.modules.remove(&name).unwrap();
 
-            for sexpr in module.sexprs.iter()
-            {
-                save_types(sexpr, &mut module.types, &mut id);
-            }
-
-            for f in module.funcs.iter()
-            {
-                save_types(&f.1.body, &mut module.types, &mut id);
-            }
-
-            // Check for tail recursion
-            for f in module.funcs.iter_mut()
-            {
-                check_tailrec(&mut f.1.body, &f.0, true);
-            }
-
-            // Import functions
-            for import in module.imports.iter_mut()
-            {
-                // Fix arity
-                let imported_mod = ir.modules.get(&import.1.name).unwrap();
-                for i in import.1.imports.iter_mut()
+                // Save types
+                let mut id = 0;
+                while let Some(_) = module.types.get(&format!("{}", id))
                 {
-                    i.1.1 = imported_mod.scope.get_var(i.0).unwrap().1;
+                    id += 1;
                 }
 
-                // Add functions
-                for i in import.1.imports.iter()
+                for sexpr in module.sexprs.iter()
                 {
-                    let mut func = IRFunction {
-                        args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
-                        name: i.0.clone(),
-                        loc: Location::empty(),
-                        captured: HashMap::with_capacity(0),
-                        captured_names: Vec::with_capacity(0),
-                        body: SExpr::True(SExprMetadata::empty()),
-                        global: true,
-                        checked: true,
-                        written: true,
-                        impure: i.1.2
-                    };
-                    func.body.get_mutable_metadata()._type = i.1.0.clone();
-                    module.funcs.insert(i.0.clone(), func);
-                    if let Some(var) = module.scope.variables.get_mut(i.0)
+                    save_types(sexpr, &mut module.types, &mut id);
+                }
+
+                for f in module.funcs.iter()
+                {
+                    save_types(&f.1.body, &mut module.types, &mut id);
+                }
+
+                // Check for tail recursion
+                for f in module.funcs.iter_mut()
+                {
+                    check_tailrec(&mut f.1.body, &f.0, true);
+                }
+
+                // Import functions
+                for import in module.imports.iter_mut()
+                {
+                    // Fix arity
+                    let imported_mod = ir.modules.get(&import.1.name).unwrap();
+                    for i in import.1.imports.iter_mut()
                     {
-                        var.1 = i.1.1;
-                        var.2 = Some(0);
-                    } else
+                        i.1.1 = imported_mod.scope.get_var(i.0).unwrap().1;
+                    }
+
+                    // Add functions
+                    for i in import.1.imports.iter()
                     {
-                        module.scope.variables.insert(i.0.clone(), (i.1.0.clone(), i.1.1, Some(0), Location::empty(), true, String::with_capacity(0)));
+                        let mut func = IRFunction {
+                            args: std::iter::once((String::with_capacity(0), Type::Unknown)).cycle().take(i.1.1).collect(),
+                            name: i.0.clone(),
+                            loc: Location::empty(),
+                            captured: HashMap::with_capacity(0),
+                            captured_names: Vec::with_capacity(0),
+                            body: SExpr::True(SExprMetadata::empty()),
+                            global: true,
+                            checked: true,
+                            written: true,
+                            impure: i.1.2
+                        };
+                        func.body.get_mutable_metadata()._type = i.1.0.clone();
+                        module.funcs.insert(i.0.clone(), func);
+                        if let Some(var) = module.scope.variables.get_mut(i.0)
+                        {
+                            var.1 = i.1.1;
+                            var.2 = Some(0);
+                        } else
+                        {
+                            module.scope.variables.insert(i.0.clone(), (i.1.0.clone(), i.1.1, Some(0), Location::empty(), true, String::with_capacity(0)));
+                        }
                     }
                 }
-            }
 
-            // Fix arity
-            for sexpr in module.sexprs.iter_mut()
-            {
-                fix_arity(sexpr, &mut module.scope, &module.funcs);
-            }
-
-            let keys: Vec<String> = module.funcs.keys().cloned().collect();
-            for key in keys
-            {
-                let mut func = module.funcs.remove(&key).unwrap();
-                fix_arity(&mut func.body, &mut module.scope, &module.funcs);
-                module.funcs.insert(key, func);
-            }
-
-            // Eta reduced functions are optimised away
-            for f in module.funcs.iter_mut()
-            {
-                let func = f.1;
-                if let SExpr::Application(m, _, _) = &func.body
+                // Fix arity
+                for sexpr in module.sexprs.iter_mut()
                 {
-                    if m.arity > 0 && m.saved_argc.is_some()
+                    fix_arity(sexpr, &mut module.scope, &module.funcs);
+                }
+
+                let keys: Vec<String> = module.funcs.keys().cloned().collect();
+                for key in keys
+                {
+                    let mut func = module.funcs.remove(&key).unwrap();
+                    fix_arity(&mut func.body, &mut module.scope, &module.funcs);
+                    module.funcs.insert(key, func);
+                }
+
+                // Eta reduced functions are optimised away
+                for f in module.funcs.iter_mut()
+                {
+                    let func = f.1;
+                    if let SExpr::Application(m, _, _) = &func.body
                     {
-                        let mut arity = m.arity;
-                        while arity > 0
+                        if m.arity > 0 && m.saved_argc.is_some()
                         {
-                            if let Type::Func(a, r) = &func.body.get_metadata()._type
+                            let mut arity = m.arity;
+                            while arity > 0
                             {
-                                func.args.push((format!("$${}", arity), *a.clone()));
-                                let mut temp = SExpr::True(SExprMetadata::empty());
-                                let _type = *r.clone();
-                                let _t2 = *a.clone();
-                                swap(&mut func.body, &mut temp);
-                                func.body = SExpr::Application(SExprMetadata {
-                                    loc: Location::empty(),
-                                    loc2: Location::empty(),
-                                    origin: String::with_capacity(0),
-                                    _type,
-                                    arity,
-                                    saved_argc: Some(temp.get_metadata().saved_argc.unwrap() + 1),
-                                    tailrec: false,
-                                    impure: false
-                                }, Box::new(temp), Box::new(SExpr::Symbol(SExprMetadata {
-                                    loc: Location::empty(),
-                                    loc2: Location::empty(),
-                                    origin: String::with_capacity(0),
-                                    _type: _t2,
-                                    arity: 0,
-                                    saved_argc: None,
-                                    tailrec: false,
-                                    impure: false
-                                }, format!("$${}", arity))));
-                                arity -= 1;
-                            } else
+                                if let Type::Func(a, r) = &func.body.get_metadata()._type
+                                {
+                                    func.args.push((format!("$${}", arity), *a.clone()));
+                                    let mut temp = SExpr::True(SExprMetadata::empty());
+                                    let _type = *r.clone();
+                                    let _t2 = *a.clone();
+                                    swap(&mut func.body, &mut temp);
+                                    func.body = SExpr::Application(SExprMetadata {
+                                        loc: Location::empty(),
+                                        loc2: Location::empty(),
+                                        origin: String::with_capacity(0),
+                                        _type,
+                                        arity,
+                                        saved_argc: Some(temp.get_metadata().saved_argc.unwrap() + 1),
+                                        tailrec: false,
+                                        impure: false
+                                    }, Box::new(temp), Box::new(SExpr::Symbol(SExprMetadata {
+                                        loc: Location::empty(),
+                                        loc2: Location::empty(),
+                                        origin: String::with_capacity(0),
+                                        _type: _t2,
+                                        arity: 0,
+                                        saved_argc: None,
+                                        tailrec: false,
+                                        impure: false
+                                    }, format!("$${}", arity))));
+                                    arity -= 1;
+                                } else
+                                {
+                                    unreachable!("nya");
+                                }
+                            }
+
+                            // Update variable if available
+                            if let Some(var) = module.scope.variables.get_mut(&func.name)
                             {
-                                unreachable!("nya");
+                                var.1 = func.args.len();
+                                var.2 = Some(0);
                             }
                         }
-
-                        // Update variable if available
-                        if let Some(var) = module.scope.variables.get_mut(&func.name)
-                        {
-                            var.1 = func.args.len();
-                            var.2 = Some(0);
-                        }
                     }
                 }
-            }
 
-            // Fix arity (again)
-            for sexpr in module.sexprs.iter_mut()
-            {
-                fix_arity(sexpr, &mut module.scope, &module.funcs);
-            }
-
-            let keys: Vec<String> = module.funcs.keys().cloned().collect();
-            for key in keys
-            {
-                let mut func = module.funcs.remove(&key).unwrap();
-                fix_arity(&mut func.body, &mut module.scope, &module.funcs);
-                module.funcs.insert(key, func);
-            }
-
-            // Check for impurity in pure functions
-            let keys: Vec<String> = module.funcs.keys().cloned().collect();
-            for k in keys
-            {
-                let mut f = module.funcs.remove(&k).unwrap();
-                if f.written
+                // Check for impurity in pure functions
+                let keys: Vec<String> = module.funcs.keys().cloned().collect();
+                for k in keys
                 {
-                    module.funcs.insert(k, f);
-                    continue;
-                }
-
-                if let Err(s) = check_purity(&mut f.body, &module, &mut errors)
-                {
-                    if !f.impure
+                    let mut f = module.funcs.remove(&k).unwrap();
+                    if f.written
                     {
-                        errors.push(CorrectnessError::ImpureInPure(f.loc.clone(), s));
+                        module.funcs.insert(k, f);
+                        continue;
                     }
-                } else if f.impure
-                {
-                    errors.push(CorrectnessError::UnnecessaryImpure(f.loc.clone()));
+
+                    if let Err(s) = check_purity(&mut f.body, &module, &mut errors)
+                    {
+                        if !f.impure
+                        {
+                            errors.push(CorrectnessError::ImpureInPure(f.loc.clone(), s));
+                        }
+                    } else if f.impure
+                    {
+                        errors.push(CorrectnessError::UnnecessaryImpure(f.loc.clone()));
+                    }
+
+                    module.funcs.insert(k, f);
                 }
 
-                module.funcs.insert(k, f);
+                // Reinsert module
+                ir.modules.insert(name, module);
             }
-
-            // Reinsert module
-            ir.modules.insert(name, module);
         }
 
         if errors.len() != 0
