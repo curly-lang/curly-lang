@@ -151,13 +151,25 @@ impl Type
         let mut _type = self;
         while let Type::Symbol(s) = _type
         {
-            _type = types.get(s).unwrap();
+            if let Some(v) = types.get(s)
+            {
+                _type = v;
+            } else
+            {
+                break;
+            }
         }
 
         let mut other = other;
         while let Type::Symbol(s) = other
         {
-            other = types.get(s).unwrap();
+            if let Some(v) = types.get(s)
+            {
+                other = v;
+            } else
+            {
+                break;
+            }
         }
 
         match (_type, other)
