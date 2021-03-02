@@ -607,6 +607,24 @@ fn check(filenames: &Vec<String>, codes: &Vec<String>, ir: &mut IR, require_main
                                 .with_message("Function defined as impure but passed to pure function")
                             ])
                     }
+
+                    CorrectnessError::ModuleNotFound(s, m) => {
+                        diagnostic = diagnostic
+                            .with_message("Module not found")
+                            .with_labels(vec![
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                .with_message(format!("Module `{}` not found", m))
+                            ])
+                    }
+
+                    CorrectnessError::UnimplementedExport(s, v) => {
+                        diagnostic = diagnostic
+                            .with_message("Unimplemented export")
+                            .with_labels(vec![
+                                Label::primary(*file_hash.get(&s.filename).unwrap(), s.span)
+                                .with_message(format!("{} not implemented", v))
+                            ])
+                    }
                 }
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }

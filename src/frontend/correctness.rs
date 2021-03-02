@@ -33,7 +33,9 @@ pub enum CorrectnessError
     CurriedExternalFunc(Location),
     ImpureInPure(Location, Location),
     UnnecessaryImpure(Location),
-    AppliedImpureToPure(Location)
+    AppliedImpureToPure(Location),
+    ModuleNotFound(Location, String),
+    UnimplementedExport(Location, String)
 }
 
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -2313,6 +2315,12 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
     // Put unqualified imports in scope
     for import in module.imports.iter_mut()
     {
+        if ir.modules.get(&import.1.name).is_none()
+        {
+            errors.push(CorrectnessError::ModuleNotFound(import.1.loc.clone(), import.1.name.clone()));
+            continue;
+        }
+
         if !import.1.qualified
         {
             // Import specific values
@@ -2471,6 +2479,16 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             check_externals(sexpr, &mut errors);
         }
         swap(&mut module.sexprs, &mut sexprs);
+
+        // Check if all globals are implemented
+        for v in module.exports.iter()
+        {
+            if !module.scope.variables.get(v.0).unwrap().4
+            {
+                errors.push(CorrectnessError::UnimplementedExport(v.1.0.clone(), v.0.clone()));
+            }
+        }
+
         ir.modules.insert(name, module);
     }
 
