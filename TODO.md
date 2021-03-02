@@ -3,7 +3,6 @@
 These things are features and fixes I'd like to get completed for the third major release (v0.3.0) of Curly.
 - Deal with exporting types properly
 - Make local assignments lazy
-- Fix import syntax
 - Fix memory leaks with lifetime analysis
 - Compile as static/dynamic library
 - Improved debug function so that outputs line number and the call to debug (example: `[main.curly:1] (debug 2) = 2`)

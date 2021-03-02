@@ -10,6 +10,7 @@ module Modules::Funcs
     # , type OptionInt
     )
 
+@pure
 extern "divide"
 __prim__div : Int -> Int -> Int
 div x: Int, y: Int = __prim__div x y

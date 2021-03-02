@@ -1180,9 +1180,12 @@ fn get_function_type(sexpr: &SExpr, module_name: &str, scope: &mut Scope, funcs:
                 if let Type::Symbol(_) = bt
                 {
                     bt
-                } else
+                } else if et != Type::Unknown
                 {
                     et
+                } else
+                {
+                    bt
                 }
             } else if bt == Type::Unknown
             {

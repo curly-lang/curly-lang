@@ -183,9 +183,6 @@ pub enum Token
     #[token("import")]
     Import,
 
-    #[token("qualified")]
-    Qualified,
-
     #[token("as")]
     As,
 
@@ -1003,7 +1000,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
         newline(parser);
 
         // Get condition
-        let cond = call_func_fatal!(expression, parser, "Expected condition after if");
+        let cond = call_func_fatal!(apply_op, parser, "Expected condition after if");
 
         // Get then keyword
         newline(parser);
@@ -1012,7 +1009,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
 
         // Get body
         newline(parser);
-        let then = call_func_fatal!(expression, parser, "Expected body after then");
+        let then = call_func_fatal!(apply_op, parser, "Expected body after then");
 
         // Get else keyword
         newline(parser);
@@ -1021,7 +1018,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError>
 
         // Get else clause
         newline(parser);
-        let elsy = call_func_fatal!(expression, parser, "Expected body after else");
+        let elsy = call_func_fatal!(apply_op, parser, "Expected body after else");
 
         // Return success
         Ok(AST::If(Span {
@@ -1145,7 +1142,7 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
     let (_, span) = consume_save!(parser, Match, state, false, "");
 
     // Get value
-    let value = call_func_fatal!(expression, parser, "Expected expression after `match`");
+    let value = call_func_fatal!(apply_op, parser, "Expected expression after `match`");
     let mut arms = vec![];
     newline(parser);
 
@@ -1162,7 +1159,7 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError>
         newline(parser);
         consume_nosave!(parser, ThiccArrow, state, true, "Expected `=>` after type");
         newline(parser);
-        let value = call_func_fatal!(expression, parser, "Expected expression after `=>`");
+        let value = call_func_fatal!(apply_op, parser, "Expected expression after `=>`");
         arms.push((_type, value));
         newline(parser);
     }
@@ -1593,16 +1590,11 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
     let state = parser.save_state();
     let (_, span) = consume_save!(parser, Import, state, false, "");
     let start = span.start;
-    let qualified = if let Some((Token::Qualified, _)) = parser.peek()
-    {
-        parser.next();
-        true
-    } else
-    {
-        false
-    };
+
     let name = call_func_fatal!(access_member, parser, "Expected module name after `import`");
     let mut end = name.get_span().end;
+
+    let qualified = if let Some((Token::LParen, _)) = parser.peek() { false } else { true };
 
     if qualified
     {
@@ -1619,49 +1611,67 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError>
     } else
     {
         let mut imports = vec![];
-        match parser.peek()
+        parser.next();
+        loop
         {
-            Some((Token::LParen, _)) => {
-                parser.next();
-
-                loop
-                {
-                    newline(parser);
-                    if let None = parser.peek()
-                    {
-                        parser.return_state(state);
-                        return Err(ParseError {
-                            span: parser.span(),
-                            msg: String::from("Expected imported item or right parenthesis, got end of file"),
-                            fatal: true
-                        });
-                    }
-
-                    let (token, span) = parser.peek().unwrap();
-                    end = span.end;
-
-                    match token
-                    {
-                        Token::RParen => break,
-                        Token::Symbol => imports.push(parser.slice()),
-                        _ => {
-                            parser.return_state(state);
-                            return Err(ParseError {
-                                span: parser.span(),
-                                msg: String::from("Expected imported item or right parenthesis"),
-                                fatal: true
-                            });
-                        }
-                    }
-
-                    parser.next();
-                }
-
-                parser.next();
+            newline(parser);
+            if let None = parser.peek()
+            {
+                parser.return_state(state);
+                return Err(ParseError {
+                    span: parser.span(),
+                    msg: String::from("Expected imported item or right parenthesis, got end of file"),
+                    fatal: true
+                });
             }
 
-            _ => ()
+            if imports.len() > 0
+            {
+                if let Some((Token::Comma, _)) = parser.peek()
+                {
+                    parser.next();
+                } else if let Some((Token::RParen, _)) = parser.peek()
+                {
+                    parser.next();
+                    break;
+                } else
+                {
+                    return Err(ParseError {
+                        span: parser.span(),
+                        msg: String::from("Expected comma or right parenthesis"),
+                        fatal: true
+                    });
+                }
+            } else if imports.len() == 0
+            {
+                if let Some((Token::Mul, _)) = parser.peek()
+                {
+                    parser.next();
+                    consume_nosave!(parser, RParen, state, true, "Expected right parenthesis");
+                    break;
+                }
+            }
+
+            let (token, span) = parser.peek().unwrap();
+            end = span.end;
+
+            match token
+            {
+                Token::Symbol => imports.push(parser.slice()),
+                _ => {
+                    parser.return_state(state);
+                    return Err(ParseError {
+                        span: parser.span(),
+                        msg: String::from("Expected imported item"),
+                        fatal: true
+                    });
+                }
+            }
+
+            parser.next();
         }
+
+        parser.next();
         Ok(AST::Import(Span { start, end }, Box::new(name), imports))
     }
 }
