@@ -2602,6 +2602,11 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                 // Eta reduced functions are optimised away
                 for f in module.funcs.iter_mut()
                 {
+                    if f.1.impure
+                    {
+                        continue;
+                    }
+
                     let func = f.1;
                     if let SExpr::Application(m, _, _) = &func.body
                     {
