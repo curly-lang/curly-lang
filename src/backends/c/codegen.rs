@@ -1631,16 +1631,25 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
         SExpr::Match(m, v, a) => {
             // Get value and name
             let value = convert_sexpr(v, root, func, types);
-            let name = format!("$${}", func.last_reference);
-            func.last_reference += 1;
             let _type = types.get(&v.get_metadata()._type).unwrap();
             let map = _type.get_hashmap().unwrap();
 
             // Create switch statement
-            func.code.push_str(get_c_type(&m._type, types));
-            func.code.push(' ');
-            func.code.push_str(&name);
-            func.code.push_str(";\nswitch (");
+            let name = if let Type::Enum(_) = m._type
+            {
+                String::with_capacity(0)
+            } else
+            {
+                let name = format!("$${}", func.last_reference);
+                func.last_reference += 1;
+                func.code.push_str(get_c_type(&m._type, types));
+                func.code.push(' ');
+                func.code.push_str(&name);
+                func.code.push_str(";\n");
+                name
+            };
+
+            func.code.push_str("switch (");
             func.code.push_str(&value);
             func.code.push_str(".tag) {\n");
 
@@ -1756,10 +1765,14 @@ fn convert_sexpr(sexpr: &SExpr, root: &IRModule, func: &mut CFunction, types: &H
 
                 if atype == mtype
                 {
-                    func.code.push_str(&name);
-                    func.code.push_str(" = ");
-                    func.code.push_str(&arm);
-                    func.code.push_str(";\n");
+                    if let Type::Enum(_) = atype { }
+                    else
+                    {
+                        func.code.push_str(&name);
+                        func.code.push_str(" = ");
+                        func.code.push_str(&arm);
+                        func.code.push_str(";\n");
+                    }
                 } else if let Type::Sum(_) = atype
                 {
                     let _type = types.get(&m._type).unwrap();
