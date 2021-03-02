@@ -12,7 +12,7 @@ syntax keyword curlyKeyword type enum ptr class match to
 syntax keyword curlyKeyword lambda
 syntax keyword curlyKeyword and or xor
 syntax keyword curlyKeyword in
-syntax keyword curlyKeyword module import qualified as extern
+syntax keyword curlyKeyword module import as extern
 highlight link curlyKeyword Keyword
 
 " Operators
