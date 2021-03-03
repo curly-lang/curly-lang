@@ -417,6 +417,7 @@ pub enum AST
 
     // Header
     Header(Span, Box<AST>, Vec<(Span, String, AST)>, Vec<AST>),
+    LibHeader(Span, Box<AST>, Vec<(Span, String, usize, AST)>),
 
     // External functions
     Extern(Span, String, String, Box<AST>)
@@ -455,6 +456,7 @@ impl AST
                 | Self::Import(s, _, _)
                 | Self::QualifiedImport(s, _, _)
                 | Self::Header(s, _, _, _)
+                | Self::LibHeader(s, _, _)
                 | Self::Extern(s, _, _, _)
                 => s.clone(),
         }
@@ -1843,3 +1845,120 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError>
     Ok(lines)
 }
 
+// library_header(&mut Parser) -> Result<AST, ParseError>
+// Parses a module library header entry.
+fn library_header(parser: &mut Parser) -> Result<AST, ParseError> {
+    let state = parser.save_state();
+    let (_, span) = consume_save!(parser, Module, state, false, "");
+    let start = span.start;
+    let name = call_func_fatal!(access_member, parser, "Expected module name after `module`");
+    let mut end = name.get_span().end;
+
+    let mut exports = vec![];
+    newline(parser);
+    let mut comma = false;
+    if let Some((Token::LParen, _)) = parser.peek() {
+        parser.next();
+
+        loop {
+            newline(parser);
+            if comma {
+                match parser.peek() {
+                    Some((Token::Comma, _)) => {
+                        parser.next();
+                    }
+                    Some((Token::RParen, _)) => break,
+                    _ => (),
+                }
+            } else {
+                comma = true;
+            }
+
+            newline(parser);
+            if parser.peek().is_none() {
+                let span = parser.span();
+                parser.return_state(state);
+                return Err(ParseError {
+                    span,
+                    msg: String::from(
+                        "Expected exported item or right parenthesis, got end of file",
+                    ),
+                    fatal: true,
+                });
+            }
+
+            let (token, span) = parser.peek().unwrap();
+            end = span.end;
+
+            match token {
+                Token::RParen => break,
+                Token::Symbol => exports.push({
+                    // Get the variable name
+                    let state = parser.save_state();
+                    let (name, span) = consume_save!(parser, Symbol, state, false, "");
+
+                    // Get the colon
+                    consume_nosave!(parser, Colon, state, false, "");
+
+                    // Get an int
+                    let arity = if let Some((Token::Int(v), _)) = parser.peek() {
+                        *v
+                    } else {
+                        return Err(ParseError {
+                            span: parser.span(),
+                            msg: String::from("Expected int"),
+                            fatal: true,
+                        });
+                    };
+
+                    // Get the colon
+                    parser.next();
+                    consume_nosave!(parser, Colon, state, true, "Expected colon after arity");
+
+                    // Get the type
+                    let type_val = call_func_fatal!(type_expr, parser, "Expected type after `:`");
+                    (span, name, arity as usize, type_val)
+                }),
+
+                _ => {
+                    let span = parser.span();
+                    parser.return_state(state);
+                    return Err(ParseError {
+                        span,
+                        msg: String::from("Expected exported item or right parenthesis"),
+                        fatal: true,
+                    });
+                }
+            }
+        }
+
+        parser.next();
+    }
+
+    Ok(AST::LibHeader(Span { start, end }, Box::new(name), exports))
+}
+
+// parse_library(&str) -> Result<Vec<AST>, ParseError>
+// Parses a library header.
+pub fn parse_library(s: &str) -> Result<Vec<AST>, ParseError> {
+    let mut parser = Parser::new(s);
+    let mut lines = vec![];
+    let p = &mut parser;
+
+    newline(p);
+
+    while p.peek().is_some() {
+        lines.push(library_header(p)?);
+        newline(p);
+    }
+
+    if p.peek().is_some() {
+        Err(ParseError {
+            span: p.span(),
+            msg: String::from("Expected eof"),
+            fatal: true
+        })
+    } else {
+        Ok(lines)
+    }
+}

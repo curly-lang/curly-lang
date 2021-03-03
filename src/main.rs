@@ -135,7 +135,16 @@ options:
                                 std::process::exit(1);
                             }
                         }
-                ).collect();
+                ).chain(options.compiled_mods.iter().map(
+                    |v| match fs::read_to_string(v)
+                    {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("Error reading {}: {}", v, e);
+                            std::process::exit(1);
+                        }
+                    }
+                )).collect();
 
                 let mut ir = IR {
                     modules: HashMap::with_capacity(0)
@@ -317,7 +326,23 @@ fn check(filenames: &Vec<(String, bool)>, codes: &Vec<String>, ir: &mut IR, requ
         // Generate the ast
         if file.1.1
         {
-            unimplemented!("gotta do this :/");
+            let ast = match parser::parse_library(code)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    let diagnostic = Diagnostic::error()
+                                        .with_message(&e.msg)
+                                        .with_labels(vec![
+                                            Label::primary(file_id, e.span)
+                                        ]);
+                    term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                    return Err(());
+                }
+            };
+
+            // Print out the ast
+            println!("{:#?}", &ast);
+            // if DEBUG { println!("{:#?}", &ast); }
         } else
         {
             let ast = match parser::parse(code)
