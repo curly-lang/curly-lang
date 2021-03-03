@@ -2950,8 +2950,9 @@ pub fn generate_module_file(ir: &IR) -> String {
                 m.push_str(export.0);
                 m.push_str(" : ");
                 m.push_str(&format!(
-                    "{} : {}\n",
+                    "{} {} : {}\n",
                     module.scope.variables.get(export.0).unwrap().1,
+                    module.funcs.get(export.0).unwrap().impure,
                     export.1 .1
                 ));
             }

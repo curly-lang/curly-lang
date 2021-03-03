@@ -258,7 +258,7 @@ impl<'a> Parser<'a> {
 
     // next(&mut self) -> Option<&(Token, Span)>
     // Gets the next token.
-    fn next<'b>(&'b mut self) -> Option<&'b (Token, Span)> {
+    fn next(&mut self) -> Option<&(Token, Span)> {
         // Get token from list of already parsed tokens if it exists
         if self.token_pos < self.tokens.len() {
             let token = &self.tokens[self.token_pos];
@@ -275,7 +275,7 @@ impl<'a> Parser<'a> {
 
     // peek(&mut self) -> Option<&(Token, Span)>
     // Peeks at the next token.
-    fn peek<'b>(&'b mut self) -> Option<(&'b Token, Span)> {
+    fn peek(&mut self) -> Option<(&Token, Span)> {
         // Get token from list of already parsed tokens if it exists
         if self.token_pos < self.tokens.len() {
             let token = &self.tokens[self.token_pos];
@@ -397,7 +397,7 @@ pub enum AST {
 
     // Header
     Header(Span, Box<AST>, Vec<(Span, String, AST)>, Vec<AST>),
-    LibHeader(Span, Box<AST>, Vec<(Span, String, usize, AST)>),
+    LibHeader(Span, Box<AST>, Vec<(Span, String, usize, bool, AST)>),
 
     // External functions
     Extern(Span, String, String, Box<AST>),
@@ -1883,13 +1883,28 @@ fn library_header(parser: &mut Parser) -> Result<AST, ParseError> {
                         });
                     };
 
+                    parser.next();
+
+                    // Get a boolean
+                    let impure = if let Some((Token::True, _)) = parser.peek() {
+                        true
+                    } else if let Some((Token::False, _)) = parser.peek() {
+                        false
+                    } else {
+                        return Err(ParseError {
+                            span: parser.span(),
+                            msg: String::from("Expected boolean"),
+                            fatal: true,
+                        });
+                    };
+
                     // Get the colon
                     parser.next();
                     consume_nosave!(parser, Colon, state, true, "Expected colon after arity");
 
                     // Get the type
                     let type_val = call_func_fatal!(type_expr, parser, "Expected type after `:`");
-                    (span, name, arity as usize, type_val)
+                    (span, name, arity as usize, impure, type_val)
                 }),
 
                 _ => {

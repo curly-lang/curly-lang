@@ -1352,7 +1352,7 @@ pub fn convert_library_header(
             // Deal with exports
             for export in exports {
                 // Check exported variable type
-                let _type = types::convert_ast_to_type(export.3, filename, &module.types);
+                let _type = types::convert_ast_to_type(export.4, filename, &module.types);
                 if let Type::UndeclaredTypeError(s) = _type {
                     errors.push(IRError::InvalidType(s));
                 } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
@@ -1376,6 +1376,39 @@ pub fn convert_library_header(
                         &loc,
                         true,
                         &module_name,
+                    );
+                    let mut args = vec![];
+                    let mut ret_type = &_type;
+                    for i in 0..export.2 {
+                        if let Type::Func(l, r) = ret_type {
+                            args.push((format!("${}", i), *l.clone()));
+                            ret_type = r;
+                        }
+                    }
+
+                    module.funcs.insert(
+                        export.1.clone(),
+                        IRFunction {
+                            loc: Location::empty(),
+                            name: export.1.clone(),
+                            args,
+                            captured: HashMap::with_capacity(0),
+                            captured_names: Vec::with_capacity(0),
+                            body: SExpr::True(SExprMetadata {
+                                loc: Location::empty(),
+                                loc2: Location::empty(),
+                                origin: String::with_capacity(0),
+                                _type: ret_type.clone(),
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false,
+                                impure: export.3,
+                            }),
+                            global: true,
+                            checked: true,
+                            written: true,
+                            impure: export.3,
+                        },
                     );
                     module.exports.insert(export.1, (loc, _type));
                 }
