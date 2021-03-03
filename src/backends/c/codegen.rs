@@ -2701,7 +2701,7 @@ fn generate_header_files(
                 args: vec![],
                 ret_type: &v.0,
                 code: String::with_capacity(0),
-                last_reference: 0
+                last_reference: 0,
             };
 
             let mut strs = vec![];
@@ -2718,7 +2718,6 @@ fn generate_header_files(
                     unreachable!("always a function");
                 }
             }
-
 
             if !f.args.is_empty() {
                 put_fn_declaration(&mut header, &module.name, &f, types);

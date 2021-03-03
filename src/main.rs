@@ -350,10 +350,12 @@ fn check(
             };
 
             // Print out the ast
-            if DEBUG { println!("{:#?}", &ast); }
+            if DEBUG {
+                println!("{:#?}", &ast);
+            }
 
             // Add library module
-            match ir::convert_library_header(&file.1.0, ast, ir) {
+            match ir::convert_library_header(&file.1 .0, ast, ir) {
                 Ok(_) if DEBUG => {
                     dbg!(&ir);
                 }

@@ -2016,7 +2016,6 @@ fn undo_tailrec(sexpr: &mut SExpr) {
 
     match sexpr {
         //List(SExprMetadata, Vec<SExpr>),
-
         SExpr::Prefix(_, _, v) | SExpr::As(_, v) | SExpr::Assign(_, _, v) => undo_tailrec(v),
 
         SExpr::Infix(_, _, l, r)
@@ -2049,7 +2048,7 @@ fn undo_tailrec(sexpr: &mut SExpr) {
             }
         }
 
-        _ => ()
+        _ => (),
     }
 }
 
@@ -2079,9 +2078,7 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool {
             true
         }
 
-        SExpr::Walrus(_, _, v) => {
-            check_tailrec(v, name, top)
-        }
+        SExpr::Walrus(_, _, v) => check_tailrec(v, name, top),
 
         SExpr::If(m, c, t, e) => {
             if is_called(c, name) {
@@ -2559,8 +2556,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
     }
 
     for name in keys {
-        if ir.modules.get(&name).unwrap().lib
-        {
+        if ir.modules.get(&name).unwrap().lib {
             continue;
         }
 
