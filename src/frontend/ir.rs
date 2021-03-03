@@ -286,6 +286,7 @@ pub struct IRModule {
     pub name: String,
     pub filename: String,
     pub contents: String,
+    pub lib: bool,
     pub imports: HashMap<String, IRImport>,
     pub exports: HashMap<String, (Location, Type)>,
     pub externals: HashMap<String, IRExtern>,
@@ -308,6 +309,7 @@ impl IRModule {
             name: String::with_capacity(0),
             filename: String::from(filename),
             contents: String::from(contents),
+            lib: false,
             imports: HashMap::with_capacity(0),
             exports: HashMap::with_capacity(0),
             externals: HashMap::with_capacity(0),
@@ -1313,6 +1315,82 @@ pub fn convert_ast_to_ir(
     }
 
     if errors.len() == 0 {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+pub fn convert_library_header(
+    filename: &str,
+    asts: Vec<AST>,
+    ir: &mut IR,
+) -> Result<(), Vec<IRError>> {
+    let mut errors = vec![];
+
+    for ast in asts {
+        if let AST::LibHeader(_, name, exports) = ast {
+            // Get module name
+            let mut full_name = vec![];
+            let mut top = *name;
+            while let AST::Infix(_, _, l, r) = top {
+                if let AST::Symbol(_, v) = *r {
+                    full_name.push(v);
+                }
+
+                top = *l;
+            }
+            if let AST::Symbol(_, v) = top {
+                full_name.push(v);
+            }
+            full_name.reverse();
+            let module_name = full_name.join("::");
+            let mut module = IRModule::new(filename, "");
+            module.name = module_name.clone();
+            module.lib = true;
+
+            // Deal with exports
+            for export in exports {
+                // Check exported variable type
+                let _type = types::convert_ast_to_type(export.3, filename, &module.types);
+                if let Type::UndeclaredTypeError(s) = _type {
+                    errors.push(IRError::InvalidType(s));
+                } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
+                    errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
+
+                // Check export is unique
+                } else if module.exports.contains_key(&export.1) {
+                    errors.push(IRError::DoubleExport(
+                        module.exports.get(&export.1).unwrap().0.clone(),
+                        Location::new(export.0, filename),
+                        export.1,
+                    ));
+                } else {
+                    // Add export to list of exports
+                    let loc = Location::new(export.0.clone(), filename);
+                    module.scope.put_var(
+                        &export.1,
+                        &_type,
+                        export.2,
+                        Some(0),
+                        &loc,
+                        true,
+                        &module_name,
+                    );
+                    module.exports.insert(export.1, (loc, _type));
+                }
+            }
+
+            // Add module to ir root and error if already exists
+            if ir.modules.contains_key(&module_name) {
+                errors.push(IRError::DuplicateModule(module_name));
+            } else {
+                ir.modules.insert(module_name, module);
+            }
+        }
+    }
+
+    if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)

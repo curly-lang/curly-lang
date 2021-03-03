@@ -350,8 +350,115 @@ fn check(
             };
 
             // Print out the ast
-            println!("{:#?}", &ast);
-        // if DEBUG { println!("{:#?}", &ast); }
+            if DEBUG { println!("{:#?}", &ast); }
+
+            // Add library module
+            match ir::convert_library_header(&file.1.0, ast, ir) {
+                Ok(_) if DEBUG => {
+                    dbg!(&ir);
+                }
+                Ok(_) => (),
+                Err(e) => {
+                    for e in e {
+                        let mut diagnostic = Diagnostic::error();
+                        match e {
+                            IRError::InvalidType(s) => {
+                                diagnostic = diagnostic
+                                    .with_message("Invalid type used")
+                                    .with_labels(vec![Label::primary(
+                                        *file_hash.get(&s.filename).unwrap(),
+                                        s.span,
+                                    )
+                                    .with_message("Undeclared type")])
+                            }
+
+                            IRError::DuplicateTypeInUnion(s1, s2, t) => {
+                                diagnostic = diagnostic
+                                    .with_message("Duplicate type in union type declaration")
+                                    .with_labels(vec![
+                                        Label::secondary(
+                                            *file_hash.get(&s1.filename).unwrap(),
+                                            s1.span,
+                                        )
+                                        .with_message("Type used here first"),
+                                        Label::primary(
+                                            *file_hash.get(&s2.filename).unwrap(),
+                                            s2.span,
+                                        )
+                                        .with_message(
+                                            format!("Type `{}` used a second time here", t),
+                                        ),
+                                    ])
+                            }
+
+                            IRError::DoubleExport(s1, s2, e) => {
+                                diagnostic = diagnostic
+                                    .with_message("Value exported twice")
+                                    .with_labels(vec![
+                                        Label::secondary(
+                                            *file_hash.get(&s1.filename).unwrap(),
+                                            s1.span,
+                                        )
+                                        .with_message("Value exported here first"),
+                                        Label::primary(
+                                            *file_hash.get(&s2.filename).unwrap(),
+                                            s2.span,
+                                        )
+                                        .with_message(
+                                            format!("Value {} exported a second time here", e),
+                                        ),
+                                    ])
+                            }
+
+                            IRError::RedefineImportAlias(s1, s2, a) => {
+                                diagnostic = diagnostic
+                                    .with_message("Alias defined twice")
+                                    .with_labels(vec![
+                                        Label::secondary(
+                                            *file_hash.get(&s1.filename).unwrap(),
+                                            s1.span,
+                                        )
+                                        .with_message("Alias defined here first"),
+                                        Label::primary(
+                                            *file_hash.get(&s2.filename).unwrap(),
+                                            s2.span,
+                                        )
+                                        .with_message(
+                                            format!("Alias {} defined a second time here", a),
+                                        ),
+                                    ])
+                            }
+
+                            IRError::UnsupportedAnnotation(s, a) => {
+                                diagnostic = diagnostic
+                                    .with_message("Unsupported annotation used")
+                                    .with_labels(vec![Label::primary(
+                                        *file_hash.get(&s.filename).unwrap(),
+                                        s.span,
+                                    )
+                                    .with_message(format!("Annotation {} is unsupported", a))])
+                            }
+
+                            IRError::InvalidFFIType(s, t) => {
+                                diagnostic = diagnostic
+                                    .with_message("Unsupported type used for FFI")
+                                    .with_labels(vec![Label::primary(
+                                        *file_hash.get(&s.filename).unwrap(),
+                                        s.span,
+                                    )
+                                    .with_message(format!("Type {} is unsupported by FFI", t))])
+                            }
+
+                            IRError::DuplicateModule(v) => {
+                                diagnostic =
+                                    diagnostic.with_message(format!("Duplicate module `{}`", v))
+                            }
+                        }
+                        term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                    }
+                    fail = true;
+                }
+            }
         } else {
             let ast = match parser::parse(code) {
                 Ok(v) => v,

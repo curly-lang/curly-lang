@@ -2507,6 +2507,11 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
     }
 
     for name in keys {
+        if ir.modules.get(&name).unwrap().lib
+        {
+            continue;
+        }
+
         // Get module
         let mut module = ir.modules.remove(&name).unwrap();
 
@@ -2736,10 +2741,10 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             }
         }
 
-        if errors.len() != 0 {
-            Err(errors)
-        } else {
+        if errors.is_empty() {
             Ok(())
+        } else {
+            Err(errors)
         }
     } else {
         Err(errors)

@@ -368,7 +368,7 @@ fn convert_sexpr(
             func.code.push('(');
             let mut comma = false;
             for arg in arg_refs {
-                if arg == "" {
+                if arg.is_empty() {
                     continue;
                 }
 
