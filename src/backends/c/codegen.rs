@@ -2678,8 +2678,50 @@ fn generate_header_files(
         // Put function declaration
         let mut add_getter = false;
         if let Some(f) = funcs.get(export.0) {
-            if f.args.len() != 0 {
+            if !f.args.is_empty() {
                 put_fn_declaration(&mut header, &module.name, f, types);
+                header.push_str(";\n\n");
+                header.push_str(if let Type::Enum(_) = f.ret_type {
+                    "void"
+                } else {
+                    get_c_type(f.ret_type, types)
+                });
+                header.push(' ');
+                header.push_str(&sanitise_symbol(&module.name));
+                header.push_str(&f.name);
+                header.push_str("$WRAPPER$$");
+                header.push_str("(func_t* f);\n\n");
+            } else {
+                add_getter = true;
+            }
+        } else if module.lib {
+            let v = module.scope.variables.get(export.0).unwrap();
+            let mut f = CFunction {
+                name: sanitise_symbol(&export.0),
+                args: vec![],
+                ret_type: &v.0,
+                code: String::with_capacity(0),
+                last_reference: 0
+            };
+
+            let mut strs = vec![];
+            for i in 0..v.1 {
+                strs.push(format!("${}", i));
+            }
+
+            for s in strs.iter() {
+                let t = f.ret_type;
+                if let Type::Func(l, r) = t {
+                    f.args.push((s, &**l));
+                    f.ret_type = &**r;
+                } else {
+                    unreachable!("always a function");
+                }
+            }
+
+
+            if !f.args.is_empty() {
+                put_fn_declaration(&mut header, &module.name, &f, types);
                 header.push_str(";\n\n");
                 header.push_str(if let Type::Enum(_) = f.ret_type {
                     "void"
