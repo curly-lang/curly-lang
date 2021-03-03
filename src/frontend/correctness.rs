@@ -1963,9 +1963,9 @@ fn check_type_validity(module: &IRModule, errors: &mut Vec<CorrectnessError>) {
     }
 }
 
-// is_called(&mut SExpr, &str) -> bool
+// is_called(&SExpr, &str) -> bool
 // Checks whether a given function is called or not.
-fn is_called(sexpr: &mut SExpr, name: &str) -> bool {
+fn is_called(sexpr: &SExpr, name: &str) -> bool {
     match sexpr {
         //List(SExprMetadata, Vec<SExpr>),
         SExpr::Function(_, f) => f == name,
@@ -1997,7 +1997,7 @@ fn is_called(sexpr: &mut SExpr, name: &str) -> bool {
             }
 
             for a in a {
-                if is_called(&mut a.1, name) {
+                if is_called(&a.1, name) {
                     return true;
                 }
             }
@@ -2006,6 +2006,50 @@ fn is_called(sexpr: &mut SExpr, name: &str) -> bool {
         }
 
         _ => false,
+    }
+}
+
+// undo_tailrec(&mut SExpr) -> bool
+// Undoes setting tailrec to true.
+fn undo_tailrec(sexpr: &mut SExpr) {
+    sexpr.get_mutable_metadata().tailrec = false;
+
+    match sexpr {
+        //List(SExprMetadata, Vec<SExpr>),
+
+        SExpr::Prefix(_, _, v) | SExpr::As(_, v) | SExpr::Assign(_, _, v) => undo_tailrec(v),
+
+        SExpr::Infix(_, _, l, r)
+        | SExpr::Chain(_, l, r)
+        | SExpr::Application(_, l, r)
+        | SExpr::And(_, l, r)
+        | SExpr::Or(_, l, r) => {
+            undo_tailrec(l);
+            undo_tailrec(r);
+        }
+
+        SExpr::If(_, c, t, e) => {
+            undo_tailrec(c);
+            undo_tailrec(t);
+            undo_tailrec(e);
+        }
+        SExpr::With(_, a, v) => {
+            for a in a {
+                undo_tailrec(a);
+            }
+            undo_tailrec(v)
+        }
+
+        SExpr::Walrus(_, _, v) => undo_tailrec(v),
+
+        SExpr::Match(_, v, a) => {
+            undo_tailrec(v);
+            for a in a {
+                undo_tailrec(&mut a.1)
+            }
+        }
+
+        _ => ()
     }
 }
 
@@ -2035,12 +2079,8 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool {
             true
         }
 
-        SExpr::Walrus(_, n, v) => {
-            if name != n {
-                check_tailrec(v, name, top)
-            } else {
-                false
-            }
+        SExpr::Walrus(_, _, v) => {
+            check_tailrec(v, name, top)
         }
 
         SExpr::If(m, c, t, e) => {
@@ -2064,9 +2104,7 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool {
         }
 
         SExpr::Application(m, f, a) => {
-            if top && m.arity != 0 {
-                return !is_called(f, name) && !is_called(a, name);
-            } else if !top && m.arity == 0 {
+            if top ^ (m.arity == 0) {
                 return !is_called(f, name) && !is_called(a, name);
             }
 
@@ -2102,6 +2140,20 @@ fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool {
             }
 
             true
+        }
+
+        SExpr::With(m, a, v) => {
+            for a in a {
+                if is_called(a, name) {
+                    return false;
+                }
+            }
+
+            let b = check_tailrec(v, name, top);
+            if v.get_metadata().tailrec {
+                m.tailrec = true;
+            }
+            b
         }
 
         _ => !is_called(sexpr, name),
@@ -2590,6 +2642,10 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
             // Check for tail recursion
             for f in module.funcs.iter_mut() {
                 check_tailrec(&mut f.1.body, &f.0, true);
+
+                if !f.1.body.get_metadata().tailrec {
+                    undo_tailrec(&mut f.1.body);
+                }
             }
         }
 
