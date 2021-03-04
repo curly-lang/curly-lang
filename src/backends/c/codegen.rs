@@ -2795,8 +2795,10 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)> {
             cfs.insert(f.0.clone(), cf);
         }
 
-        let f = convert_module_to_c(module.1, &mut cfs, &mut types);
-        files.push((format!("{}.c", sanitise_symbol(&module.1.name)), f));
+        if !module.1.lib {
+            let f = convert_module_to_c(module.1, &mut cfs, &mut types);
+            files.push((format!("{}.c", sanitise_symbol(&module.1.name)), f));
+        }
         files.push(generate_header_files(module.1, &cfs, &types));
     }
 

@@ -1410,6 +1410,11 @@ pub fn convert_library_header(
                             impure: export.3,
                         },
                     );
+                    module.sexprs.push(SExpr::Assign(
+                        SExprMetadata::empty(),
+                        export.1.clone(),
+                        Box::new(SExpr::Function(SExprMetadata::empty(), export.1.clone())),
+                    ));
                     module.exports.insert(export.1, (loc, _type));
                 }
             }

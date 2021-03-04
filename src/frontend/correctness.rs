@@ -2327,7 +2327,7 @@ fn check_purity(
         SExpr::Function(m, f) => {
             if let Some(f) = module.funcs.get(f) {
                 if f.impure {
-                    m.impure = f.args.len() > 0;
+                    m.impure = !f.args.is_empty();
                     Err(m.loc.clone())
                 } else {
                     Ok(())
@@ -2420,7 +2420,7 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
 
         if !import.1.qualified {
             // Import specific values
-            if import.1.imports.len() != 0 {
+            if !import.1.imports.is_empty() {
                 let exporter = &ir.modules.get(&import.1.name).unwrap().exports;
                 for i in import.1.imports.iter_mut() {
                     if module.scope.variables.contains_key(i.0) {
@@ -2619,11 +2619,11 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
     }
 
     // Return error if they exist, otherwise return success
-    if errors.len() == 0 {
+    if errors.is_empty() {
         for (_, module) in ir.modules.iter_mut() {
             // Save types
             let mut id = 0;
-            while let Some(_) = module.types.get(&format!("{}", id)) {
+            while module.types.get(&format!("{}", id)).is_some() {
                 id += 1;
             }
 

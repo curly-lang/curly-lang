@@ -1,6 +1,7 @@
 module Main
 import Modules::Funcs (*)
 
+@impure
 main =
     let _ = debug (sum 2.7 3.3)
         _ = debug (product 43.3 24.2)
