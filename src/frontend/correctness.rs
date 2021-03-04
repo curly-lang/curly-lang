@@ -137,16 +137,12 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
                         if let Some(v) = module.scope.get_var(f) {
                             m._type = v.0.clone();
-                        } else {
-                            // panic!("{} doesnt have a type in {} :(", f, module.name);
                         }
 
                         m.origin = module.name.clone();
                         m.arity = func.args.len();
                         m.saved_argc = Some(func.captured.len());
                         module.funcs.insert(f.clone(), func);
-                    } else {
-                        // panic!("{} not found in {:?} or {:?}", f, module.scope.variables.keys(), module.funcs.keys());
                     }
                 }
             }
@@ -762,7 +758,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             let mut pos = 0;
             let types = &module.types;
             for a in a.iter().enumerate() {
-                if module_name.len() != 0 {
+                if !module_name.is_empty() {
                     module_name.push_str("::");
                 }
                 module_name.push_str(a.1);
@@ -786,25 +782,33 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
                 m.origin = module.imports.get(&module_name).unwrap().name.clone();
 
-                if let Some(v) = module
-                    .imports
-                    .get(&module_name)
-                    .unwrap()
-                    .imports
-                    .get(&a[pos])
-                {
-                    if a.len() > pos + 1 {
-                        errors.push(CorrectnessError::NonmemberAccess(
-                            m.loc.clone(),
-                            format!("{}::{}", module_name, a[pos]),
-                            a[pos + 1].clone(),
-                        ));
-                    } else {
-                        m._type = v.0.clone();
-                        let mut meta = SExprMetadata::empty();
-                        swap(&mut meta, m);
-                        *sexpr = SExpr::Function(meta, a[pos].clone());
+                if pos < a.len() {
+                    if let Some(v) = module
+                        .imports
+                        .get(&module_name)
+                        .unwrap()
+                        .imports
+                        .get(&a[pos])
+                    {
+                        if a.len() > pos + 1 {
+                            errors.push(CorrectnessError::NonmemberAccess(
+                                m.loc.clone(),
+                                format!("{}::{}", module_name, a[pos]),
+                                a[pos + 1].clone(),
+                            ));
+                        } else {
+                            m._type = v.0.clone();
+                            let mut meta = SExprMetadata::empty();
+                            swap(&mut meta, m);
+                            *sexpr = SExpr::Function(meta, a[pos].clone());
+                        }
+                        return;
                     }
+                } else {
+                    errors.push(CorrectnessError::SymbolNotFound(
+                        m.loc.clone(),
+                        a[pos - 1].clone(),
+                    ));
                     return;
                 }
             } else {
@@ -1233,9 +1237,7 @@ fn get_function_type(
                 } else {
                     bt
                 }
-            } else if bt == Type::Unknown {
-                et
-            } else if bt.is_subtype(&et, types) {
+            } else if bt == Type::Unknown || bt.is_subtype(&et, types) {
                 et
             } else if et.is_subtype(&bt, types) {
                 bt
@@ -1255,7 +1257,7 @@ fn get_function_type(
                     set.push(et);
                 }
 
-                Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter())))
+                Type::Sum(HashSetWrapper(set.into_iter().collect()))
             }
         }
 
@@ -1500,7 +1502,7 @@ fn get_function_type(
             if let Some(v) = last {
                 v
             } else if let Type::Sum(v) = returned {
-                if v.0.len() == 0 {
+                if v.0.is_empty() {
                     Type::Unknown
                 } else if v.0.len() == 1 {
                     v.0.into_iter().next().unwrap()
@@ -1518,7 +1520,7 @@ fn get_function_type(
             let mut pos = 0;
             let types = types;
             for a in a.iter().enumerate() {
-                if module_name.len() != 0 {
+                if !module_name.is_empty() {
                     module_name.push_str("::");
                 }
                 module_name.push_str(a.1);
@@ -1535,18 +1537,22 @@ fn get_function_type(
                         break;
                     }
 
-                    if module_name.len() != 0 {
+                    if !module_name.is_empty() {
                         module_name.push_str("::");
                     }
                     module_name.push_str(a.1);
                 }
 
-                if let Some(v) = imports.get(&module_name).unwrap().imports.get(&a[pos]) {
-                    return if a.len() > pos + 1 {
-                        Type::Unknown
-                    } else {
-                        v.0.clone()
-                    };
+                if pos < a.len() {
+                    if let Some(v) = imports.get(&module_name).unwrap().imports.get(&a[pos]) {
+                        return if a.len() > pos + 1 {
+                            Type::Unknown
+                        } else {
+                            v.0.clone()
+                        };
+                    }
+                } else {
+                    return Type::Unknown;
                 }
             }
 
@@ -1560,14 +1566,13 @@ fn get_function_type(
                         }
                     } else if let Some(v) =
                         f.0.iter()
-                            .filter(|v| {
+                            .find(|v| {
                                 if let Type::Tag(t, _) = v {
                                     t == &a[1]
                                 } else {
                                     false
                                 }
                             })
-                            .next()
                     {
                         if a.len() != 2 {
                             Type::Unknown
@@ -1785,7 +1790,7 @@ where
 
             // Check body
             check_sexpr(&mut func.body, module, errors);
-            check_externals(&mut func.body, errors);
+            check_externals(&func.body, errors);
             func.checked = true;
 
             // Pop scope
