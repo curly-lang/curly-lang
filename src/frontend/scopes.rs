@@ -265,10 +265,6 @@ impl Scope {
             FunctionName::Infix(BinOp::EQ, Type::Float, Type::Float),
             Type::Bool,
         );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Type::String, Type::String),
-            Type::Bool,
-        );
 
         self.func_ret_types.insert(
             FunctionName::Infix(BinOp::NEQ, Type::Char, Type::Char),
@@ -292,10 +288,6 @@ impl Scope {
         );
         self.func_ret_types.insert(
             FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Float),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::String, Type::String),
             Type::Bool,
         );
 

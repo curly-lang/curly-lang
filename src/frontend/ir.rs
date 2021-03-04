@@ -476,19 +476,180 @@ fn convert_node(
         }
 
         // String
-        AST::String(span, s) => SExpr::String(
-            SExprMetadata {
-                loc: Location::new(span, filename),
-                loc2: Location::empty(),
-                origin: String::with_capacity(0),
-                _type: Type::String,
-                arity: 0,
-                saved_argc: None,
-                tailrec: false,
-                impure: false,
-            },
-            s,
-        ),
+        AST::String(span, s) => {
+            let loc = Location::new(span, filename);
+            let mut cons = SExpr::Application(
+                SExprMetadata {
+                    loc: loc.clone(),
+                    loc2: Location::empty(),
+                    _type: Type::Error,
+                    origin: String::with_capacity(0),
+                    arity: 0,
+                    saved_argc: None,
+                    tailrec: false,
+                    impure: false,
+                },
+                Box::new(SExpr::Application(
+                    SExprMetadata {
+                        loc: loc.clone(),
+                        loc2: Location::empty(),
+                        _type: Type::Error,
+                        origin: String::with_capacity(0),
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false,
+                        impure: false,
+                    },
+                    Box::new(SExpr::Symbol(
+                        SExprMetadata {
+                            loc: loc.clone(),
+                            loc2: Location::empty(),
+                            _type: Type::Error,
+                            origin: String::with_capacity(0),
+                            arity: 0,
+                            saved_argc: None,
+                            tailrec: false,
+                            impure: false,
+                        },
+                        String::from("cons_S"),
+                    )),
+                    Box::new(SExpr::Char(
+                        SExprMetadata {
+                            loc: loc.clone(),
+                            loc2: Location::empty(),
+                            _type: Type::Char,
+                            origin: String::with_capacity(0),
+                            arity: 0,
+                            saved_argc: None,
+                            tailrec: false,
+                            impure: false,
+                        },
+                        0,
+                    )),
+                )),
+                Box::new(SExpr::Char(
+                    SExprMetadata {
+                        loc: loc.clone(),
+                        loc2: Location::empty(),
+                        _type: Type::Char,
+                        origin: String::with_capacity(0),
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false,
+                        impure: false,
+                    },
+                    0,
+                )),
+            );
+            if s.is_empty() {
+                SExpr::Application(
+                    SExprMetadata {
+                        loc: loc.clone(),
+                        loc2: Location::empty(),
+                        _type: Type::Error,
+                        origin: String::with_capacity(0),
+                        arity: 0,
+                        saved_argc: None,
+                        tailrec: false,
+                        impure: false,
+                    },
+                    Box::new(SExpr::Application(
+                        SExprMetadata {
+                            loc: loc.clone(),
+                            loc2: Location::empty(),
+                            _type: Type::Error,
+                            origin: String::with_capacity(0),
+                            arity: 0,
+                            saved_argc: None,
+                            tailrec: false,
+                            impure: false,
+                        },
+                        Box::new(SExpr::Symbol(
+                            SExprMetadata {
+                                loc: loc.clone(),
+                                loc2: Location::empty(),
+                                _type: Type::Error,
+                                origin: String::with_capacity(0),
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false,
+                                impure: false,
+                            },
+                            String::from("cons_S"),
+                        )),
+                        Box::new(SExpr::Char(
+                            SExprMetadata {
+                                loc: loc.clone(),
+                                loc2: Location::empty(),
+                                _type: Type::Char,
+                                origin: String::with_capacity(0),
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false,
+                                impure: false,
+                            },
+                            0,
+                        )),
+                    )),
+                    Box::new(cons),
+                )
+            } else {
+                for c in s.bytes().rev() {
+                    cons = SExpr::Application(
+                        SExprMetadata {
+                            loc: loc.clone(),
+                            loc2: Location::empty(),
+                            _type: Type::Error,
+                            origin: String::with_capacity(0),
+                            arity: 0,
+                            saved_argc: None,
+                            tailrec: false,
+                            impure: false,
+                        },
+                        Box::new(SExpr::Application(
+                            SExprMetadata {
+                                loc: loc.clone(),
+                                loc2: Location::empty(),
+                                _type: Type::Error,
+                                origin: String::with_capacity(0),
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false,
+                                impure: false,
+                            },
+                            Box::new(SExpr::Symbol(
+                                SExprMetadata {
+                                    loc: loc.clone(),
+                                    loc2: Location::empty(),
+                                    _type: Type::Error,
+                                    origin: String::with_capacity(0),
+                                    arity: 0,
+                                    saved_argc: None,
+                                    tailrec: false,
+                                    impure: false,
+                                },
+                                String::from("cons_S"),
+                            )),
+                            Box::new(SExpr::Char(
+                                SExprMetadata {
+                                    loc: loc.clone(),
+                                    loc2: Location::empty(),
+                                    _type: Type::Char,
+                                    origin: String::with_capacity(0),
+                                    arity: 0,
+                                    saved_argc: None,
+                                    tailrec: false,
+                                    impure: false,
+                                },
+                                c,
+                            )),
+                        )),
+                        Box::new(cons),
+                    )
+                }
+                cons
+            }
+        }
 
         // Prefix
         AST::Prefix(span, op, v) => {

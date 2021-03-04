@@ -1,13 +1,13 @@
 module Main
-import Modules::Funcs (*)
+import Modules::Funcs as F
 
 @impure
 main =
-    let _ = debug (sum 2.7 3.3)
-        _ = debug (product 43.3 24.2)
-        _ = debug x
-        _ = debug fact_10
-        _ = debug (div 15 3)
+    let _ = debug (F::sum 2.7 3.3)
+        _ = debug (F::product 43.3 24.2)
+        _ = debug F::x
+        _ = debug F::fact_10
+        _ = debug (F::div 15 3)
         in 0
 # debug (Funcs::OptionInt::Some 3)
 # debug Funcs::OptionInt::None

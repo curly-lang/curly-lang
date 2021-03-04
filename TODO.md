@@ -4,7 +4,6 @@ These things are features and fixes I'd like to get completed for the third majo
 - Deal with exporting types properly
 - Make local assignments lazy
 - Fix memory leaks with lifetime analysis
-- Compile as static/dynamic library
 - See github issues
 
 ## Fourth official release:

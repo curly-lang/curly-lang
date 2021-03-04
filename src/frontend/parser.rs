@@ -1,7 +1,36 @@
 use logos::{Lexer, Logos, Span};
 
+// convert_chars(&str) -> String
+// Converts escaped characters into an unescaped string.
+fn convert_chars(s: &str) -> String {
+    let mut iter = s[1..s.len() - 1].chars();
+    let mut s = String::new();
+
+    while let Some(c) = iter.next() {
+        if c == '\\' {
+            match iter.next().unwrap() {
+                '\\' => s.push('\\'),
+                '\"' => s.push('\"'),
+                '\'' => s.push('\''),
+                'n' => s.push('\n'),
+                'r' => s.push('\r'),
+                't' => s.push('\t'),
+                '0' => s.push('\0'),
+                c => {
+                    s.push('\\');
+                    s.push(c)
+                }
+            };
+        } else {
+            s.push(c);
+        }
+    }
+
+    s
+}
+
 // The tokens parsed by the lexer.
-#[derive(Logos, PartialEq, Debug, Copy, Clone)]
+#[derive(Logos, PartialEq, Debug, Clone)]
 pub enum Token {
     // Brackets
     #[token("(")]
@@ -115,17 +144,7 @@ pub enum Token {
     })]
     Word(u64),
 
-    #[regex(r#"'([^\\']|\\[nrt'"0])'"#, |lex| match lex.slice()
-    {
-        "'\\\\'" => '\\' as u8,
-        "'\\\"'" => '\"' as u8,
-        "'\\\''" => '\'' as u8,
-        "'\\n'" => '\n' as u8,
-        "'\\r'" => '\r' as u8,
-        "'\\t'" => '\t' as u8,
-        "'\\0'" => '\0' as u8,
-        _ => lex.slice().chars().skip(1).next().unwrap() as u8
-    })]
+    #[regex(r#"'([^\\']|\\[nrt'"0])'"#, |lex| convert_chars(lex.slice()).bytes().next().unwrap())]
     Char(u8),
 
     // Symbols (variables and stuff)
@@ -137,8 +156,8 @@ pub enum Token {
     Annotation,
 
     // Strings
-    #[regex(r#""([^\\"]|\\.)*""#)]
-    String,
+    #[regex(r#""([^\\"]|\\.)*""#, |lex| convert_chars(lex.slice()))]
+    String(String),
 
     // Booleans
     #[token("true")]
@@ -743,10 +762,10 @@ fn value(parser: &mut Parser) -> Result<AST, ParseError> {
         Ok(AST::Char(span, c))
 
     // Check for string
-    } else if let Token::String = token {
-        let s = parser.slice();
+    } else if let Token::String(s) = token {
+        let s = s.clone();
         parser.next();
-        Ok(AST::String(span, String::from(s)))
+        Ok(AST::String(span, s))
 
     // Check for enum
     } else if let Token::Enum = token {
@@ -1734,15 +1753,18 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError> {
 fn externy(parser: &mut Parser) -> Result<AST, ParseError> {
     let state = parser.save_state();
     consume_nosave!(parser, Extern, state, false, "");
-    let (c_func, s) = consume_save!(
-        parser,
-        String,
-        state,
-        true,
-        "Expected string literal after `extern`"
-    );
-    let c_func = c_func[1..c_func.len() - 1].to_owned();
 
+    let (c_func, s) = if let Some((Token::String(s), v)) = parser.peek() {
+        (s.clone(), v)
+    } else {
+        return Err(ParseError {
+            span: parser.span(),
+            msg: String::from("Expected string literal after `extern`"),
+            fatal: true,
+        });
+    };
+
+    parser.next();
     newline(parser);
     let (name, _) = consume_save!(
         parser,

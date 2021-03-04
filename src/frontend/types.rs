@@ -41,7 +41,6 @@ pub enum Type {
     Bool,
     Word,
     Char,
-    String,
     Symbol(String),
     Func(Box<Type>, Box<Type>),
     Sum(HashSetWrapper<Type>),
@@ -82,9 +81,6 @@ impl Display for Type {
             }
             Type::Char => {
                 write!(f, "Char")?;
-            }
-            Type::String => {
-                write!(f, "String")?;
             }
             Type::Symbol(s) => {
                 write!(f, "{}", s)?;
@@ -177,8 +173,7 @@ impl Type {
             | (Type::Float, Type::Float)
             | (Type::Bool, Type::Bool)
             | (Type::Word, Type::Word)
-            | (Type::Char, Type::Char)
-            | (Type::String, Type::String) => true,
+            | (Type::Char, Type::Char) => true,
 
             (Type::Func(a1, f1), Type::Func(a2, f2)) => {
                 a1.equals(a2, types) && f1.equals(f2, types)
@@ -216,7 +211,6 @@ impl Type {
             Type::Bool => *_type == Type::Bool,
             Type::Word => *_type == Type::Word,
             Type::Char => *_type == Type::Char,
-            Type::String => *_type == Type::String,
 
             // Functions
             Type::Func(sf, sa) => {

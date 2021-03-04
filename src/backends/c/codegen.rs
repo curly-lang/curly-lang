@@ -2741,7 +2741,11 @@ fn generate_header_files(
 
         // Put getter
         if add_getter {
-            header.push_str(get_c_type(&export.1 .1, types));
+            header.push_str(if let Type::Enum(_) = export.1 .1 {
+                "void"
+            } else {
+                get_c_type(&export.1 .1, types)
+            });
             header.push(' ');
             header.push_str(&sanitise_symbol(&module.name));
             header.push_str(&sanitise_symbol(export.0));
