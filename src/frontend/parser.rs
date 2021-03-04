@@ -976,7 +976,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError> {
         newline(parser);
 
         // Get condition
-        let cond = call_func_fatal!(apply_op, parser, "Expected condition after if");
+        let cond = call_func_fatal!(expression, parser, "Expected condition after if");
 
         // Get then keyword
         newline(parser);
@@ -992,7 +992,7 @@ fn if_expr(parser: &mut Parser) -> Result<AST, ParseError> {
 
         // Get body
         newline(parser);
-        let then = call_func_fatal!(apply_op, parser, "Expected body after then");
+        let then = call_func_fatal!(expression, parser, "Expected body after then");
 
         // Get else keyword
         newline(parser);
@@ -1118,7 +1118,7 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError> {
 
     // Get the value
     newline(parser);
-    let body = call_func_fatal!(expression, parser, "Expected function body after `=`");
+    let body = call_func_fatal!(apply_op, parser, "Expected function body after `=`");
 
     Ok(AST::Lambda(
         Span {
