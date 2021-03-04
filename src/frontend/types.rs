@@ -1,3 +1,4 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
@@ -21,7 +22,7 @@ impl<T: Hash + Eq> Hash for HashSetWrapper<T> {
     fn hash<H: Hasher>(&self, h: &mut H) {
         let mut hash: u64 = 0;
         for v in self.0.iter() {
-            let mut h_ = std::collections::hash_map::DefaultHasher::new();
+            let mut h_ = DefaultHasher::new();
             v.hash(&mut h_);
             hash ^= h_.finish();
         }
@@ -66,7 +67,7 @@ impl Display for Type {
                 write!(f, "{{ unknown }}")?;
             }
 
-            // Primatives
+            // Primitives
             Type::Int => {
                 write!(f, "Int")?;
             }
@@ -130,6 +131,27 @@ impl Display for Type {
 }
 
 impl Type {
+    // sum_hash(&self, &HashMap<String, Type>) -> u64
+    // Returns the hash value used by codegenned sum/union types.
+    pub fn sum_hash(&self, types: &HashMap<String, Type>) -> u64 {
+        match self {
+            Type::Symbol(_) => {
+                let mut t = self;
+                while let Type::Symbol(s) = t {
+                    t = types.get(s).unwrap();
+                }
+                let mut hash = DefaultHasher::new();
+                t.hash(&mut hash);
+                hash.finish()
+            }
+            _ => {
+                let mut hash = DefaultHasher::new();
+                self.hash(&mut hash);
+                hash.finish()
+            }
+        }
+    }
+
     // is_ffi_compatible(&self, &HashMap<String, Type>) -> bool
     // Returns true if function is ffi compatible.
     pub fn is_ffi_compatible(&self, types: &HashMap<String, Type>) -> bool {
@@ -178,7 +200,25 @@ impl Type {
             (Type::Func(a1, f1), Type::Func(a2, f2)) => {
                 a1.equals(a2, types) && f1.equals(f2, types)
             }
-            (Type::Sum(v1), Type::Sum(v2)) => v1 == v2,
+
+            (Type::Sum(v1), Type::Sum(v2)) => {
+                /*
+                if v1.0.len() != v2.0.len() {
+                    return false;
+                }
+
+                'a: for v1 in v1.0.iter() {
+                    for v2 in v2.0.iter() {
+                        if v1.equals(v2, types) {
+                            continue 'a;
+                        }
+                    }
+                    return false;
+                }
+                true
+                */
+                v1 == v2
+            }
             (Type::Enum(v1), Type::Enum(v2)) => v1 == v2,
             (Type::Pointer(v1), Type::Pointer(v2)) => v1 == v2,
             (Type::Tag(s1, t1), Type::Tag(s2, t2)) => s1 == s2 && t1.equals(t2, types),

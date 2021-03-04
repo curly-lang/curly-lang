@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::iter::FromIterator;
 
 use crate::frontend::ir::{BinOp, IRModule, Location, PrefixOp, SExpr, IR};
 use crate::frontend::types::Type;
@@ -18,7 +17,7 @@ struct CFunction<'a> {
 #[derive(Clone, Debug)]
 enum CType {
     Primitive(String, Type),
-    Sum(String, Type, HashMap<Type, usize>),
+    Sum(String, Type),
 }
 
 impl CType {
@@ -26,7 +25,7 @@ impl CType {
     // Gets the c name of the type.
     fn get_c_name(&self) -> &String {
         match self {
-            CType::Primitive(s, _) | CType::Sum(s, _, _) => s,
+            CType::Primitive(s, _) | CType::Sum(s, _) => s,
         }
     }
 
@@ -34,16 +33,7 @@ impl CType {
     // Returns the Curly IRModule type.
     fn get_curly_type(&self) -> &Type {
         match self {
-            CType::Primitive(_, t) | CType::Sum(_, t, _) => t,
-        }
-    }
-
-    // get_hashmap(&self) -> Option<&HashMap<Type, usize>>
-    // Gets the hashmap associated with a sum type.
-    fn get_hashmap(&self) -> Option<&HashMap<Type, usize>> {
-        match self {
-            CType::Sum(_, _, v) => Some(v),
-            _ => None,
+            CType::Primitive(_, t) | CType::Sum(_, t) => t,
         }
     }
 }
@@ -567,13 +557,8 @@ fn convert_sexpr(
                     func.code.push_str(";\n");
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    let ctype = types.get(&_type).unwrap();
-                    let id = ctype
-                        .get_hashmap()
-                        .unwrap()
-                        .get(&v.get_metadata()._type)
-                        .unwrap();
-                    func.code.push_str(&format!("{}", id));
+                    let id = v.get_metadata()._type.sum_hash(&root.types);
+                    func.code.push_str(&format!("{}ull", id));
                     func.code.push_str(";\n");
 
                     if value != "" {
@@ -642,57 +627,43 @@ fn convert_sexpr(
                     func.code.push_str(&body);
                     func.code.push_str(";\n");
                 }
-            } else if let Type::Sum(_) = btype {
-                let map = types.get(mtype).unwrap().get_hashmap().unwrap();
-                let subtype = types.get(btype).unwrap();
-                let submap = subtype.get_hashmap().unwrap();
+            } else if let Type::Sum(submap) = btype {
                 func.code.push_str("switch (");
                 func.code.push_str(&body);
                 func.code.push_str(".tag) {\n");
 
-                for s in submap {
+                for s in submap.0.iter() {
+                    let id = s.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}:\n", s.1));
+                    func.code.push_str(&format!("{}ull:\n", id));
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                    func.code.push_str(&format!("{}ull;\n", id));
 
-                    if let Type::Enum(_) = s.0 {
+                    if let Type::Enum(_) = s {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                        func.code.push_str(&format!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&body);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{};\n", s.1));
+                        func.code.push_str(&format!("{};\n", id));
                     }
                     func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
             } else if let Type::Enum(_) = btype {
-                let id = types
-                    .get(mtype)
-                    .unwrap()
-                    .get_hashmap()
-                    .unwrap()
-                    .get(&b.get_metadata()._type)
-                    .unwrap();
+                let id = btype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}", id));
+                func.code.push_str(&format!("{}ull", id));
                 func.code.push_str(";\n");
             } else {
-                let id = types
-                    .get(mtype)
-                    .unwrap()
-                    .get_hashmap()
-                    .unwrap()
-                    .get(&b.get_metadata()._type)
-                    .unwrap();
+                let id = btype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}", id));
+                func.code.push_str(&format!("{}ull", id));
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
                 func.code.push_str(".values.$$");
@@ -715,57 +686,43 @@ fn convert_sexpr(
                     func.code.push_str(&elsy);
                     func.code.push_str(";\n");
                 }
-            } else if let Type::Sum(_) = etype {
-                let map = types.get(mtype).unwrap().get_hashmap().unwrap();
-                let subtype = types.get(etype).unwrap();
-                let submap = subtype.get_hashmap().unwrap();
+            } else if let Type::Sum(submap) = etype {
                 func.code.push_str("switch (");
                 func.code.push_str(&elsy);
                 func.code.push_str(".tag) {\n");
 
-                for s in submap {
+                for s in submap.0.iter() {
+                    let id = s.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}:\n", s.1));
+                    func.code.push_str(&format!("{}ull:\n", id));
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                    func.code.push_str(&format!("{}ull;\n", id));
 
-                    if let Type::Enum(_) = s.0 {
+                    if let Type::Enum(_) = s {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                        func.code.push_str(&format!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&elsy);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{};\n", s.1));
+                        func.code.push_str(&format!("{};\n", id));
                     }
                     func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
-            } else if let Type::Enum(_) = btype {
-                let id = types
-                    .get(mtype)
-                    .unwrap()
-                    .get_hashmap()
-                    .unwrap()
-                    .get(&b.get_metadata()._type)
-                    .unwrap();
+            } else if let Type::Enum(_) = etype {
+                let id = etype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}", id));
+                func.code.push_str(&format!("{}ull", id));
                 func.code.push_str(";\n");
             } else {
-                let id = types
-                    .get(&m._type)
-                    .unwrap()
-                    .get_hashmap()
-                    .unwrap()
-                    .get(&e.get_metadata()._type)
-                    .unwrap();
+                let id = etype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}", id));
+                func.code.push_str(&format!("{}ull", id));
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
                 func.code.push_str(".values.$$");
@@ -905,18 +862,13 @@ fn convert_sexpr(
                                 }
 
                                 Type::Sum(_) => {
-                                    // Autocast argument if not already done so
+                                    // Auto-cast argument if not already done so
                                     if _type == arg_type {
                                         v = format!("&{}", &v);
-                                    } else if let Type::Sum(_) = _type {
+                                    } else if let Type::Sum(submap) = _type {
                                         let name = format!("$${}", func.last_reference);
                                         func.last_reference += 1;
-                                        let map =
-                                            types.get(arg_type).unwrap().get_hashmap().unwrap();
-                                        let subtype = types.get(_type).unwrap();
-                                        let submap = subtype.get_hashmap().unwrap();
-                                        func.code
-                                            .push_str(types.get(arg_type).unwrap().get_c_name());
+                                        func.code.push_str(get_c_type(arg_type, types));
                                         func.code.push(' ');
                                         func.code.push_str(&name);
                                         func.code.push_str(";\n");
@@ -924,45 +876,38 @@ fn convert_sexpr(
                                         func.code.push_str(&v);
                                         func.code.push_str(".tag) {\n");
 
-                                        for s in submap {
+                                        for s in submap.0.iter() {
+                                            let id = s.sum_hash(&root.types);
                                             func.code.push_str("case ");
-                                            func.code.push_str(&format!("{}:\n", s.1));
+                                            func.code.push_str(&format!("{}ull:\n", id));
                                             func.code.push_str(&name);
                                             func.code.push_str(".tag = ");
-                                            func.code
-                                                .push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                                            func.code.push_str(&format!("{}ull;\n", id));
                                             func.code.push_str(&name);
                                             func.code.push_str(".values.$$");
-                                            func.code
-                                                .push_str(&format!("{}", map.get(s.0).unwrap()));
+                                            func.code.push_str(&format!("{}", id));
                                             func.code.push_str(" = ");
                                             func.code.push_str(&v);
                                             func.code.push_str(".values.$$");
-                                            func.code.push_str(&format!("{}", s.1));
+                                            func.code.push_str(&format!("{}", id));
                                             func.code.push_str(";\nbreak;\n");
                                         }
                                         func.code.push_str("}\n");
                                         v = format!("&{}", name);
                                     } else {
+                                        let id = _type.sum_hash(&root.types);
                                         let name = format!("$${}", func.last_reference);
                                         func.last_reference += 1;
-                                        let arg_ctype = types.get(arg_type).unwrap();
-                                        func.code.push_str(arg_ctype.get_c_name());
+                                        func.code.push_str(get_c_type(arg_type, types));
                                         func.code.push(' ');
                                         func.code.push_str(&name);
                                         func.code.push_str(";\n");
                                         func.code.push_str(&name);
                                         func.code.push_str(".tag = ");
-                                        func.code.push_str(&format!(
-                                            "{};\n",
-                                            arg_ctype.get_hashmap().unwrap().get(_type).unwrap()
-                                        ));
+                                        func.code.push_str(&format!("{}ull;\n", id));
                                         func.code.push_str(&name);
                                         func.code.push_str(".values.");
-                                        func.code.push_str(&format!(
-                                            "$${}",
-                                            arg_ctype.get_hashmap().unwrap().get(_type).unwrap()
-                                        ));
+                                        func.code.push_str(&format!("$${}", id));
                                         func.code.push_str(" = ");
                                         func.code.push_str(&v);
                                         func.code.push_str(";\n");
@@ -973,16 +918,12 @@ fn convert_sexpr(
                                 _ => (),
                             }
                         } else if let Type::Sum(_) = arg_type {
-                            // Autocast argument if not already done so
+                            // Auto-cast argument if not already done so
                             if _type == arg_type {
-                            } else if let Type::Sum(_) = _type {
+                            } else if let Type::Sum(submap) = _type {
                                 let name = format!("$${}", func.last_reference);
                                 func.last_reference += 1;
-                                let map = types.get(arg_type).unwrap().get_hashmap().unwrap();
-                                let subtype = types.get(_type).unwrap();
-                                let submap = subtype.get_hashmap().unwrap();
-                                func.code
-                                    .push_str(types.get(arg_type).unwrap().get_c_name());
+                                func.code.push_str(get_c_type(arg_type, types));
                                 func.code.push(' ');
                                 func.code.push_str(&name);
                                 func.code.push_str(";\n");
@@ -990,43 +931,38 @@ fn convert_sexpr(
                                 func.code.push_str(&v);
                                 func.code.push_str(".tag) {\n");
 
-                                for s in submap {
+                                for s in submap.0.iter() {
+                                    let id = s.sum_hash(&root.types);
                                     func.code.push_str("case ");
-                                    func.code.push_str(&format!("{}:\n", s.1));
+                                    func.code.push_str(&format!("{}ull:\n", id));
                                     func.code.push_str(&name);
                                     func.code.push_str(".tag = ");
-                                    func.code.push_str(&format!("{};\n", map.get(s.0).unwrap()));
+                                    func.code.push_str(&format!("{}ull;\n", id));
                                     func.code.push_str(&name);
                                     func.code.push_str(".values.$$");
-                                    func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                                    func.code.push_str(&format!("{}", id));
                                     func.code.push_str(" = ");
                                     func.code.push_str(&v);
                                     func.code.push_str(".values.$$");
-                                    func.code.push_str(&format!("{}", s.1));
+                                    func.code.push_str(&format!("{}", id));
                                     func.code.push_str(";\nbreak;\n");
                                 }
                                 func.code.push_str("}\n");
                                 v = name;
                             } else {
+                                let id = _type.sum_hash(&root.types);
                                 let name = format!("$${}", func.last_reference);
                                 func.last_reference += 1;
-                                let arg_ctype = types.get(arg_type).unwrap();
-                                func.code.push_str(arg_ctype.get_c_name());
+                                func.code.push_str(get_c_type(arg_type, types));
                                 func.code.push(' ');
                                 func.code.push_str(&name);
                                 func.code.push_str(";\n");
                                 func.code.push_str(&name);
                                 func.code.push_str(".tag = ");
-                                func.code.push_str(&format!(
-                                    "{};\n",
-                                    arg_ctype.get_hashmap().unwrap().get(_type).unwrap()
-                                ));
+                                func.code.push_str(&format!("{}ull;\n", id));
                                 func.code.push_str(&name);
                                 func.code.push_str(".values.");
-                                func.code.push_str(&format!(
-                                    "$${}",
-                                    arg_ctype.get_hashmap().unwrap().get(_type).unwrap()
-                                ));
+                                func.code.push_str(&format!("$${}", id));
                                 func.code.push_str(" = ");
                                 func.code.push_str(&v);
                                 func.code.push_str(";\n");
@@ -1439,14 +1375,13 @@ fn convert_sexpr(
             match _type {
                 Type::Sum(_) if _type != vtype => {
                     // Get value and generate code
-                    let map = types.get(&m._type).unwrap().get_hashmap().unwrap();
                     func.code.push_str(get_c_type(&m._type, types));
                     func.code.push(' ');
                     func.code.push_str(a);
                     func.code.push_str(";\n");
                     func.code.push_str(a);
                     func.code.push_str(".tag = ");
-                    let id = format!("{}", map.get(&v.get_metadata()._type).unwrap());
+                    let id = format!("{}ull", _type.sum_hash(&root.types));
                     func.code.push_str(&id);
                     func.code.push_str(";\n");
                     func.code.push_str(a);
@@ -1591,8 +1526,6 @@ fn convert_sexpr(
         SExpr::Match(m, v, a) => {
             // Get value and name
             let value = convert_sexpr(v, root, func, types);
-            let _type = types.get(&v.get_metadata()._type).unwrap();
-            let map = _type.get_hashmap().unwrap();
 
             // Create switch statement
             let name = if let Type::Enum(_) = m._type {
@@ -1626,65 +1559,60 @@ fn convert_sexpr(
                     None
                 };
 
-                while let Type::Symbol(s) = _type {
-                    _type = root.types.get(s).unwrap();
-                }
-
-                let mut vtype = if let Type::Tag(_, t) = _type {
+                _type = if let Type::Tag(_, t) = _type {
                     &**t
                 } else {
                     _type
                 };
 
-                while let Type::Symbol(s) = vtype {
-                    vtype = root.types.get(s).unwrap();
+                while let Type::Symbol(s) = _type {
+                    _type = root.types.get(s).unwrap();
                 }
 
-                if let Type::Sum(_) = vtype {
-                    let subtype = types.get(vtype).unwrap();
-                    let submap = subtype.get_hashmap().unwrap();
-                    for s in submap {
+                if let Type::Sum(submap) = _type {
+                    for s in submap.0.iter() {
                         func.code.push_str("case ");
                         func.code
-                            .push_str(&format!("{}:\n", map.get(&s.0).unwrap()));
+                            .push_str(&format!("{}ull:\n", s.sum_hash(&root.types)));
                     }
 
                     func.code.push_str("{\n");
-                    func.code.push_str(subtype.get_c_name());
+                    func.code.push_str(get_c_type(_type, types));
                     func.code.push_str(" $$MATCHTEMP$$;\nswitch (");
                     func.code.push_str(&value);
                     func.code.push_str(".tag) {\n");
 
-                    for s in submap {
+                    for s in submap.0.iter() {
+                        let id = s.sum_hash(&root.types);
                         func.code.push_str("case ");
-                        func.code.push_str(&format!("{}:\n", map.get(s.0).unwrap()));
+                        func.code.push_str(&format!("{}ull:\n", id));
                         func.code.push_str("$$MATCHTEMP$$.tag = ");
-                        func.code.push_str(&format!("{};\n", s.1));
+                        func.code.push_str(&format!("{}ull;\n", id));
                         func.code.push_str("$$MATCHTEMP$$.values.$$");
-                        func.code.push_str(&format!("{}", s.1));
+                        func.code.push_str(&format!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&value);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", map.get(s.0).unwrap()));
+                        func.code.push_str(&format!("{}", id));
                         func.code.push_str(";\nbreak;\n");
                     }
                     func.code.push_str("}\n");
                     if let Some(s) = &varname {
-                        func.code.push_str(subtype.get_c_name());
+                        func.code.push_str(get_c_type(_type, types));
                         func.code.push(' ');
                         func.code.push_str(s);
                         func.code.push_str(" = $$MATCHTEMP$$;\n");
                     }
                 } else if let Type::Enum(_) = _type {
-                    let id = map.get(_type).unwrap();
+                    let id = _type.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}: {{\n", id));
+                    func.code.push_str(&format!("{}ull: {{\n", id));
                 } else {
-                    let id = map.get(_type).unwrap();
+                    let id = _type.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}: {{\n", id));
+                    func.code.push_str(&format!("{}ull: {{\n", id));
 
-                    func.code.push_str(get_c_type(vtype, types));
+                    func.code.push_str(get_c_type(_type, types));
                     func.code.push_str(" $$MATCHTEMP$$ = ");
                     func.code.push_str(&value);
                     func.code.push_str(".values.$$");
@@ -1692,7 +1620,7 @@ fn convert_sexpr(
                     func.code.push_str(";\n");
 
                     if let Some(s) = &varname {
-                        func.code.push_str(get_c_type(vtype, types));
+                        func.code.push_str(get_c_type(_type, types));
                         func.code.push(' ');
                         func.code.push_str(s);
                         func.code.push_str(" = $$MATCHTEMP$$;\n");
@@ -1714,25 +1642,21 @@ fn convert_sexpr(
                         func.code.push_str(&arm);
                         func.code.push_str(";\n");
                     }
-                } else if let Type::Sum(_) = atype {
-                    let _type = types.get(&m._type).unwrap();
-                    let map = _type.get_hashmap().unwrap();
-                    let subtype = types.get(atype).unwrap();
-                    let submap = subtype.get_hashmap().unwrap();
-
+                } else if let Type::Sum(submap) = atype {
+                    let _type = &m._type;
                     func.code.push_str("switch (");
                     func.code.push_str(&arm);
                     func.code.push_str(".tag) {\n");
 
-                    for s in submap {
-                        let id = map.get(s.0).unwrap();
+                    for s in submap.0.iter() {
+                        let id = s.sum_hash(&root.types);
                         func.code.push_str("case ");
-                        func.code.push_str(&format!("{}:\n", s.1));
+                        func.code.push_str(&format!("{}ull:\n", id));
                         func.code.push_str(&name);
                         func.code.push_str(".tag = ");
-                        func.code.push_str(&format!("{};\n", id));
+                        func.code.push_str(&format!("{}ull;\n", id));
 
-                        if let Type::Enum(_) = s.0 {
+                        if let Type::Enum(_) = s {
                         } else {
                             func.code.push_str(&name);
                             func.code.push_str(".values.$$");
@@ -1740,25 +1664,21 @@ fn convert_sexpr(
                             func.code.push_str(" = ");
                             func.code.push_str(&arm);
                             func.code.push_str(".values.$$");
-                            func.code.push_str(&format!("{};\n", s.1));
+                            func.code.push_str(&format!("{};\n", id));
                         }
                         func.code.push_str("break;\n");
                     }
                     func.code.push_str("}\n");
                 } else if let Type::Enum(_) = atype {
-                    let _type = types.get(&m._type).unwrap();
-                    let map = _type.get_hashmap().unwrap();
-                    let id = map.get(&atype).unwrap();
+                    let id = atype.sum_hash(&root.types);
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{};\n", id));
+                    func.code.push_str(&format!("{}ull;\n", id));
                 } else {
-                    let _type = types.get(&m._type).unwrap();
-                    let map = _type.get_hashmap().unwrap();
-                    let id = map.get(atype).unwrap();
+                    let id = atype.sum_hash(&root.types);
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{}", id));
+                    func.code.push_str(&format!("{}ull", id));
                     func.code.push_str(";\n");
                     func.code.push_str(&name);
                     func.code.push_str(".values.$$");
@@ -1792,11 +1712,8 @@ fn convert_sexpr(
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
                 func.code.push_str(&format!(
-                    "{}",
-                    t.get_hashmap()
-                        .unwrap()
-                        .get(&Type::Enum(a[1].clone()))
-                        .unwrap()
+                    "{}ull",
+                    Type::Enum(a[1].clone()).sum_hash(&root.types)
                 ));
                 func.code.push_str(";\n");
 
@@ -2001,26 +1918,24 @@ fn put_debug_fn(
             code.push_str(".func);\n");
         }
 
-        Type::Sum(_) => {
+        Type::Sum(map) => {
             code.push_str("switch (");
             code.push_str(v);
             code.push_str(".tag) {\n");
-            let _type = types.get(_type).unwrap();
 
-            if let CType::Sum(_, _, fields) = _type {
-                for field in fields.iter() {
-                    code.push_str(&format!("case {}: {{\n", field.1));
-                    put_debug_fn(
-                        span,
-                        code,
-                        &format!("{}.values.$${}", v, field.1),
-                        &field.0,
-                        ir,
-                        types,
-                        false,
-                    );
-                    code.push_str("break;\n}\n");
-                }
+            for t in map.0.iter() {
+                let id = t.sum_hash(&ir.types);
+                code.push_str(&format!("case {}ull: {{\n", id));
+                put_debug_fn(
+                    span,
+                    code,
+                    &format!("{}.values.$${}", v, id),
+                    t,
+                    ir,
+                    types,
+                    false,
+                );
+                code.push_str("break;\n}\n");
             }
             code.push_str("}\n");
             code.push_str(&format!("printf(\" : {}\");\n", original_type));
@@ -2063,13 +1978,7 @@ fn collect_types(
     last_reference: &mut usize,
 ) {
     // Iterate over every type
-    for _type in ir.types.iter().filter(|v| {
-        if let Type::Symbol(_) = v.1 {
-            false
-        } else {
-            true
-        }
-    }) {
+    for _type in ir.types.iter().filter(|v| !matches!(v.1, Type::Symbol(_))) {
         // Check if the type was actually already added
         // This is necessary if you define types like so:
         // type A = Int
@@ -2080,7 +1989,7 @@ fn collect_types(
         // B, C, D, and E are all the same type
         let mut add = None;
         for t in types.iter() {
-            if _type.1.equals(t.0, &ir.types) {
+            if _type.1.equals(t.1.get_curly_type(), &ir.types) {
                 add = Some(t.1.clone());
                 break;
             }
@@ -2145,7 +2054,7 @@ fn collect_types(
             // Sum types are tagged unions
             Type::Sum(v) => {
                 types_string.push_str(&format!(
-                    "struct $${} {{\n    unsigned int tag;\n    union {{\n",
+                    "struct $${} {{\n    uint64_t tag;\n    union {{\n",
                     last_reference
                 ));
 
@@ -2155,10 +2064,6 @@ fn collect_types(
                     let mut t = *t;
                     while let Type::Symbol(s) = t {
                         t = ir.types.get(s).unwrap();
-                    }
-
-                    if &t != iter.get(field_ref).unwrap() {
-                        iter[field_ref] = t;
                     }
 
                     match t {
@@ -2180,35 +2085,29 @@ fn collect_types(
                                     iter.push(v);
                                 }
                             }
-                            iter.remove(field_ref);
+                            field_ref += 1;
                             continue;
                         }
 
-                        Type::Tag(_, t) => match &**t {
-                            Type::Int => types_string.push_str("        int_t"),
-                            Type::Float => types_string.push_str("        float_t"),
-                            Type::Bool => types_string.push_str("        bool"),
-                            Type::Func(_, _) => types_string.push_str("        func_t"),
-                            _ => panic!("unsupported type!"),
-                        },
+                        Type::Tag(_, t) => {
+                            match &**t {
+                                Type::Int => types_string.push_str("        int_t"),
+                                Type::Float => types_string.push_str("        float_t"),
+                                Type::Bool => types_string.push_str("        bool"),
+                                Type::Func(_, _) => types_string.push_str("        func_t"),
+                                _ => panic!("unsupported type!"),
+                            }
+                        }
 
                         _ => panic!("unsupported type!"),
                     }
 
-                    types_string.push_str(&format!(" $${};\n", field_ref));
+                    types_string.push_str(&format!(" $${};\n", t.sum_hash(&ir.types)));
                     field_ref += 1;
                 }
 
                 // Save type definitions
-                let map =
-                    HashMap::from_iter(iter.into_iter().cloned().enumerate().filter_map(|v| {
-                        if let Type::Sum(_) = v.1 {
-                            None
-                        } else {
-                            Some((v.1, v.0))
-                        }
-                    }));
-                let ct = CType::Sum(format!("struct $${}", last_reference), _type.1.clone(), map);
+                let ct = CType::Sum(format!("struct $${}", last_reference), _type.1.clone());
                 types_string.push_str("    } values;\n};\n\n");
                 types.insert(_type.1.clone(), ct.clone());
                 types.insert(Type::Symbol(_type.0.clone()), ct);
@@ -2303,14 +2202,8 @@ fn collect_type_functions(
                         fix_argument(&(&aname, &**t2), ir, bodies, types, &mut last_reference);
                         bodies.push_str(get_c_type(t.0, types));
                         bodies.push_str(" result;\nresult.tag = ");
-                        let id = *types
-                            .get(t.0)
-                            .unwrap()
-                            .get_hashmap()
-                            .unwrap()
-                            .get(v)
-                            .unwrap();
-                        bodies.push_str(&format!("{}", id));
+                        let id = v.sum_hash(&ir.types);
+                        bodies.push_str(&format!("{}ull", id));
                         bodies.push_str(";\nresult.values.$$");
                         bodies.push_str(&format!("{}", id));
                         bodies.push_str(" = arg$;\nreturn result;\n}\n");
@@ -2638,14 +2531,8 @@ fn convert_module_to_c(
                 code_string.push_str(get_c_type(_type, types));
                 code_string.push_str(" v = Main$main$$GET$$();\n    if (v.tag == ");
                 code_string.push_str(&format!(
-                    "{}",
-                    types
-                        .get(_type)
-                        .unwrap()
-                        .get_hashmap()
-                        .unwrap()
-                        .get(&Type::Enum(String::from("Ok")))
-                        .unwrap()
+                    "{}ull",
+                    Type::Enum(String::from("Ok")).sum_hash(&module.types)
                 ));
                 code_string.push_str(") \n        return 0;\n    else\n        return 1;\n");
             } else {

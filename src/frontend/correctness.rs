@@ -1848,7 +1848,7 @@ fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
 // Saves one type.
 fn save_single_type(id: &mut usize, _type: &Type, types: &mut HashMap<String, Type>) {
     for t in types.iter() {
-        if _type == t.1 {
+        if _type.equals(t.1, types) {
             return;
         }
     }
