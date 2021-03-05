@@ -829,14 +829,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         }
                     } else if let Some(v) =
                         f.0.iter()
-                            .filter(|v| {
+                            .find(|v| {
                                 if let Type::Tag(t, _) = v {
                                     t == &a[1]
                                 } else {
                                     false
                                 }
                             })
-                            .next()
                     {
                         if a.len() != 2 {
                             errors.push(CorrectnessError::NonmemberAccess(
@@ -853,7 +852,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                             temp._type =
                                 Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
 
-                            *sexpr = SExpr::Function(temp, a.join("::").to_string());
+                            *sexpr = SExpr::Function(temp, a.join("::"));
                         }
                     } else {
                         errors.push(CorrectnessError::NonmemberAccess(
