@@ -313,7 +313,7 @@ fn convert_sexpr(
             let mut arg_refs = Vec::with_capacity(0);
             for arg in args {
                 let v = convert_sexpr(arg, root, func, types);
-                arg_refs.push(v);
+                arg_refs.push((v, matches!(arg.get_metadata()._type, Type::Func(_, _))));
             }
 
             // Push function declaration
@@ -338,14 +338,19 @@ fn convert_sexpr(
                     comma = true;
                 }
 
-                func.code
-                    .push_str(get_c_type(&arg.get_metadata()._type, types));
+                if let Type::Func(_, _) = arg.get_metadata()._type {
+                    func.code.push_str("void*");
+                } else {
+                    func.code
+                        .push_str(get_c_type(&arg.get_metadata()._type, types));
+                }
             }
             func.code.push_str(");\n");
 
             // Call function
             let mut _ref = String::with_capacity(0);
-            if ret_type != "void" {
+            if let Type::Enum(_) = m._type { }
+            else {
                 _ref = format!("$${}", func.last_reference);
                 func.last_reference += 1;
                 func.code.push_str(ret_type);
@@ -357,7 +362,7 @@ fn convert_sexpr(
             func.code.push_str(name);
             func.code.push('(');
             let mut comma = false;
-            for arg in arg_refs {
+            for (arg, is_func) in arg_refs {
                 if arg.is_empty() {
                     continue;
                 }
@@ -368,7 +373,15 @@ fn convert_sexpr(
                     comma = true;
                 }
 
-                func.code.push_str(&arg);
+                if is_func {
+                    func.code.push('(');
+                    func.code.push_str(&arg);
+                    func.code.push_str(".argc == 0 ? ");
+                    func.code.push_str(&arg);
+                    func.code.push_str(".func : (void*) 0)");
+                } else {
+                    func.code.push_str(&arg);
+                }
             }
             func.code.push_str(");\n");
 
@@ -1777,7 +1790,7 @@ fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &Hash
     s.push_str(");\n}\n");
 }
 
-// put_fn_declaration(&mut String, &CFunction, &HashMap<Type, CType>) -> ()
+// put_fn_declaration(&mut String, &str, &CFunction, &HashMap<Type, CType>) -> ()
 // Puts a function declaration in the built string.
 fn put_fn_declaration(
     s: &mut String,
