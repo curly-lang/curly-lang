@@ -34,8 +34,7 @@ struct CommandlineBuildOptions {
 }
 
 fn main() -> Result<(), ()> {
-    let args = env::args();
-    let mut args = args.into_iter();
+    let mut args = env::args();
     let name = args.next().unwrap();
 
     if args.len() == 0 {
@@ -99,7 +98,7 @@ fn main() -> Result<(), ()> {
                     }
                 }
 
-                if options.inputs.len() == 0 {
+                if options.inputs.is_empty() {
                     println!("usage:
 {} build [options] [file]
 options:
@@ -114,7 +113,7 @@ options:
                     return Err(());
                 }
 
-                if options.output == "" {
+                if options.output.is_empty() {
                     options.output = String::from("main");
                 }
 
@@ -151,16 +150,14 @@ options:
                         .iter()
                         .map(|v| (v.clone(), false))
                         .chain(options.compiled_mods.into_iter().map(|v| (v, true)))
-                        .collect(),
+                        .collect::<Vec<(String, bool)>>(),
                     &contents,
                     &mut ir,
                     options.mode == CompileMode::Executable,
                 )?;
 
                 // Create .build
-                match fs::remove_dir_all(".build") {
-                    _ => (),
-                }
+                let _ = fs::remove_dir_all(".build");
 
                 match fs::create_dir(".build") {
                     Ok(_) => (),
@@ -185,21 +182,33 @@ options:
                 let mut copy_to_location = return_location.clone();
                 copy_to_location.push(".libraries");
                 for lib in options.libraries {
-                    if lib.starts_with("-L"){
-                        current_path = lib.chars().into_iter().skip(2).collect();
-                        current_path = str::replace(
-                            &current_path,
-                            "~",
-                            &dirs::home_dir().expect("can't get home directory path")
-                                .into_os_string()
-                                .into_string().expect("can't convert home directory path into string"));
+                    if let Some(lib) = lib.strip_prefix("-L") {
+                        current_path = if let Some(rel) = lib.strip_prefix("~") {
+                            format!("{}/{}", dirs::home_dir().unwrap().to_str().unwrap(), rel)
+                        } else {
+                            String::from(lib)
+                        };
                     } else {
-                        std::env::set_current_dir(&current_path).expect(&format!("failed to cd into {:?}", &current_path));
-                        let mut sub : String = lib.chars().into_iter().skip(2).collect();
-                        sub = format!("lib{}.a", &sub);
+                        match std::env::set_current_dir(&current_path) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("failed to cd into {:?}: {}", &current_path, e);
+                                return Err(())
+                            }
+                        }
+
+                        let sub = format!("lib{}.a", &lib[2..]);
                         let mut target_file = copy_to_location.clone();
                         target_file.push(&sub);
-                        fs::copy(&sub, &target_file).expect(&format!("error copying {} to {:?}/.libraries", &sub, &target_file));
+
+                        match fs::copy(&sub, &target_file) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("error copying {} to {:?}/.libraries: {}", &sub, &target_file, e);
+                                return Err(());
+                            }
+                        }
+
                         std::env::set_current_dir(&copy_to_location).expect("failed to cd to .build/.libraries");
                         
                         let dirname : String = (&sub).chars().into_iter().take((&sub).len() - 2).collect();
@@ -210,7 +219,13 @@ options:
                                 return Err(());
                             }
                         }
-                        std::env::set_current_dir(&dirname).expect(&format!("failed to cd into {}", &dirname));
+                        match std::env::set_current_dir(&dirname) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("failed to cd into {}: {}", &dirname, e);
+                                return Err(());
+                            }
+                        }
                         
                         let mut command = Command::new("ar");
                         command.arg("-x");
@@ -229,7 +244,13 @@ options:
                                 .file_name()
                                 .into_string().expect("failed to convert file name to String");
                             if entry_name.ends_with(".o") {
-                                fs::copy(&entry_name, format!("../../{}", &entry_name)).expect(&format!("error copying {} to ../../", &entry_name));
+                                match fs::copy(&entry_name, format!("../../{}", &entry_name)) {
+                                    Ok(_) => (),
+                                    Err(e) => {
+                                        eprintln!("failed to cd into {}: {}", &dirname, e);
+                                        return Err(());
+                                    }
+                                }
                             }
                         }
                     }
@@ -357,7 +378,7 @@ options:
                         let mut ir = IR {
                             modules: HashMap::with_capacity(0),
                         };
-                        match check(&vec![(file, false)], &vec![contents], &mut ir, true) {
+                        match check(&[(file, false)], &[contents], &mut ir, true) {
                             Ok(_) => println!("No errors found"),
                             Err(_) => return Err(()),
                         }
@@ -394,8 +415,8 @@ options:
 // check(&Vec<(String, bool)>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
 // Checks whether given code is valid.
 fn check(
-    filenames: &Vec<(String, bool)>,
-    codes: &Vec<String>,
+    filenames: &[(String, bool)],
+    codes: &[String],
     ir: &mut IR,
     require_main: bool,
 ) -> Result<(), ()> {
@@ -975,8 +996,8 @@ fn check(
 // compile(&Vec<(String, bool)>, &Vec<(String, bool)>, &mut IR, bool) -> Result<String, ()>
 // Compiles curly into C code.
 fn compile(
-    filenames: &Vec<(String, bool)>,
-    codes: &Vec<String>,
+    filenames: &[(String, bool)],
+    codes: &[String],
     ir: &mut IR,
     require_main: bool,
 ) -> Result<Vec<(String, String)>, ()> {

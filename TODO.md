@@ -20,6 +20,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Leaving `;` early
 - Overridable operators
 - Nicer runtime error messages
+- Warnings (example: superset modules)
 - Mutability
 - Laziness
 - Lists (defined as linked lists but optimised into vectors using `@vector`)
