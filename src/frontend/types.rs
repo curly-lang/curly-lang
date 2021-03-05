@@ -232,12 +232,20 @@ impl Type {
     pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, Type>) -> bool {
         let mut _type = self;
         while let Type::Symbol(s) = _type {
-            _type = types.get(s).unwrap();
+            if let Some(t) = types.get(s) {
+                _type = t;
+            } else {
+                break;
+            }
         }
 
         let mut supertype = supertype;
         while let Type::Symbol(s) = supertype {
-            supertype = types.get(s).unwrap();
+            if let Some(t) = types.get(s) {
+                supertype = t;
+            } else {
+                break;
+            }
         }
 
         if _type.equals(supertype, types) {
