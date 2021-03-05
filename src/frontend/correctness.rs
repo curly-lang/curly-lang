@@ -1,6 +1,5 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
 use std::mem::swap;
 
 use super::ir::{
@@ -371,7 +370,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     set.push(&elsy.get_metadata()._type);
                 }
 
-                m._type = Type::Sum(HashSetWrapper(HashSet::from_iter(set.into_iter().cloned())));
+                m._type = Type::Sum(HashSetWrapper(set.into_iter().cloned().collect()));
             } else {
                 m._type = then.get_metadata()._type.clone();
             }
@@ -775,7 +774,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         break;
                     }
 
-                    if module_name.len() != 0 {
+                    if !module_name.is_empty() {
                         module_name.push_str("::");
                     }
                     module_name.push_str(a.1);
@@ -1320,7 +1319,7 @@ fn get_function_type(
                         externals,
                         imports,
                     );
-                    *r.clone()
+                    *r
                 }
 
                 // Everything else is invalid
@@ -1806,8 +1805,8 @@ where
 // Checks global function return types.
 fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
     // Get the set of all global functions and globals
-    let mut globals =
-        HashMap::from_iter(module.funcs.iter().map(|v| (v.1.name.clone(), v.0.clone())));
+    let mut globals: HashMap<String, String> =
+        module.funcs.iter().map(|v| (v.1.name.clone(), v.0.clone())).collect();
 
     // Add imported functions
     for v in module.scope.variables.iter() {
