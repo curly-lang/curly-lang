@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::process::Command;
+use std::path::PathBuf;
 
 use curlyc::backends::c::codegen;
 use curlyc::frontend::correctness;
@@ -26,6 +27,7 @@ enum CompileMode {
 struct CommandlineBuildOptions {
     output: String,
     inputs: Vec<String>,
+    libraries: Vec<String>,
     compiled_mods: Vec<String>,
     compiler_options: Vec<String>,
     mode: CompileMode,
@@ -51,6 +53,7 @@ fn main() -> Result<(), ()> {
                 let mut options = CommandlineBuildOptions {
                     output: String::with_capacity(0),
                     inputs: Vec::with_capacity(0),
+                    libraries: Vec::with_capacity(0),
                     compiled_mods: Vec::with_capacity(0),
                     compiler_options: Vec::with_capacity(0),
                     mode: CompileMode::Executable,
@@ -83,16 +86,12 @@ fn main() -> Result<(), ()> {
                                 return Err(());
                             }
                         }
-
+                        "-O0" | "-O1" | "-O2" | "-O3" => {
+                            options.compiler_options.push(a);
+                        }
                         _ => {
-                            if a.starts_with("-L")
-                                || a.starts_with("-l")
-                                || a == "-O0"
-                                || a == "-O1"
-                                || a == "-O2"
-                                || a == "-O3"
-                            {
-                                options.compiler_options.push(a);
+                            if a.starts_with("-L") || a.starts_with("-l") {
+                                options.libraries.push(a);
                             } else {
                                 options.inputs.push(a);
                             }
@@ -172,6 +171,71 @@ options:
                 }
 
                 std::env::set_current_dir(".build").expect("failed to cd into .build");
+
+                match fs::create_dir(".libraries") {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("error creating archive directory: {}", e);
+                        return Err(());
+                    }
+                }
+
+                let return_location = PathBuf::from(&std::env::current_dir().unwrap());
+                let mut current_path = String::with_capacity(0);
+                let mut copy_to_location = return_location.clone();
+                copy_to_location.push(".libraries");
+                for lib in options.libraries {
+                    if lib.starts_with("-L"){
+                        current_path = lib.chars().into_iter().skip(2).collect();
+                        current_path = str::replace(
+                            &current_path,
+                            "~",
+                            &dirs::home_dir().expect("can't get home directory path")
+                                .into_os_string()
+                                .into_string().expect("can't convert home directory path into string"));
+                    } else {
+                        std::env::set_current_dir(&current_path).expect(&format!("failed to cd into {:?}", &current_path));
+                        let mut sub : String = lib.chars().into_iter().skip(2).collect();
+                        sub = format!("lib{}.a", &sub);
+                        let mut target_file = copy_to_location.clone();
+                        target_file.push(&sub);
+                        fs::copy(&sub, &target_file).expect(&format!("error copying {} to {:?}/.libraries", &sub, &target_file));
+                        std::env::set_current_dir(&copy_to_location).expect("failed to cd to .build/.libraries");
+                        
+                        let dirname : String = (&sub).chars().into_iter().take((&sub).len() - 2).collect();
+                        match fs::create_dir(&dirname) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                eprintln!("error creating {} directory: {}", &dirname, e);
+                                return Err(());
+                            }
+                        }
+                        std::env::set_current_dir(&dirname).expect(&format!("failed to cd into {}", &dirname));
+                        
+                        let mut command = Command::new("ar");
+                        command.arg("-x");
+                        command.arg(&format!("../{}", sub));
+
+                        command
+                            .spawn()
+                            .expect("failed to execute ar")
+                            .wait()
+                            .expect("failed to wait for ar");
+                        
+                        for entry in fs::read_dir(".").expect("failed to read current directory") {
+                            let entry_name = 
+                                entry
+                                .expect("failed to read file")
+                                .file_name()
+                                .into_string().expect("failed to convert file name to String");
+                            if entry_name.ends_with(".o") {
+                                fs::copy(&entry_name, format!("../../{}", &entry_name)).expect(&format!("error copying {} to ../../", &entry_name));
+                            }
+                        }
+                    }
+                }
+                std::env::set_current_dir(return_location).expect("failed to return to .build");
+
                 for c in c.iter() {
                     match fs::write(&c.0, &c.1) {
                         Ok(_) => (),
@@ -186,6 +250,17 @@ options:
 
                 for c in c.iter() {
                     command.arg(&c.0);
+                }
+
+                for entry in fs::read_dir(".").expect("failed to read current directory") {
+                    let entry_name = 
+                        entry
+                        .expect("failed to read file")
+                        .file_name()
+                        .into_string().expect("failed to convert file name to String");
+                    if entry_name.ends_with(".o") && entry_name != "curly.o" {
+                        command.arg(&entry_name);
+                    }
                 }
 
                 for arg in options.compiler_options {
@@ -231,10 +306,14 @@ options:
 
                         CompileMode::Executable => unreachable!("no"),
                     }
-
-                    for c in c {
-                        if c.0.ends_with(".c") {
-                            command.arg(&format!("{}o", &c.0[..c.0.len() - 1]));
+                    for entry in fs::read_dir(".").expect("failed to read current directory") {
+                        let entry_name = 
+                            entry
+                            .expect("failed to read file")
+                            .file_name()
+                            .into_string().expect("failed to convert file name to String");
+                        if entry_name.ends_with(".o") {
+                            command.arg(&entry_name);
                         }
                     }
                     command
