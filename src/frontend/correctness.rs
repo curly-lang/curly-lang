@@ -2060,6 +2060,14 @@ fn undo_tailrec(sexpr: &mut SExpr) {
 // outside of a tail call.
 fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool {
     match sexpr {
+        SExpr::As(m, v) => {
+            if !check_tailrec(v, name, top) {
+                return false;
+            }
+            m.tailrec = v.get_metadata().tailrec;
+            true
+        }
+
         SExpr::Function(m, f) => {
             if f == name {
                 m.tailrec = true;
