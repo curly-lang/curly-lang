@@ -14,7 +14,6 @@ These things are features and fixes I'd like to get completed for the fourth maj
 
 ## Future releases
 These things are features and fixes I'd like to get completed in some point in the far future. Although these features are desired, they are not a priority due to either their complexity or dependencies. These are not in any particular order, and will be moved into an appropriate release when decided upon. These features, however, will be necessary to implement before an official v1.0.0.
-- Intersection types
 - Generics
 - Type classes/traits
 - Leaving `;` early
@@ -30,6 +29,7 @@ These things are features and fixes I'd like to get completed in some point in t
 - Iterators
 - For loops
 - Memoization with `@memoize`
+- Refinement types
 
 ## Things in the far future
 These things are goals that will take months, if not years, to even start due to either their complexity or dependencies.

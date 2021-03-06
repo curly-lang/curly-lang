@@ -2,8 +2,8 @@ use logos::{Lexer, Logos, Span};
 
 // convert_chars(&str) -> String
 // Converts escaped characters into an unescaped string.
-fn convert_chars(s: &str) -> String {
-    let mut iter = s[1..s.len() - 1].chars();
+fn convert_chars(s: &str, off: usize) -> String {
+    let mut iter = s[off..s.len() - off].chars();
     let mut s = String::new();
 
     while let Some(c) = iter.next() {
@@ -144,7 +144,7 @@ pub enum Token {
     })]
     Word(u64),
 
-    #[regex(r#"'([^\\']|\\[nrt'"0])'"#, |lex| convert_chars(lex.slice()).bytes().next().unwrap())]
+    #[regex(r#"'([^\\']|\\[nrt'"0])'"#, |lex| convert_chars(lex.slice(), 1).bytes().next().unwrap())]
     Char(u8),
 
     // Symbols (variables and stuff)
@@ -156,7 +156,8 @@ pub enum Token {
     Annotation,
 
     // Strings
-    #[regex(r#""([^\\"]|\\.)*""#, |lex| convert_chars(lex.slice()))]
+    #[regex(r#""([^\\"]|\\.)*""#, |lex| convert_chars(lex.slice(), 1))]
+    #[regex(r##"#"([^"]|"[^#])*"#"##, |lex| convert_chars(lex.slice(), 2))]
     String(String),
 
     // Booleans
@@ -348,6 +349,8 @@ impl<'a> Parser<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AST {
+    Empty,
+
     // Numbers
     Int(Span, i64),
     Float(Span, f64),
@@ -454,6 +457,8 @@ impl AST {
             | Self::Header(s, _, _, _)
             | Self::LibHeader(s, _, _)
             | Self::Extern(s, _, _, _) => s.clone(),
+
+            Self::Empty => panic!("uwu moment")
         }
     }
 }
@@ -657,8 +662,8 @@ macro_rules! infixr_op {
 
                 #[allow(unused_assignments)]
                 if first {
-                    let mut t1 = AST::True(Span { start: 0, end: 0 });
-                    let mut t2 = AST::True(Span { start: 0, end: 0 });
+                    let mut t1 = AST::Empty;
+                    let mut t2 = AST::Empty;
                     acc = &mut t1;
                     swap(&mut t2, &mut top);
                     top = AST::Infix(
@@ -673,7 +678,7 @@ macro_rules! infixr_op {
                     first = false;
                     acc = &mut top;
                 } else {
-                    let mut t = AST::True(Span { start: 0, end: 0 });
+                    let mut t = AST::Empty;
                     if let AST::Infix(_, _, _, r) = acc {
                         let r1 = &mut **r;
                         swap(r1, &mut t);
@@ -1035,7 +1040,7 @@ fn list(parser: &mut Parser) -> Result<AST, ParseError> {
     let mut list = vec![];
 
     loop {
-        if list.len() > 0 {
+        if !list.is_empty() {
             match parser.peek() {
                 Some((Token::Comma, _)) => {
                     parser.next();
@@ -1141,12 +1146,7 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError> {
     let mut arms = vec![];
     newline(parser);
 
-    loop {
-        match parser.peek() {
-            Some((Token::To, _)) => (),
-            _ => break,
-        }
-
+    while let Some((Token::To, _)) = parser.peek() {
         parser.next();
         let _type = call_func_fatal!(type_expr, parser, "Expected type after `to`");
         newline(parser);
@@ -1670,66 +1670,76 @@ fn header(parser: &mut Parser) -> Result<AST, ParseError> {
     let mut exports = vec![];
     newline(parser);
     let mut comma = false;
-    match parser.peek() {
-        Some((Token::LParen, _)) => {
-            parser.next();
+    if let Some((Token::LParen, _)) = parser.peek() {
+        parser.next();
 
-            loop {
-                newline(parser);
-                if comma {
-                    match parser.peek() {
-                        Some((Token::Comma, _)) => {
-                            parser.next();
-                        }
-                        Some((Token::RParen, _)) => break,
-                        _ => (),
+        loop {
+            newline(parser);
+            if comma {
+                match parser.peek() {
+                    Some((Token::Comma, _)) => {
+                        parser.next();
                     }
-                } else {
-                    comma = true;
+                    Some((Token::RParen, _)) => break,
+                    _ => (),
                 }
+            } else {
+                comma = true;
+            }
 
-                newline(parser);
-                if let None = parser.peek() {
-                    let span = parser.span();
-                    parser.return_state(state);
-                    return Err(ParseError {
-                        span,
-                        msg: String::from(
-                            "Expected exported item or right parenthesis, got end of file",
-                        ),
-                        fatal: true,
-                    });
-                }
+            newline(parser);
+            if parser.peek().is_none() {
+                let span = parser.span();
+                parser.return_state(state);
+                return Err(ParseError {
+                    span,
+                    msg: String::from(
+                        "Expected exported item or right parenthesis, got end of file",
+                    ),
+                    fatal: true,
+                });
+            }
 
-                let (token, span) = parser.peek().unwrap();
-                end = span.end;
+            let (token, span) = parser.peek().unwrap();
+            end = span.end;
 
-                match token {
-                    Token::RParen => break,
-                    Token::Symbol => exports.push(match declaration(parser) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            parser.return_state(state);
-                            return Err(e);
-                        }
-                    }),
-
-                    _ => {
-                        let span = parser.span();
+            match token {
+                Token::RParen => break,
+                Token::Symbol => exports.push(match declaration(parser) {
+                    Ok(v) => v,
+                    Err(e) => {
                         parser.return_state(state);
+                        return Err(e);
+                    }
+                }),
+
+                Token::Type => {
+                    parser.next();
+                    if let Some((Token::Symbol, _)) = parser.peek() {
+                        exports.push((parser.span(), parser.slice(), AST::Empty));
+                        parser.next();
+                    } else {
                         return Err(ParseError {
-                            span,
-                            msg: String::from("Expected exported item or right parenthesis"),
+                            span: parser.span(),
+                            msg: String::from("Expected type name after `type`"),
                             fatal: true,
                         });
                     }
                 }
-            }
 
-            parser.next();
+                _ => {
+                    let span = parser.span();
+                    parser.return_state(state);
+                    return Err(ParseError {
+                        span,
+                        msg: String::from("Expected exported item or right parenthesis"),
+                        fatal: true,
+                    });
+                }
+            }
         }
 
-        _ => (),
+        parser.next();
     }
 
     newline(parser);
@@ -1805,7 +1815,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError> {
         lines.push(header);
     }
 
-    while let Some(_) = p.peek() {
+    while p.peek().is_some() {
         // Parse one line
         if let Ok(annotation) = call_optional!(annotation, p) {
             lines.push(annotation);

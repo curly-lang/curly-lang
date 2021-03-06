@@ -334,6 +334,8 @@ fn convert_node(
     types: &mut HashMap<String, Type>,
 ) -> SExpr {
     match ast {
+        AST::Empty => unreachable!("never empty"),
+
         // Int
         AST::Int(span, n) => SExpr::Int(
             SExprMetadata {
@@ -1467,70 +1469,74 @@ pub fn convert_library_header(
             // Deal with exports
             for export in exports {
                 // Check exported variable type
-                let _type = types::convert_ast_to_type(export.4, filename, &module.types);
-                if let Type::UndeclaredTypeError(s) = _type {
-                    errors.push(IRError::InvalidType(s));
-                } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
-                    errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
-
-                // Check export is unique
-                } else if module.exports.contains_key(&export.1) {
-                    errors.push(IRError::DoubleExport(
-                        module.exports.get(&export.1).unwrap().0.clone(),
-                        Location::new(export.0, filename),
-                        export.1,
-                    ));
+                if let AST::Empty = export.4 {
+                    unimplemented!("nya :(");
                 } else {
-                    // Add export to list of exports
-                    let loc = Location::new(export.0.clone(), filename);
-                    module.scope.put_var(
-                        &export.1,
-                        &_type,
-                        export.2,
-                        Some(0),
-                        &loc,
-                        true,
-                        &module_name,
-                    );
-                    let mut args = vec![];
-                    let mut ret_type = &_type;
-                    for i in 0..export.2 {
-                        if let Type::Func(l, r) = ret_type {
-                            args.push((format!("${}", i), *l.clone()));
-                            ret_type = r;
-                        }
-                    }
+                    let _type = types::convert_ast_to_type(export.4, filename, &module.types);
+                    if let Type::UndeclaredTypeError(s) = _type {
+                        errors.push(IRError::InvalidType(s));
+                    } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
+                        errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
 
-                    module.funcs.insert(
-                        export.1.clone(),
-                        IRFunction {
-                            loc: Location::empty(),
-                            name: export.1.clone(),
-                            args,
-                            captured: HashMap::with_capacity(0),
-                            captured_names: Vec::with_capacity(0),
-                            body: SExpr::True(SExprMetadata {
+                    // Check export is unique
+                    } else if module.exports.contains_key(&export.1) {
+                        errors.push(IRError::DoubleExport(
+                            module.exports.get(&export.1).unwrap().0.clone(),
+                            Location::new(export.0, filename),
+                            export.1,
+                        ));
+                    } else {
+                        // Add export to list of exports
+                        let loc = Location::new(export.0.clone(), filename);
+                        module.scope.put_var(
+                            &export.1,
+                            &_type,
+                            export.2,
+                            Some(0),
+                            &loc,
+                            true,
+                            &module_name,
+                        );
+                        let mut args = vec![];
+                        let mut ret_type = &_type;
+                        for i in 0..export.2 {
+                            if let Type::Func(l, r) = ret_type {
+                                args.push((format!("${}", i), *l.clone()));
+                                ret_type = r;
+                            }
+                        }
+
+                        module.funcs.insert(
+                            export.1.clone(),
+                            IRFunction {
                                 loc: Location::empty(),
-                                loc2: Location::empty(),
-                                origin: String::with_capacity(0),
-                                _type: ret_type.clone(),
-                                arity: 0,
-                                saved_argc: None,
-                                tailrec: false,
+                                name: export.1.clone(),
+                                args,
+                                captured: HashMap::with_capacity(0),
+                                captured_names: Vec::with_capacity(0),
+                                body: SExpr::True(SExprMetadata {
+                                    loc: Location::empty(),
+                                    loc2: Location::empty(),
+                                    origin: String::with_capacity(0),
+                                    _type: ret_type.clone(),
+                                    arity: 0,
+                                    saved_argc: None,
+                                    tailrec: false,
+                                    impure: export.3,
+                                }),
+                                global: true,
+                                checked: true,
+                                written: true,
                                 impure: export.3,
-                            }),
-                            global: true,
-                            checked: true,
-                            written: true,
-                            impure: export.3,
-                        },
-                    );
-                    module.sexprs.push(SExpr::Assign(
-                        SExprMetadata::empty(),
-                        export.1.clone(),
-                        Box::new(SExpr::Function(SExprMetadata::empty(), export.1.clone())),
-                    ));
-                    module.exports.insert(export.1, (loc, _type));
+                            },
+                        );
+                        module.sexprs.push(SExpr::Assign(
+                            SExprMetadata::empty(),
+                            export.1.clone(),
+                            Box::new(SExpr::Function(SExprMetadata::empty(), export.1.clone())),
+                        ));
+                        module.exports.insert(export.1, (loc, _type));
+                    }
                 }
             }
 

@@ -50,4 +50,5 @@ highlight link curlyType Type
 
 " Comments
 syntax match curlyComment "\v#.*$"
+syn region curlyComment start="{-"    end="-}"
 highlight link curlyComment Comment
