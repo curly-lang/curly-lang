@@ -15,15 +15,17 @@ use crate::frontend::parser;
 
 pub static DEBUG: bool = false;
 
+pub type Res<'a> = Result<(), (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>)>;
+
 // check(&Vec<(String, bool)>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
 // Checks whether given code is valid.
-pub fn check(
-    filenames: &[(String, bool)],
+pub fn check<'a>(
+    filenames: &'a [(String, bool)],
     codes: &[String],
     ir: &mut IR,
     require_main: bool,
     emit: bool
-) -> Result<(), Vec<Diagnostic<usize>>> {
+) -> Res<'a> {
     // Set up codespan
     let mut files = SimpleFiles::new();
     let mut file_hash = HashMap::new();
@@ -52,7 +54,7 @@ pub fn check(
                         term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
                     }
                     diagnostics.push(diagnostic);
-                    return Err(diagnostics);
+                    return Err((diagnostics, files));
                 }
             };
 
@@ -181,7 +183,7 @@ pub fn check(
                         term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
                     }
                     diagnostics.push(diagnostic);
-                    return Err(diagnostics);
+                    return Err((diagnostics, files));
                 }
             };
 
@@ -301,7 +303,7 @@ pub fn check(
     }
 
     if !diagnostics.is_empty() {
-        return Err(diagnostics);
+        return Err((diagnostics, files));
     }
 
     // Check correctness
@@ -605,7 +607,7 @@ pub fn check(
                 }
                 diagnostics.push(diagnostic);
             }
-            Err(diagnostics)
+            Err((diagnostics, files))
         }
     }
 }
