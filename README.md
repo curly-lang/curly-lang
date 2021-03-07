@@ -2,11 +2,18 @@
 Curly is a functional programming language that focuses on iterators. Some of its main implementation features include sum types, iterators, list comprehensions, and quantifiers.
 
 ## Example
-<pre>
-primes = n <span class="hljs-keyword">in</span> (from <span class="hljs-number">2</span>) <span class="hljs-keyword">where</span>
-    <span class="hljs-keyword">for</span> <span class="hljs-keyword">all</span> p <span class="hljs-keyword">in</span> (range <span class="hljs-number">2</span> n)
-        n % p != <span class="hljs-number">0</span>
-</pre>
+```ocaml
+module Main
+
+fib_tail a: Int, b: Int, n: Int =
+    if n == 0 then
+        a
+    else
+        fib_tail b (a + b) (n - 1)
+fib = fib_tail 0 1
+
+main = debug $ fib 50
+```
 
 ## Build
 Just type in the following:
