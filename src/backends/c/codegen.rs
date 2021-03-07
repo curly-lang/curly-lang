@@ -61,7 +61,7 @@ fn sanitise_symbol(value: &str) -> String {
     let mut s = value
         .replace("'", "$$PRIME$$")
         .replace("::", "$$DOUBLECOLON$$");
-    s.push_str("$");
+    s.push('$');
     s
 }
 
@@ -186,7 +186,7 @@ fn convert_sexpr(
             let s = sanitise_symbol(f);
             let mod_name = sanitise_symbol(&m.origin);
             if let Some(f) = root.funcs.get(f) {
-                if f.args.len() != 0 {
+                if !f.args.is_empty() {
                     func.code.push_str("func_t ");
                     func.code.push_str(&name);
                     func.code.push_str(" = { 0, (void*) ");
@@ -198,7 +198,7 @@ fn convert_sexpr(
                     func.code
                         .push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
                     func.code.push_str(", 0, ");
-                    if f.captured.len() > 0 {
+                    if !f.captured.is_empty() {
                         let count = f.args.len() + f.captured.len();
                         func.code.push_str("calloc(");
                         func.code.push_str(&format!("{}", count));
@@ -574,7 +574,7 @@ fn convert_sexpr(
                     func.code.push_str(&format!("{}ull", id));
                     func.code.push_str(";\n");
 
-                    if value != "" {
+                    if !value.is_empty() {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
                         func.code.push_str(&format!("{}", id));
@@ -1037,11 +1037,7 @@ fn convert_sexpr(
 
                             // Save argument
                             let _type = &funcs[n].get_metadata()._type;
-                            let is_enum = if let Type::Enum(_) = _type {
-                                true
-                            } else {
-                                false
-                            };
+                            let is_enum = matches!(_type, Type::Enum(_));
                             if is_enum {
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".argc++;\n");
@@ -1254,10 +1250,7 @@ fn convert_sexpr(
                             }
 
                             for a in astrs.iter() {
-                                match a.1 {
-                                    Type::Func(_, _) => {}
-
-                                    _ => (),
+                                if let Type::Func(_, _) = a.1 {
                                 }
                             }
 
@@ -1272,8 +1265,8 @@ fn convert_sexpr(
                     }
 
                     // Currying
-                    if astrs.len() > 0 {
-                        if fstr == "" {
+                    if !astrs.is_empty() {
+                        if fstr.is_empty() {
                             fstr = convert_sexpr(f, root, func, types)
                         }
 
@@ -1474,37 +1467,25 @@ fn convert_sexpr(
                 func.code.push_str(";\n");
 
                 // Increment body reference count
-                match m._type {
-                    Type::Func(_, _) => {
-                        func.code.push_str(&ptr);
-                        func.code.push_str("->refc++;\n");
-                    }
-
-                    _ => (),
+                if let Type::Func(_, _) = m._type {
+                    func.code.push_str(&ptr);
+                    func.code.push_str("->refc++;\n");
                 }
             }
 
             // Decrement assignment reference counts and free if necessary
             for a in a.iter().enumerate() {
-                match a.1.get_metadata()._type {
-                    Type::Func(_, _) => {
-                        func.code.push_str("refc_func(&");
-                        func.code.push_str(&astrs[a.0]);
-                        func.code.push_str(");\n");
-                    }
-
-                    _ => (),
+                if let Type::Func(_, _) = a.1.get_metadata()._type {
+                    func.code.push_str("refc_func(&");
+                    func.code.push_str(&astrs[a.0]);
+                    func.code.push_str(");\n");
                 }
             }
 
             // Decrement body reference count
-            match m._type {
-                Type::Func(_, _) => {
-                    func.code.push_str(&ptr);
-                    func.code.push_str("->refc--;\n");
-                }
-
-                _ => (),
+            if let Type::Func(_, _) =  m._type {
+                func.code.push_str(&ptr);
+                func.code.push_str("->refc--;\n");
             }
 
             // Copy data from ptr
@@ -1784,7 +1765,7 @@ fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &Hash
 
         s.push_str("f->args[");
         s.push_str(&format!("{}", i));
-        s.push_str("]");
+        s.push(']');
     }
 
     s.push_str(");\n}\n");
@@ -1844,7 +1825,7 @@ fn put_fn_declaration(
 fn get_lino(span: &Location, contents: &str) -> usize {
     let mut lino = 1;
     for c in contents.bytes().enumerate() {
-        if c.1 == '\n' as u8 {
+        if c.1 == b'\n' {
             lino += 1;
         }
         if span.span.start <= c.0 && c.0 <= span.span.end {
@@ -2304,7 +2285,7 @@ fn convert_module_to_c(
 ) -> String {
     // Create and populate functions
     for f in module.funcs.iter() {
-        if f.1.written || f.1.args.len() == 0 {
+        if f.1.written || f.1.args.is_empty() {
             continue;
         }
 
@@ -2363,15 +2344,11 @@ fn convert_module_to_c(
 
         // Deallocate functions
         for a in cf.args.iter() {
-            match a.1 {
-                Type::Func(_, _) => {
-                    // Delete
-                    cf.code.push_str("refc_func(&");
-                    cf.code.push_str(&sanitise_symbol(&a.0));
-                    cf.code.push_str(");\n");
-                }
-
-                _ => (),
+            if let Type::Func(_, _) =  a.1 {
+                // Delete
+                cf.code.push_str("refc_func(&");
+                cf.code.push_str(&sanitise_symbol(&a.0));
+                cf.code.push_str(");\n");
             }
         }
 
@@ -2399,7 +2376,7 @@ fn convert_module_to_c(
 
     // Declare all functions
     for f in funcs.iter() {
-        if f.1.args.len() != 0 {
+        if !f.1.args.is_empty() {
             put_fn_declaration(&mut code_string, &module.name, &f.1, &types);
             code_string.push_str(";\n\n");
             put_fn_wrapper(&mut code_string, &module.name, &f.1, &types);
@@ -2440,18 +2417,14 @@ fn convert_module_to_c(
             if let SExpr::Function(_, f) = &**v {
                 // Get function
                 let v = module.funcs.get(f).unwrap();
-                if v.args.len() != 0 {
+                if !v.args.is_empty() {
                     continue;
                 }
                 let impure = v.impure;
                 let v = &v.body;
 
                 // Create getter
-                let is_enum = if let Type::Enum(_) = m._type {
-                    true
-                } else {
-                    false
-                };
+                let is_enum = matches!(m._type, Type::Enum(_));
                 let sanitised = sanitise_symbol(n);
                 let mod_name = sanitise_symbol(&module.name);
 
