@@ -49,7 +49,7 @@ pub fn check<'a>(
                 start,
                 end: start + 3
             };
-            let diagnostic = Diagnostic::warning()
+            let diagnostic = Diagnostic::note()
                             .with_message("owo")
                             .with_labels(vec![Label::primary(file_id, loc).with_message("nya")]);
             if emit {
