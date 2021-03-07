@@ -5,14 +5,16 @@ Curly is a functional programming language that focuses on iterators. Some of it
 ```ocaml
 module Main
 
-fib_tail a: Int, b: Int, n: Int =
-    if n == 0 then
-        a
-    else
-        fib_tail b (a + b) (n - 1)
-fib = fib_tail 0 1
+fib =
+    let fib_tail a: Int, b: Int, n: Int =
+        if n == 0 then
+            a
+        else
+            fib_tail b (a + b) (n - 1)
+    in fib_tail 0 1
 
 main = debug $ fib 50
+
 ```
 
 ## Build
