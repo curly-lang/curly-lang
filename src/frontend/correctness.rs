@@ -1737,7 +1737,6 @@ fn check_function_body(
             String::from(module_name),
         );
     }
-    func.checked = true;
 }
 
 // check_function_group(T, &HashMap<String, IRFunction>, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1789,7 +1788,6 @@ where
             // Check body
             check_sexpr(&mut func.body, module, errors);
             check_externals(&func.body, errors);
-            func.checked = true;
 
             // Pop scope
             module.scope.pop_scope();
