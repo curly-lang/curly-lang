@@ -5,6 +5,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use logos::Span;
 use std::collections::HashMap;
 
 use crate::frontend::correctness;
@@ -15,7 +16,7 @@ use crate::frontend::parser;
 
 pub static DEBUG: bool = false;
 
-pub type Res<'a> = Result<(), (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>)>;
+type Res<'a> = Result<(Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>), (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>)>;
 
 // check(&Vec<(String, bool)>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
 // Checks whether given code is valid.
@@ -37,10 +38,25 @@ pub fn check<'a>(
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
     let mut diagnostics = Vec::new();
+    let mut fail = false;
 
     for file in filenames.iter().enumerate() {
         let code = &codes[file.0];
         let file_id = *file_hash.get(&file.1 .0).unwrap();
+
+        if let Some(start) = code.find("uwu") {
+            let loc = Span {
+                start,
+                end: start + 3
+            };
+            let diagnostic = Diagnostic::warning()
+                            .with_message("owo")
+                            .with_labels(vec![Label::primary(file_id, loc).with_message("nya")]);
+            if emit {
+                term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+            }
+            diagnostics.push(diagnostic);
+        }
 
         // Generate the ast
         if file.1 .1 {
@@ -169,6 +185,7 @@ pub fn check<'a>(
                             term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
                         }
                         diagnostics.push(diagnostic);
+                        fail = true;
                     }
                 }
             }
@@ -296,13 +313,14 @@ pub fn check<'a>(
                             term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
                         }
                         diagnostics.push(diagnostic);
+                        fail = true;
                     }
                 }
             }
         }
     }
 
-    if !diagnostics.is_empty() {
+    if fail {
         return Err((diagnostics, files));
     }
 
@@ -313,10 +331,10 @@ pub fn check<'a>(
     match err {
         Ok(_) if DEBUG => {
             dbg!(ir);
-            Ok(())
+            Ok((diagnostics, files))
         }
 
-        Ok(_) => Ok(()),
+        Ok(_) => Ok((diagnostics, files)),
 
         Err(e) => {
             for e in e {
