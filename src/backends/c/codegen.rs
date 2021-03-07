@@ -2073,6 +2073,8 @@ fn collect_types(
                             continue;
                         }
 
+                        Type::Pointer(_) => types_string.push_str("                void*"),
+
                         Type::Sum(v) => {
                             for v in v.0.iter() {
                                 if !iter.contains(&v) {
@@ -2089,6 +2091,33 @@ fn collect_types(
                                 Type::Float => types_string.push_str("        float_t"),
                                 Type::Bool => types_string.push_str("        bool"),
                                 Type::Func(_, _) => types_string.push_str("        func_t"),
+                                Type::Pointer(_) => types_string.push_str("        void*"),
+
+                                Type::Sum(v) => {
+                                    types_string.push_str("        struct {\n            uint64_t tag;\n            union {\n");
+
+                                    for mut t in v.0.iter() {
+                                        while let Type::Symbol(s) = t {
+                                            t = ir.types.get(s).unwrap();
+                                        }
+
+                                        match t {
+                                            Type::Int => types_string.push_str("                int_t"),
+                                            Type::Float => types_string.push_str("                float_t"),
+                                            Type::Bool => types_string.push_str("                bool"),
+                                            Type::Char => types_string.push_str("                char"),
+                                            Type::Word => types_string.push_str("                word_t"),
+                                            Type::Func(_, _) => types_string.push_str("                func_t"),
+                                            Type::Enum(_) => continue,
+                                            Type::Pointer(_) => types_string.push_str("                void*"),
+                                            _ => panic!("unsupported type!"),
+                                        }
+
+                                        types_string.push_str(&format!(" $${};\n", t.sum_hash(&ir.types)));
+                                    }
+                                    types_string.push_str("            } values;\n        }");
+                                }
+
                                 _ => panic!("unsupported type!"),
                             }
                         }
@@ -2197,10 +2226,36 @@ fn collect_type_functions(
                         bodies.push_str(get_c_type(t.0, types));
                         bodies.push_str(" result;\nresult.tag = ");
                         let id = v.sum_hash(&ir.types);
-                        bodies.push_str(&format!("{}ull", id));
-                        bodies.push_str(";\nresult.values.$$");
-                        bodies.push_str(&format!("{}", id));
-                        bodies.push_str(" = arg$;\nreturn result;\n}\n");
+                        bodies.push_str(&format!("{}ull;\n", id));
+
+                        match &**t2 {
+                            Type::Sum(v) => {
+                                bodies.push_str("switch (arg$.tag) {\n");
+                                for v in v.0.iter() {
+                                    let sub_id = v.sum_hash(&ir.types);
+                                    bodies.push_str("case ");
+                                    bodies.push_str(&format!("{}ull:\n", sub_id));
+                                    bodies.push_str("result.values.$$");
+                                    bodies.push_str(&format!("{}", id));
+                                    bodies.push_str(".tag = ");
+                                    bodies.push_str(&format!("{}ull;\n", sub_id));
+                                    bodies.push_str("result.values.$$");
+                                    bodies.push_str(&format!("{}", id));
+                                    bodies.push_str(".values.$$");
+                                    bodies.push_str(&format!("{}", sub_id));
+                                    bodies.push_str(" = arg$.values.$$");
+                                    bodies.push_str(&format!("{};\nbreak;\n", sub_id));
+                                }
+                                bodies.push_str("}\n");
+                            }
+
+                            _ => {
+                                bodies.push_str("result.values.$$");
+                                bodies.push_str(&format!("{}", id));
+                                bodies.push_str(" = arg$;");
+                            }
+                        }
+                        bodies.push_str("return result;\n}\n");
 
                         // Build wrapper
                         put_fn_wrapper(bodies, &ir.name, &cf, types)
