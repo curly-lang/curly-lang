@@ -4,20 +4,24 @@ use codespan_reporting::term;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use std::collections::HashMap;
 use std::env;
+use std::env::Args;
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 use std::result::Result;
-use std::path::Path;
-use std::env::Args;
 
 use parser::AST;
 
 use curlyc::backends::c::codegen;
 use curlyc::frontend::ir;
-use curlyc::frontend::ir::{IRError, IR, DuplicateModuleInfo};
+use curlyc::frontend::ir::{DuplicateModuleInfo, IRError, IR};
 use curlyc::frontend::parser;
 
 pub static DEBUG: bool = false;
+
+#[cfg(target_os = "macos")]
+static COMPILER: &str = "gcc-10";
+static COMPILER: &str = "gcc";
 
 #[derive(PartialEq)]
 enum CompileMode {
@@ -46,11 +50,10 @@ fn main() -> Result<(), ()> {
 
     if args.len() == 0 {
         println!(
-            "usage:\n{}{}\n{}{}",
-            &name,
-            " check [files]",
-            &name,
-            " build [options] [files]"
+            "usage:
+{} check [files]
+{} build [options] [files]",
+            &name, &name
         );
         Ok(())
     } else {
@@ -67,84 +70,77 @@ fn main() -> Result<(), ()> {
 
                 handle_args(&mut options, &mut args).expect("Failed to handle args.");
                 post_process_args(&mut options, name).expect("Failed to post-process args.");
-                
-                make_dirs().expect("Failed to make dirs.");
 
+                make_dirs().expect("Failed to make dirs.");
 
                 let mut ir = IR {
                     modules: HashMap::with_capacity(0),
                 };
 
-
                 // Get a list of (lib_path, mod_file_path)
-                let curly_libs : Vec<(String, String)> = 
-                get_curly_libs(&mut options)
-                .expect("Failed to get curly libs.");
+                let curly_libs = get_curly_libs(&mut options).expect("Failed to get curly libs.");
 
                 // Get contents of the mod files.
-                let mod_files_contents : Vec<String> = 
-                curly_libs
+                let mod_files_contents: Vec<String> = curly_libs
                     .iter()
-                    .map(|v| read_file(v.1.clone())
-                    .expect(&format!("Failed to read file {}.", v.1.clone())))
-                    .collect();
-                
-                // Parse the mod file contents. 
-                let mod_files_asts : Vec<Vec<AST>> = 
-                mod_files_contents
-                    .iter()
-                    .map(|v| get_ast_for_mod_file(v.clone())
-                    .expect("Failed to convert file to AST."))
-                    .collect();
-                
-                // Try to add each module to the IR, 1 by 1, and log any errors.
-                let mod_files_ir_errors : Vec<Vec<Vec<IRError>>> =
-                (0..mod_files_asts.len())
-                    .map(
-                        |i| {
-                            let mod_file_ir_errors : Vec<Vec<IRError>> = 
-                            mod_files_asts[i]
-                            .iter()
-                            .map(|v| add_parsed_module_to_ir(v.to_owned(), &mut ir, curly_libs[i].1.clone()))
-                            .collect();
-                        
-                            mod_file_ir_errors
-                        }
+                    .map(|v| 
+                        read_file(&v.1).expect(&format!("Failed to read file {}.", v.1.clone()))
                     )
                     .collect();
 
+                // Parse the mod file contents.
+                let mod_files_asts: Vec<Vec<AST>> = mod_files_contents
+                    .iter()
+                    .map(|v| parser::parse_library(&v).expect("Failed to convert file to AST."))
+                    .collect();
+
+                // Try to add each module to the IR, 1 by 1, and log any errors.
+                let mod_files_ir_errors: Vec<Vec<Vec<IRError>>> = mod_files_asts
+                    .iter()
+                    .enumerate()
+                    .map(|v| {
+                        let (a, b) = v;
+                        b.iter()
+                            .map(|w| ir::convert_module(&curly_libs[a].1, w.clone(), &mut ir))
+                            .collect()
+                    })
+                    .collect();
 
                 // Use the IR errors to make a map of which modules from which library corresponds to each module name.
-                let module_references : HashMap<String, (usize, usize)> = handle_module_ir_errors(&curly_libs, mod_files_asts, mod_files_ir_errors);
+                let module_references =
+                    handle_module_ir_errors(&curly_libs, mod_files_asts, mod_files_ir_errors);
 
                 // Use the previous map to make a different map of what modules are being pulled from each library.
-                let lib_modules_to_unpack : HashMap<String, Vec<String>> = module_refs_to_file_modules(&curly_libs, module_references);
-
+                let lib_modules_to_unpack =
+                    module_refs_to_file_modules(&curly_libs, module_references);
 
                 // Extract the selected modules from each .curlylib file
                 lib_modules_to_unpack
                     .keys()
-                    .map(|v| extract_modules_from_file(v.to_string(), lib_modules_to_unpack.get(v).unwrap().to_vec()))
+                    .map(|v| {
+                        extract_modules_from_file(v, lib_modules_to_unpack.get(v).unwrap().to_vec())
+                    })
                     .for_each(drop);
 
-                // Move the extracted .o and .a files to the .build/.linker_files directory 
-                copy_o_and_a_files("../.linker_files".to_string());
-
+                // Move the extracted .o and .a files to the .build/.linker_files directory
+                copy_o_and_a_files("../.linker_files");
 
                 // cd into the .build/.libraries directory
-                std::env::set_current_dir("../.libraries").expect("Failed to cd into .build/.libraries.");
-                
+                std::env::set_current_dir("../.libraries")
+                    .expect("Failed to cd into .build/.libraries.");
+
                 // Copy static libraries and object files into the .build/.libraries directory
                 copy_lib_files(&mut options);
 
-                // Move the extracted .o and .a files to the .build/.linker_files directory 
-                copy_o_and_a_files("../.linker_files".to_string());
+                // Move the extracted .o and .a files to the .build/.linker_files directory
+                copy_o_and_a_files("../.linker_files");
 
                 // cd into the .build/.linker_files directory
-                std::env::set_current_dir("../.linker_files").expect("Failed to cd into .build/.linker_files.");
+                std::env::set_current_dir("../.linker_files")
+                    .expect("Failed to cd into .build/.linker_files.");
 
                 // Get the files in the linker_files directory with ".linker_files/" appended to the beginning of them
-                let linker_files = get_files_in_current_dir_with_prepend(".linker_files".to_string());
+                let linker_files = get_files_in_current_dir_with_prepend(".linker_files");
 
                 // cd into . directory
                 std::env::set_current_dir("../..").expect("Failed to cd into .");
@@ -162,7 +158,7 @@ fn main() -> Result<(), ()> {
 
                 // cd into .build directory
                 std::env::set_current_dir(".build").expect("failed to cd into .build");
-                
+
                 let c = compile(
                     &options
                         .inputs
@@ -174,8 +170,6 @@ fn main() -> Result<(), ()> {
                     options.mode == CompileMode::Executable,
                 )?;
 
-                
-
                 for c in c.iter() {
                     match fs::write(&c.0, &c.1) {
                         Ok(_) => (),
@@ -186,7 +180,7 @@ fn main() -> Result<(), ()> {
                     }
                 }
 
-                let mut command = Command::new("gcc-10");
+                let mut command = Command::new(COMPILER);
 
                 for i in linker_files.iter() {
                     command.arg(i);
@@ -197,11 +191,11 @@ fn main() -> Result<(), ()> {
                 }
 
                 for entry in fs::read_dir(".").expect("failed to read current directory") {
-                    let entry_name = 
-                        entry
+                    let entry_name = entry
                         .expect("failed to read file")
                         .file_name()
-                        .into_string().expect("failed to convert file name to String");
+                        .into_string()
+                        .expect("failed to convert file name to String");
                     if entry_name.ends_with(".o") && entry_name != "curly.o" {
                         command.arg(&entry_name);
                     }
@@ -239,10 +233,10 @@ fn main() -> Result<(), ()> {
 
                 // Archive
                 if options.mode != CompileMode::Executable {
-                    make_included_lib_archive(options.output.clone());
-                    copy_o_and_a_files(".lib_archive_files".to_string());
+                    make_included_lib_archive(&options.output);
+                    copy_o_and_a_files(".lib_archive_files");
 
-                    let filename = format!(".lib_archive_files/{}.mod.curly", options.output.clone());
+                    let filename = format!(".lib_archive_files/{}.mod.curly", options.output);
                     let contents = codegen::generate_module_file(&ir);
                     if DEBUG {
                         println!(
@@ -258,13 +252,12 @@ fn main() -> Result<(), ()> {
                         }
                     }
 
-
                     let mut command = Command::new("ar");
                     command.arg("-qc");
 
                     match options.mode {
                         CompileMode::Static => {
-                            command.arg(&format!("{}.curlylib", options.output.clone()));
+                            command.arg(&format!("{}.curlylib", options.output));
                         }
 
                         CompileMode::Dynamic => {
@@ -277,10 +270,11 @@ fn main() -> Result<(), ()> {
                         CompileMode::Executable => unreachable!("no"),
                     }
 
+                    std::env::set_current_dir(".lib_archive_files")
+                        .expect("Failed to cd into .build/.lib_archive_files.");
 
-                    std::env::set_current_dir(".lib_archive_files").expect("Failed to cd into .build/.lib_archive_files.");
-
-                    let files_in_curlylib = get_files_in_current_dir_with_prepend(".lib_archive_files".to_string());
+                    let files_in_curlylib =
+                        get_files_in_current_dir_with_prepend(".lib_archive_files");
 
                     std::env::set_current_dir("..").expect("Failed to cd back into .build.");
 
@@ -288,15 +282,13 @@ fn main() -> Result<(), ()> {
                         command.arg(file);
                     }
 
-                    
                     command
                         .spawn()
                         .expect("failed to execute ar")
                         .wait()
                         .expect("failed to wait for ar");
-                    
+
                     // Generate module file
-                    
                 }
             }
 
@@ -324,10 +316,12 @@ fn main() -> Result<(), ()> {
 
                     None => {
                         println!(
-                            "usage:\n{}{}\noptions:\n{}",
+                            "usage:
+{} check [options] [file]
+options:
+    -m file             - Adds file as a compiled module
+",
                             &name,
-                            " check [options] [file]",
-                            "    -m file             - Adds file as a compiled module"
                         );
                     }
                 }
@@ -335,11 +329,11 @@ fn main() -> Result<(), ()> {
 
             _ => {
                 println!(
-                    "usage:\n{}{}\n{}{}",
-                    &name,
-                    " check [files]",
-                    &name,
-                    " build [options] [files]"
+                    "usage:
+{} check [files]
+{} build [options] [files]
+",
+                    &name, &name,
                 );
             }
         }
@@ -348,11 +342,7 @@ fn main() -> Result<(), ()> {
     }
 }
 
-fn handle_args(
-    options: &mut CommandlineBuildOptions,
-    args: &mut Args
-) -> Result<(), ()> {
-
+fn handle_args(options: &mut CommandlineBuildOptions, args: &mut Args) -> Result<(), ()> {
     while let Some(a) = args.next() {
         match a.as_str() {
             "-o" => {
@@ -360,10 +350,9 @@ fn handle_args(
                     options.output = v;
                 } else {
                     eprintln!("Must specify an output file");
-                    return Err(())
+                    return Err(());
                 }
             }
-
 
             "--dyn" => {
                 options.mode = CompileMode::Dynamic;
@@ -373,35 +362,32 @@ fn handle_args(
                 options.mode = CompileMode::Static;
             }
 
-
             "-m" => {
                 if let Some(v) = args.next() {
                     options.curly_libs.push(v);
                 } else {
                     eprintln!("must specify a curly library");
-                    return Err(())
+                    return Err(());
                 }
             }
-
 
             "-L" => {
                 if let Some(v) = args.next() {
                     options.libraries.push((v, LibEntryType::Directory));
                 } else {
                     eprintln!("must specify a c library location");
-                    return Err(())
+                    return Err(());
                 }
             }
-            
+
             "-l" => {
                 if let Some(v) = args.next() {
                     options.libraries.push((v, LibEntryType::LibraryPath));
                 } else {
                     eprintln!("must specify a c library");
-                    return Err(())
+                    return Err(());
                 }
             }
-
 
             "-O0" | "-O1" | "-O2" | "-O3" => {
                 options.compiler_options.push(a);
@@ -413,23 +399,24 @@ fn handle_args(
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
-fn post_process_args(
-    options: &mut CommandlineBuildOptions,
-    name: String
-) -> Result<(), ()> {
+fn post_process_args(options: &mut CommandlineBuildOptions, name: String) -> Result<(), ()> {
     if options.inputs.is_empty() {
         println!(
-            "usage:\n{} build [options] [file]\noptions:\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            &name,
-            "    -o output           - Sets the output file",
-            "    -m file             - Adds file as a compiled module (must include corresponding compiled library)",
-            "    --lib               - Compiles as a static library", "--dyn               - Compiles as a dynamic library",
-            "    -On                 - Compiles with the given optimisation level; n can be 0, 1, 2, or 3",
-            "    -L /path/to/dir     - Adds /path/to/dir as a directory where cc can look for libraries",
-            "    -l lib              - adds lib as a library"
+            "usage:
+{} build [options] [file]
+options:
+    -o output           - Sets the output file
+    -m file             - Adds file as a compiled module (must include corresponding compiled library)
+    --lib               - Compiles as a static library
+    --dyn               - Compiles as a dynamic library
+    -On                 - Compiles with the given optimisation level; n can be 0, 1, 2, or 3
+    -L /path/to/dir     - Adds /path/to/dir as a directory where cc can look for libraries
+    -l lib              - adds lib as a library
+",
+            &name
         );
         return Err(());
     }
@@ -437,11 +424,10 @@ fn post_process_args(
     if options.output.is_empty() {
         options.output = String::from("main");
     }
-    return Ok(())
+    Ok(())
 }
 
-fn make_dirs(
-) -> Result<(), ()> {
+fn make_dirs() -> Result<(), ()> {
     // Remove .build directory
     let _ = fs::remove_dir_all(".build");
 
@@ -495,24 +481,17 @@ fn make_dirs(
 
     // cd into .curly_libs/.build directory
     std::env::set_current_dir(".curly_libs").expect("failed to cd into .curly_libs");
-    
-    
-    return Ok(());
+
+    Ok(())
 }
 
-fn get_curly_libs(
-    options: &mut CommandlineBuildOptions
-) -> Result<Vec<(String, String)>, ()> {
+fn get_curly_libs(options: &mut CommandlineBuildOptions) -> Result<Vec<(String, String)>, ()> {
+    let mut curly_libs = Vec::new();
 
-    let mut curly_libs: Vec<String> = Vec::new();
-
-    for i in 0..options.curly_libs.len() {
-        let cur_lib = &options.curly_libs[i];
-
-        let path_to_file = 
-        if let Some(rel) = cur_lib.strip_prefix("~") {
+    for (i, cur_lib) in options.curly_libs.iter().enumerate() {
+        let path_to_file = if let Some(rel) = cur_lib.strip_prefix("~") {
             format!("{}/{}", dirs::home_dir().unwrap().to_str().unwrap(), rel)
-        } else if let Some(_) = cur_lib.strip_prefix("/") {
+        } else if cur_lib.starts_with('/') {
             String::from(cur_lib)
         } else {
             format!("../../{}", cur_lib)
@@ -522,37 +501,40 @@ fn get_curly_libs(
             "{}_{}",
             i,
             Path::new(&path_to_file)
-            .file_name().unwrap()
-            .to_str().unwrap()
-            .to_string(),
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
         );
 
         match fs::copy(&path_to_file, &file_name) {
             Ok(_) => (),
             Err(e) => {
-                eprintln!("error copying {:?} to {:?}: {}", &path_to_file, &file_name, e);
+                eprintln!(
+                    "error copying {:?} to {:?}: {}",
+                    &path_to_file, &file_name, e
+                );
                 return Err(());
             }
         }
 
         curly_libs.push(file_name);
     }
-    
-    let mut curly_mod_files : Vec<String> = Vec::new();
 
-    for i in 0..curly_libs.len() {
-        let cur_lib = &curly_libs[i];
+    let mut curly_mod_files: Vec<String> = Vec::new();
 
-
+    for (i, cur_lib) in curly_libs.iter().enumerate() {
         let mut command = Command::new("ar");
-        
-        let mut mod_file_name = 
-        Path::new(&cur_lib)
-        .file_stem().unwrap()
-        .to_str().unwrap()
-        .to_string();
 
-        mod_file_name = mod_file_name[mod_file_name.find("_").unwrap() + 1..].to_string();
+        let mut mod_file_name = Path::new(&cur_lib)
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        mod_file_name = mod_file_name[mod_file_name.find('_').unwrap() + 1..].to_string();
 
         mod_file_name = format!("{}.mod.curly", mod_file_name);
 
@@ -566,16 +548,15 @@ fn get_curly_libs(
             .wait()
             .expect("failed to wait for ar");
 
-        let unique_mod_file_name = format!(
-            "{}_{}",
-            i,
-            &mod_file_name,
-        );
+        let unique_mod_file_name = format!("{}_{}", i, &mod_file_name,);
 
         match fs::rename(&mod_file_name, &unique_mod_file_name) {
             Ok(_) => (),
             Err(e) => {
-                eprintln!("error renaming {:?} to {:?}: {}", &mod_file_name, &unique_mod_file_name, e);
+                eprintln!(
+                    "error renaming {:?} to {:?}: {}",
+                    &mod_file_name, &unique_mod_file_name, e
+                );
                 return Err(());
             }
         }
@@ -583,49 +564,26 @@ fn get_curly_libs(
         curly_mod_files.push(unique_mod_file_name);
     }
 
-    let mut lib_paths : Vec<(String, String)> = Vec::new();
+    let mut lib_paths: Vec<(String, String)> = Vec::new();
 
-    for i in 0..curly_libs.len() {
-        lib_paths.push((curly_libs[i].clone(), curly_mod_files[i].clone()));
+    for (curly_lib, curly_mod) in curly_libs.iter().zip(curly_mod_files.iter()) {
+        lib_paths.push((curly_lib.clone(), curly_mod.clone()));
     }
 
-    return Ok(lib_paths);
+    Ok(lib_paths)
 }
 
-fn read_file(
-    file_name: String
-) -> Result<String, ()> {
+fn read_file(file_name: &str) -> Result<String, ()> {
     match fs::read_to_string(&file_name) {
-        Ok(t) => return Ok(t),
+        Ok(t) => Ok(t),
         Err(e) => {
             eprintln!("Error reading {}: {}", &file_name, e);
-            return Err(())
+            Err(())
         }
     }
 }
 
-fn get_ast_for_mod_file(
-    file_contents: String
-) -> Result<Vec<AST>, ()> {
-    match parser::parse_library(&file_contents) {
-        Ok(v) => return Ok(v),
-        Err(_) => {
-            return Err(());
-        }
-    };
-}
-
-fn add_parsed_module_to_ir(
-    ast_module: AST,
-    ir: &mut IR,
-    file_name: String
-) -> Vec<IRError> {
-    return ir::convert_module(&file_name, ast_module, ir);
-}
-
-fn get_module_name_from_ast(
-    ast: AST
-) -> Result<String, ()> {
+fn get_module_name_from_ast(ast: AST) -> Result<String, ()> {
     // Deal with the header
     if let AST::LibHeader(_, name, _) = ast {
         // Get module name
@@ -638,83 +596,86 @@ fn get_module_name_from_ast(
 
             top = *l;
         }
+
         if let AST::Symbol(_, v) = top {
             full_name.push(v);
         }
+
         full_name.reverse();
         let module_name = full_name.join("::");
 
-        return Ok(module_name);
+        Ok(module_name)
+    } else {
+        Err(())
     }
-    return Err(())
 }
 
 fn handle_module_ir_errors(
-    curly_libs: &Vec<(String, String)>,
+    curly_libs: &[(String, String)],
     mod_files_asts: Vec<Vec<AST>>,
     mod_files_ir_errors: Vec<Vec<Vec<IRError>>>,
 ) -> HashMap<String, (usize, usize)> {
-    let mut module_references : HashMap<String, (usize, usize)> = HashMap::new();
+    let mut module_references: HashMap<String, (usize, usize)> = HashMap::new();
     let mut files = SimpleFiles::new();
     let mut file_hash = HashMap::new();
-    for file in curly_libs.iter().map(|v| v.0.clone()).enumerate() {
-        file_hash.insert(file.1.clone(), files.add(file.1.clone(), curly_libs[file.0].1.clone()));
+
+    for (file, lib) in curly_libs
+        .iter()
+        .map(|v| v.0.clone())
+        .zip(curly_libs.iter())
+    {
+        file_hash.insert(file.clone(), files.add(file.clone(), lib.1.clone()));
     }
+
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
+    // skyler please learn more rust and fix this aaaaaaaaaaaaaaaaaaaaa
     for file_num in 0..mod_files_ir_errors.len() {
         for module_num in 0..mod_files_ir_errors[file_num].len() {
             if mod_files_ir_errors[file_num][module_num].is_empty() {
-                module_references
-                .insert(
-                    get_module_name_from_ast(mod_files_asts[file_num][module_num].clone()).expect("Failed to get module name from AST"),
+                module_references.insert(
+                    get_module_name_from_ast(mod_files_asts[file_num][module_num].clone())
+                        .expect("Failed to get module name from AST"),
                     (file_num, module_num),
                 );
             } else {
-                
-                for error in &mod_files_ir_errors[file_num][module_num] {
+                for error in mod_files_ir_errors[file_num][module_num].iter() {
                     match error {
                         IRError::DuplicateModule(v, t) => {
-                            
-                            
-                            let mut diagnostic : Diagnostic<usize>;
+                            let mut diagnostic: Diagnostic<usize>;
                             match t {
                                 DuplicateModuleInfo::NoSuperset => {
                                     diagnostic = Diagnostic::error();
-                                    diagnostic = diagnostic.with_message(format!("Duplicate module `{}`. Duplicates are incompatible.", v));
-                                    term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
-                                    ()
-                                },
-            
-                                DuplicateModuleInfo::NewSupersetOld | DuplicateModuleInfo::OldSupersetNew => {
+                                    diagnostic = diagnostic.with_message(format!(
+                                        "Duplicate module `{}`. Duplicates are incompatible.",
+                                        v
+                                    ));
+                                    term::emit(&mut writer.lock(), &config, &files, &diagnostic)
+                                        .unwrap();
+                                }
+
+                                DuplicateModuleInfo::NewSupersetOld
+                                | DuplicateModuleInfo::OldSupersetNew => {
                                     diagnostic = Diagnostic::warning();
                                     diagnostic = diagnostic.with_message(format!("Duplicate module `{}`. Duplicates are compatible, but may still cause issues.", v));
-                                    term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                                    term::emit(&mut writer.lock(), &config, &files, &diagnostic)
+                                        .unwrap();
                                     match t {
                                         DuplicateModuleInfo::OldSupersetNew => (),
                                         DuplicateModuleInfo::NewSupersetOld => {
                                             module_references
-                                            .insert(
-                                                v.to_string(),
-                                                (file_num, module_num),
-                                            );
+                                                .insert(v.to_string(), (file_num, module_num));
                                         }
-                                        _ => ()
+                                        _ => (),
                                     }
-                                    ()
-                                },
-            
+                                }
+
                                 DuplicateModuleInfo::BothSuperset => {
-                                    module_references
-                                    .insert(
-                                        v.to_string(),
-                                        (file_num, module_num),
-                                    );
+                                    module_references.insert(v.to_string(), (file_num, module_num));
                                 }
                             }
-            
-                        },
+                        }
                         _ => {
                             let mut diagnostic = Diagnostic::error();
                             match error {
@@ -741,9 +702,10 @@ fn handle_module_ir_errors(
                                                 *file_hash.get(&s2.filename).unwrap(),
                                                 s2.span.clone(),
                                             )
-                                            .with_message(
-                                                format!("Type `{}` used a second time here", t),
-                                            ),
+                                            .with_message(format!(
+                                                "Type `{}` used a second time here",
+                                                t
+                                            )),
                                         ])
                                 }
 
@@ -760,9 +722,10 @@ fn handle_module_ir_errors(
                                                 *file_hash.get(&s2.filename).unwrap(),
                                                 s2.span.clone(),
                                             )
-                                            .with_message(
-                                                format!("Value {} exported a second time here", e),
-                                            ),
+                                            .with_message(format!(
+                                                "Value {} exported a second time here",
+                                                e
+                                            )),
                                         ])
                                 }
 
@@ -779,9 +742,10 @@ fn handle_module_ir_errors(
                                                 *file_hash.get(&s2.filename).unwrap(),
                                                 s2.span.clone(),
                                             )
-                                            .with_message(
-                                                format!("Alias {} defined a second time here", a),
-                                            ),
+                                            .with_message(format!(
+                                                "Alias {} defined a second time here",
+                                                a
+                                            )),
                                         ])
                                 }
 
@@ -818,14 +782,14 @@ fn handle_module_ir_errors(
         }
     }
 
-    return module_references
+    module_references
 }
 
 fn module_refs_to_file_modules(
-    curly_libs: &Vec<(String, String)>,
+    curly_libs: &[(String, String)],
     module_refs: HashMap<String, (usize, usize)>,
 ) -> HashMap<String, Vec<String>> {
-    let mut file_module_names : HashMap<String, Vec<String>> = HashMap::new();
+    let mut file_module_names = HashMap::new();
 
     for lib in curly_libs {
         file_module_names.insert(lib.0.clone(), Vec::new());
@@ -837,29 +801,26 @@ fn module_refs_to_file_modules(
         file_vector.push(key.to_string());
         file_module_names.insert(file_name.to_string(), file_vector);
     }
-    
-    return file_module_names;
+
+    file_module_names
 }
 
-fn extract_modules_from_file(
-    file_name: String,
-    modules_to_unpack: Vec<String>,
-) -> () {
-    for module in &modules_to_unpack {
-        let stem_name = get_c_name_from_curly_module_name(module.to_string());
+fn extract_modules_from_file(file_name: &str, modules_to_unpack: Vec<String>) {
+    for module in modules_to_unpack.iter() {
+        let stem_name = get_c_name_from_curly_module_name(module);
         let module_object_file_name = format!("{}.o", &stem_name);
         let included_libs_file_name = format!("{}included_libs.a", &stem_name);
 
-        
         let mut command = Command::new("ar");
         command.arg("-x");
         command.arg(&file_name);
         command.arg(&module_object_file_name);
 
         command
-        .spawn().expect("Failed to execute ar.")
-        .wait().expect("Failed to wait for ar.");
-
+            .spawn()
+            .expect("Failed to execute ar.")
+            .wait()
+            .expect("Failed to wait for ar.");
 
         let mut command = Command::new("ar");
         command.arg("-x");
@@ -867,14 +828,16 @@ fn extract_modules_from_file(
         command.arg(&included_libs_file_name);
 
         command
-        .spawn().expect("Failed to execute ar.")
-        .wait().expect("Failed to wait for ar.");
+            .spawn()
+            .expect("Failed to execute ar.")
+            .wait()
+            .expect("Failed to wait for ar.");
     }
 
-    copy_o_and_a_files("../.lib_archive_files".to_string());
-    
+    copy_o_and_a_files("../.lib_archive_files");
+
     for module in &modules_to_unpack {
-        let stem_name = get_c_name_from_curly_module_name(module.to_string());
+        let stem_name = get_c_name_from_curly_module_name(module);
         let included_libs_file_name = format!("{}included_libs.a", &stem_name);
 
         let mut command = Command::new("ar");
@@ -882,44 +845,47 @@ fn extract_modules_from_file(
         command.arg(&included_libs_file_name);
 
         command
-        .spawn().expect("Failed to execute ar.")
-        .wait().expect("Failed to wait for ar.");
-        
+            .spawn()
+            .expect("Failed to execute ar.")
+            .wait()
+            .expect("Failed to wait for ar.");
 
         fs::remove_file(&included_libs_file_name).expect("Failed to remove file");
     }
 }
 
-fn get_c_name_from_curly_module_name(
-    curly_module_name: String,
-) -> String {
-    return format!("{}$", curly_module_name.clone().replace("::", "$$DOUBLECOLON$$"));
+fn get_c_name_from_curly_module_name(curly_module_name: &str) -> String {
+    return format!("{}$", curly_module_name.replace("::", "$$DOUBLECOLON$$"));
 }
 
-fn copy_o_and_a_files(
-    relative_path: String,
-) -> () {
+fn copy_o_and_a_files(relative_path: &str) {
     for entry in fs::read_dir(".").expect("Failed to read current directory.") {
-        let entry_name = 
-        entry.expect("Failed to read file.")
-        .file_name()
-        .into_string().expect("Failed to convert file name to String.");
+        let entry_name = entry
+            .expect("Failed to read file.")
+            .file_name()
+            .into_string()
+            .expect("Failed to convert file name to String.");
 
-        let entry_extension = &entry_name[entry_name.rfind(".").unwrap()..];
+        let entry_extension = &entry_name[entry_name.rfind('.').unwrap()..];
 
         if entry_extension == ".o" || entry_extension == ".a" {
-            fs::copy(&entry_name, format!("{}/{}", relative_path, &entry_name)).expect(&format!("failed to move file {}", &entry_name));
+            match fs::copy(&entry_name, format!("{}/{}", relative_path, &entry_name)) {
+                Ok(_) => (),
+                Err(e) => {
+                    println!("failed to move file {}: {}", &entry_name, e);
+                    std::process::exit(1);
+                }
+            }
         }
     }
 }
 
-fn copy_lib_files(
-    options: &mut CommandlineBuildOptions
-) -> () {
-    let target_dir = 
-    std::env::current_dir().expect("Failed to get path of current dir.")
-    .to_str().expect("Failed to convert file extension to &str.")
-    .to_string();
+fn copy_lib_files(options: &mut CommandlineBuildOptions) {
+    let target_dir = std::env::current_dir()
+        .expect("Failed to get path of current dir.")
+        .to_str()
+        .expect("Failed to convert file extension to &str.")
+        .to_string();
     std::env::set_current_dir("../..").expect("Failed to cd into .");
 
     for library_param in &options.libraries {
@@ -928,84 +894,88 @@ fn copy_lib_files(
                 let error_message = &format!("Failed to cd into {}.", &library_param.0);
 
                 if let Some(rel) = library_param.0.strip_prefix("~") {
-                    std::env::set_current_dir(
-                        format!("{}{}", dirs::home_dir().unwrap().to_str().unwrap(), rel)
-                    ).expect(error_message);
+                    std::env::set_current_dir(format!(
+                        "{}{}",
+                        dirs::home_dir().unwrap().to_str().unwrap(),
+                        rel
+                    ))
+                    .expect(error_message);
                 } else {
-                    std::env::set_current_dir(&target_dir).expect("Failed to cd into .build/.libraries.");
+                    std::env::set_current_dir(&target_dir)
+                        .expect("Failed to cd into .build/.libraries.");
                     std::env::set_current_dir("../..").expect("Failed to cd into .");
-                    
-                    std::env::set_current_dir(
-                        String::from(&library_param.0)
-                    ).expect(error_message);
+
+                    std::env::set_current_dir(String::from(&library_param.0)).expect(error_message);
                 }
-            },
+            }
 
             LibEntryType::LibraryPath => {
-                let mut file_path = std::env::current_dir().expect("Failed to get path of current dir.");
+                let mut file_path =
+                    std::env::current_dir().expect("Failed to get path of current dir.");
                 if let Some(rel) = library_param.0.strip_prefix("~") {
-                    file_path.push(
-                        format!("{}{}", dirs::home_dir().unwrap().to_str().unwrap(), rel)
-                    );
+                    file_path.push(format!(
+                        "{}{}",
+                        dirs::home_dir().unwrap().to_str().unwrap(),
+                        rel
+                    ));
                 } else {
-                    file_path.push(
-                        String::from(&library_param.0)
-                    );
+                    file_path.push(String::from(&library_param.0));
                 }
-                let file_name = 
-                file_path
-                .file_name().expect("Failed to convert to extension")
-                .to_str().expect("Failed to convert file extension to &str.");
-                let file_type = 
-                file_path
-                .extension().expect("Failed to convert to extension")
-                .to_str().expect("Failed to convert file extension to &str.");
+                let file_name = file_path
+                    .file_name()
+                    .expect("Failed to convert to extension")
+                    .to_str()
+                    .expect("Failed to convert file extension to &str.");
+                let file_type = file_path
+                    .extension()
+                    .expect("Failed to convert to extension")
+                    .to_str()
+                    .expect("Failed to convert file extension to &str.");
 
-                if file_type.to_owned() == "o" || file_type.to_owned() == "a" {
-                    fs::copy(
-                        &file_path,
-                        format!("{}/{}", target_dir, file_name), 
-                    ).expect("Failed to copy file.");
+                if file_type == "o" || file_type == "a" {
+                    fs::copy(&file_path, format!("{}/{}", target_dir, file_name))
+                        .expect("Failed to copy file.");
                 } else {
                     options.compiler_options.push(
                         file_path
-                        .to_str().expect("Failed to convert to &str.")
-                        .to_string()
+                            .to_str()
+                            .expect("Failed to convert to &str.")
+                            .to_string(),
                     );
                 }
-            },
+            }
         }
     }
 
-    std::env::set_current_dir(target_dir).expect("Falied to set dir back to .build/.linker_files.");
+    std::env::set_current_dir(target_dir).expect("Failed to set dir back to .build/.linker_files.");
 }
 
-fn get_files_in_current_dir_with_prepend(
-    prepend_string: String,
-) -> Vec<String> {
+fn get_files_in_current_dir_with_prepend(prepend_string: &str) -> Vec<String> {
     let mut entry_list = Vec::new();
     for entry in fs::read_dir(".").expect("Failed to read current directory.") {
-        let entry_name = 
-        entry.expect("Failed to read file.")
-        .file_name()
-        .into_string().expect("Failed to convert file name to String.");
+        let entry_name = entry
+            .expect("Failed to read file.")
+            .file_name()
+            .into_string()
+            .expect("Failed to convert file name to String.");
 
-        
         entry_list.push(format!("{}/{}", prepend_string, &entry_name));
     }
-    return entry_list;
+    entry_list
 }
 
-fn make_included_lib_archive(
-    module_name: String
-) -> () {
-    let archive_name = format!("{}included_libs.a", get_c_name_from_curly_module_name(module_name));
+fn make_included_lib_archive(module_name: &str) {
+    let archive_name = format!(
+        "{}included_libs.a",
+        get_c_name_from_curly_module_name(module_name)
+    );
 
     std::env::set_current_dir(".libraries").expect("Failed to cd into .build/.libraries.");
-    
-    let files_to_include = get_files_in_current_dir_with_prepend("../.libraries".to_string());
 
-    std::env::set_current_dir("../.lib_archive_files").expect("Failed to cd into .build/.lib_archive_files.");
+    let files_to_include = get_files_in_current_dir_with_prepend("../.libraries");
+
+    std::env::set_current_dir("../.lib_archive_files")
+        .expect("Failed to cd into .build/.lib_archive_files.");
 
     let mut command = Command::new("ar");
     command.arg("-qc");
@@ -1020,7 +990,6 @@ fn make_included_lib_archive(
         .wait()
         .expect("failed to wait for ar");
 
-
     let mut command = Command::new("ar");
     command.arg("-d");
     command.arg(&archive_name);
@@ -1030,11 +999,9 @@ fn make_included_lib_archive(
         .expect("failed to execute ar")
         .wait()
         .expect("failed to wait for ar");
-    
+
     std::env::set_current_dir("..").expect("Failed to cd back into .build");
 }
-
-
 
 // compile(&Vec<(String, bool)>, &Vec<(String, bool)>, &mut IR, bool) -> Result<String, ()>
 // Compiles curly into C code.
@@ -1047,7 +1014,7 @@ fn compile(
     // Check the file
     match curlyc::check(filenames, codes, ir, require_main, true) {
         Ok(_) => (),
-        Err(_) => return Err(())
+        Err(_) => return Err(()),
     }
 
     // Generate C code

@@ -74,78 +74,76 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
         SExpr::List(_, _) => panic!("uwu"),
 
         // Functions
-        SExpr::Function(m, f) => {
-            match module.scope.get_var(f) {
-                Some(t) => {
-                    m._type = t.0.clone();
-                    m.arity = t.1;
-                    m.saved_argc = t.2;
-                    m.origin = t.5.clone();
+        SExpr::Function(m, f) => match module.scope.get_var(f) {
+            Some(t) => {
+                m._type = t.0.clone();
+                m.arity = t.1;
+                m.saved_argc = t.2;
+                m.origin = t.5.clone();
 
-                    if module.funcs.get(f).is_some() && !module.funcs.get(f).unwrap().checked {
-                        let mut func = module.funcs.remove(f).unwrap();
+                if module.funcs.get(f).is_some() && !module.funcs.get(f).unwrap().checked {
+                    let mut func = module.funcs.remove(f).unwrap();
+                    module.scope.push_scope(true);
+                    for a in func.args.iter() {
+                        module
+                            .scope
+                            .put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
+                    }
+                    check_sexpr(&mut func.body, module, errors);
+                    module.scope.pop_scope();
+                    module.funcs.insert(f.clone(), func);
+                }
+
+                if m._type == Type::Unknown {
+                    module.funcs.remove(f);
+                }
+            }
+
+            None => {
+                if let Some(mut func) = module.funcs.remove(f) {
+                    if !func.checked {
+                        check_function_body(
+                            f,
+                            f,
+                            &module.name,
+                            &mut func,
+                            &mut module.scope,
+                            &mut module.funcs,
+                            errors,
+                            &module.types,
+                            &module.externals,
+                            &module.imports,
+                        );
+
                         module.scope.push_scope(true);
                         for a in func.args.iter() {
-                            module
-                                .scope
-                                .put_var(&a.0, &a.1, 0, None, &Location::empty(), true, "");
+                            if a.0 != "_" {
+                                module.scope.put_var(
+                                    &a.0,
+                                    &a.1,
+                                    0,
+                                    None,
+                                    &Location::empty(),
+                                    true,
+                                    "",
+                                );
+                            }
                         }
                         check_sexpr(&mut func.body, module, errors);
                         module.scope.pop_scope();
-                        module.funcs.insert(f.clone(), func);
                     }
 
-                    if m._type == Type::Unknown {
-                        module.funcs.remove(f);
+                    if let Some(v) = module.scope.get_var(f) {
+                        m._type = v.0.clone();
                     }
-                }
 
-                None => {
-                    if let Some(mut func) = module.funcs.remove(f) {
-                        if !func.checked {
-                            check_function_body(
-                                f,
-                                f,
-                                &module.name,
-                                &mut func,
-                                &mut module.scope,
-                                &mut module.funcs,
-                                errors,
-                                &module.types,
-                                &module.externals,
-                                &module.imports,
-                            );
-
-                            module.scope.push_scope(true);
-                            for a in func.args.iter() {
-                                if a.0 != "_" {
-                                    module.scope.put_var(
-                                        &a.0,
-                                        &a.1,
-                                        0,
-                                        None,
-                                        &Location::empty(),
-                                        true,
-                                        "",
-                                    );
-                                }
-                            }
-                            check_sexpr(&mut func.body, module, errors);
-                            module.scope.pop_scope();
-                        }
-
-                        if let Some(v) = module.scope.get_var(f) {
-                            m._type = v.0.clone();
-                        }
-
-                        m.origin = module.name.clone();
-                        m.arity = func.args.len();
-                        m.saved_argc = Some(func.captured.len());
-                        module.funcs.insert(f.clone(), func);
-                    }
+                    m.origin = module.name.clone();
+                    m.arity = func.args.len();
+                    m.saved_argc = Some(func.captured.len());
+                    module.funcs.insert(f.clone(), func);
                 }
             }
-        }
+        },
 
         // Symbols
         SExpr::Symbol(m, s) => {
@@ -827,16 +825,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         } else {
                             m._type = Type::Symbol(a[pos].clone());
                         }
-                    } else if let Some(v) =
-                        f.0.iter()
-                            .find(|v| {
-                                if let Type::Tag(t, _) = v {
-                                    t == &a[1]
-                                } else {
-                                    false
-                                }
-                            })
-                    {
+                    } else if let Some(v) = f.0.iter().find(|v| {
+                        if let Type::Tag(t, _) = v {
+                            t == &a[1]
+                        } else {
+                            false
+                        }
+                    }) {
                         if a.len() != 2 {
                             errors.push(CorrectnessError::NonmemberAccess(
                                 m.loc.clone(),
@@ -1562,16 +1557,13 @@ fn get_function_type(
                         } else {
                             t.clone()
                         }
-                    } else if let Some(v) =
-                        f.0.iter()
-                            .find(|v| {
-                                if let Type::Tag(t, _) = v {
-                                    t == &a[1]
-                                } else {
-                                    false
-                                }
-                            })
-                    {
+                    } else if let Some(v) = f.0.iter().find(|v| {
+                        if let Type::Tag(t, _) = v {
+                            t == &a[1]
+                        } else {
+                            false
+                        }
+                    }) {
                         if a.len() != 2 {
                             Type::Unknown
                         } else if let Type::Tag(_, t2) = v {
@@ -1802,8 +1794,11 @@ where
 // Checks global function return types.
 fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
     // Get the set of all global functions and globals
-    let mut globals: HashMap<String, String> =
-        module.funcs.iter().map(|v| (v.1.name.clone(), v.0.clone())).collect();
+    let mut globals: HashMap<String, String> = module
+        .funcs
+        .iter()
+        .map(|v| (v.1.name.clone(), v.0.clone()))
+        .collect();
 
     // Add imported functions
     for v in module.scope.variables.iter() {

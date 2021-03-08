@@ -16,7 +16,10 @@ use crate::frontend::parser;
 
 pub static DEBUG: bool = false;
 
-type Res<'a> = Result<(Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>), (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>)>;
+type Res<'a> = Result<
+    (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>),
+    (Vec<Diagnostic<usize>>, SimpleFiles<&'a String, String>),
+>;
 
 // check(&Vec<(String, bool)>, &Vec<String>, &mut IR, bool) -> Result<(), ()>
 // Checks whether given code is valid.
@@ -25,7 +28,7 @@ pub fn check<'a>(
     codes: &[String],
     ir: &mut IR,
     require_main: bool,
-    emit: bool
+    emit: bool,
 ) -> Res<'a> {
     // Set up codespan
     let mut files = SimpleFiles::new();
@@ -40,18 +43,17 @@ pub fn check<'a>(
     let mut diagnostics = Vec::new();
     let mut fail = false;
 
-    for file in filenames.iter().enumerate() {
-        let code = &codes[file.0];
-        let file_id = *file_hash.get(&file.1 .0).unwrap();
+    for (file, code) in filenames.iter().zip(codes.iter()) {
+        let file_id = *file_hash.get(&file.0).unwrap();
 
         if let Some(start) = code.find("uwu") {
             let loc = Span {
                 start,
-                end: start + 3
+                end: start + 3,
             };
             let diagnostic = Diagnostic::note()
-                            .with_message("owo")
-                            .with_labels(vec![Label::primary(file_id, loc).with_message("nya")]);
+                .with_message("owo")
+                .with_labels(vec![Label::primary(file_id, loc).with_message("nya")]);
             if emit {
                 term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
             }
@@ -59,7 +61,7 @@ pub fn check<'a>(
         }
 
         // Generate the ast
-        if file.1 .1 {
+        if file.1 {
             let ast = match parser::parse_library(code) {
                 Ok(v) => v,
                 Err(e) => {
@@ -80,7 +82,7 @@ pub fn check<'a>(
             }
 
             // Add library module
-            match ir::convert_library_header(&file.1 .0, ast, ir) {
+            match ir::convert_library_header(&file.0, ast, ir) {
                 Ok(_) if DEBUG => {
                     dbg!(&ir);
                 }
@@ -208,7 +210,7 @@ pub fn check<'a>(
             if DEBUG {
                 println!("{:#?}", &ast);
             }
-            match ir::convert_ast_to_ir(&file.1 .0, code, ast, ir) {
+            match ir::convert_ast_to_ir(&file.0, code, ast, ir) {
                 Ok(_) if DEBUG => {
                     dbg!(&ir);
                 }

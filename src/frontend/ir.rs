@@ -1433,17 +1433,23 @@ pub fn convert_ast_to_ir(
 
     // Add module to ir root and error if already exists
     if ir.modules.contains_key(&module_name) {
-        match std::fs::write("currentModule.ir", format!("{:?}", ir.modules.get(&module_name).unwrap())) {
+        match std::fs::write(
+            "currentModule.ir",
+            format!("{:?}", ir.modules.get(&module_name).unwrap()),
+        ) {
             Ok(_) => (),
-            Err(_e) => ()
+            Err(_e) => (),
         }
         match std::fs::write("newModule.ir", format!("{:?}", module)) {
             Ok(_) => (),
-            Err(_e) => ()
+            Err(_e) => (),
         }
         if format!("{:?}", module) == format!("{:?}", ir.modules.get(&module_name).unwrap()) {
         } else {
-            errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::NoSuperset));
+            errors.push(IRError::DuplicateModule(
+                module_name,
+                DuplicateModuleInfo::NoSuperset,
+            ));
         }
     } else {
         ir.modules.insert(module_name, module);
@@ -1474,12 +1480,7 @@ pub fn convert_library_header(
     }
 }
 
-
-pub fn convert_module(
-    filename: &str,
-    ast: AST,
-    ir: &mut IR,
-) -> Vec<IRError> {
+pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
     let mut errors = vec![];
 
     if let AST::LibHeader(_, name, exports) = ast {
@@ -1579,22 +1580,21 @@ pub fn convert_module(
         if ir.modules.contains_key(&module_name) {
             let old_mod = ir.modules.get(&module_name).unwrap();
             let new_mod = &module;
-            
+
             let mut new_superset_of_old = true;
             let mut old_superset_of_new = true;
 
             for i in old_mod.exports.keys() {
                 let old_mod_export = old_mod.exports.get(i).unwrap();
 
-                let new_mod_export = 
-                match new_mod.exports.get(i) {
-                    Some(v) =>  v,
+                let new_mod_export = match new_mod.exports.get(i) {
+                    Some(v) => v,
                     _ => {
                         new_superset_of_old = false;
                         break;
                     }
                 };
-                
+
                 if old_mod_export.1 != new_mod_export.1 {
                     new_superset_of_old = false;
                     break;
@@ -1604,15 +1604,14 @@ pub fn convert_module(
             for i in new_mod.exports.keys() {
                 let new_mod_export = new_mod.exports.get(i).unwrap();
 
-                let old_mod_export = 
-                match old_mod.exports.get(i) {
-                    Some(v) =>  v,
+                let old_mod_export = match old_mod.exports.get(i) {
+                    Some(v) => v,
                     _ => {
                         old_superset_of_new = false;
                         break;
                     }
                 };
-                
+
                 if new_mod_export.1 != old_mod_export.1 {
                     old_superset_of_new = false;
                     break;
@@ -1620,17 +1619,29 @@ pub fn convert_module(
             }
 
             if new_superset_of_old && old_superset_of_new {
-                errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::BothSuperset));
+                errors.push(IRError::DuplicateModule(
+                    module_name,
+                    DuplicateModuleInfo::BothSuperset,
+                ));
             } else if new_superset_of_old ^ old_superset_of_new {
                 //TODO: Duplicate module superset warning
                 if new_superset_of_old {
                     ir.modules.insert(module_name.clone(), module);
-                    errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::NewSupersetOld));
+                    errors.push(IRError::DuplicateModule(
+                        module_name,
+                        DuplicateModuleInfo::NewSupersetOld,
+                    ));
                 } else {
-                    errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::OldSupersetNew));
+                    errors.push(IRError::DuplicateModule(
+                        module_name,
+                        DuplicateModuleInfo::OldSupersetNew,
+                    ));
                 }
             } else {
-                errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::NoSuperset));
+                errors.push(IRError::DuplicateModule(
+                    module_name,
+                    DuplicateModuleInfo::NoSuperset,
+                ));
             }
         } else {
             ir.modules.insert(module_name.clone(), module);

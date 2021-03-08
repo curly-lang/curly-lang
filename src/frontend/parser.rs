@@ -458,7 +458,7 @@ impl AST {
             | Self::LibHeader(s, _, _)
             | Self::Extern(s, _, _, _) => s.clone(),
 
-            Self::Empty => panic!("uwu moment")
+            Self::Empty => panic!("uwu moment"),
         }
     }
 }

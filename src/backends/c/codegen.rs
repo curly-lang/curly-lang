@@ -196,7 +196,10 @@ fn convert_sexpr(
                     func.code.push_str("$FUNC$$, (void*) ");
                     func.code.push_str(&mod_name);
                     func.code.push_str(&s);
-                    let _ = func.code.write_fmt(format_args!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
+                    let _ = func.code.write_fmt(format_args!(
+                        "$WRAPPER$$, {}",
+                        f.args.len() + f.captured.len()
+                    ));
                     func.code.push_str(", 0, ");
                     if !f.captured.is_empty() {
                         let count = f.args.len() + f.captured.len();
@@ -349,8 +352,8 @@ fn convert_sexpr(
 
             // Call function
             let mut _ref = String::with_capacity(0);
-            if let Type::Enum(_) = m._type { }
-            else {
+            if let Type::Enum(_) = m._type {
+            } else {
                 _ref = format!("$${}", func.last_reference);
                 func.last_reference += 1;
                 func.code.push_str(ret_type);
@@ -892,10 +895,12 @@ fn convert_sexpr(
                                         for s in submap.0.iter() {
                                             let id = s.sum_hash(&root.types);
                                             func.code.push_str("case ");
-                                            let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
+                                            let _ =
+                                                func.code.write_fmt(format_args!("{}ull:\n", id));
                                             func.code.push_str(&name);
                                             func.code.push_str(".tag = ");
-                                            let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
+                                            let _ =
+                                                func.code.write_fmt(format_args!("{}ull;\n", id));
                                             func.code.push_str(&name);
                                             func.code.push_str(".values.$$");
                                             let _ = func.code.write_fmt(format_args!("{}", id));
@@ -1250,8 +1255,7 @@ fn convert_sexpr(
                             }
 
                             for a in astrs.iter() {
-                                if let Type::Func(_, _) = a.1 {
-                                }
+                                if let Type::Func(_, _) = a.1 {}
                             }
 
                             astrs.clear();
@@ -1483,7 +1487,7 @@ fn convert_sexpr(
             }
 
             // Decrement body reference count
-            if let Type::Func(_, _) =  m._type {
+            if let Type::Func(_, _) = m._type {
                 func.code.push_str(&ptr);
                 func.code.push_str("->refc--;\n");
             }
@@ -1566,7 +1570,8 @@ fn convert_sexpr(
                 if let Type::Sum(submap) = _type {
                     for s in submap.0.iter() {
                         func.code.push_str("case ");
-                        let _ = func.code
+                        let _ = func
+                            .code
                             .write_fmt(format_args!("{}ull:\n", s.sum_hash(&root.types)));
                     }
 
@@ -2085,42 +2090,49 @@ fn collect_types(
                             continue;
                         }
 
-                        Type::Tag(_, t) => {
-                            match &**t {
-                                Type::Int => types_string.push_str("        int_t"),
-                                Type::Float => types_string.push_str("        float_t"),
-                                Type::Bool => types_string.push_str("        bool"),
-                                Type::Func(_, _) => types_string.push_str("        func_t"),
-                                Type::Pointer(_) => types_string.push_str("        void*"),
+                        Type::Tag(_, t) => match &**t {
+                            Type::Int => types_string.push_str("        int_t"),
+                            Type::Float => types_string.push_str("        float_t"),
+                            Type::Bool => types_string.push_str("        bool"),
+                            Type::Func(_, _) => types_string.push_str("        func_t"),
+                            Type::Pointer(_) => types_string.push_str("        void*"),
 
-                                Type::Sum(v) => {
-                                    types_string.push_str("        struct {\n            uint64_t tag;\n            union {\n");
+                            Type::Sum(v) => {
+                                types_string.push_str("        struct {\n            uint64_t tag;\n            union {\n");
 
-                                    for mut t in v.0.iter() {
-                                        while let Type::Symbol(s) = t {
-                                            t = ir.types.get(s).unwrap();
-                                        }
-
-                                        match t {
-                                            Type::Int => types_string.push_str("                int_t"),
-                                            Type::Float => types_string.push_str("                float_t"),
-                                            Type::Bool => types_string.push_str("                bool"),
-                                            Type::Char => types_string.push_str("                char"),
-                                            Type::Word => types_string.push_str("                word_t"),
-                                            Type::Func(_, _) => types_string.push_str("                func_t"),
-                                            Type::Enum(_) => continue,
-                                            Type::Pointer(_) => types_string.push_str("                void*"),
-                                            _ => panic!("unsupported type!"),
-                                        }
-
-                                        let _ = types_string.write_fmt(format_args!(" $${};\n", t.sum_hash(&ir.types)));
+                                for mut t in v.0.iter() {
+                                    while let Type::Symbol(s) = t {
+                                        t = ir.types.get(s).unwrap();
                                     }
-                                    types_string.push_str("            } values;\n        }");
-                                }
 
-                                _ => panic!("unsupported type!"),
+                                    match t {
+                                        Type::Int => types_string.push_str("                int_t"),
+                                        Type::Float => {
+                                            types_string.push_str("                float_t")
+                                        }
+                                        Type::Bool => types_string.push_str("                bool"),
+                                        Type::Char => types_string.push_str("                char"),
+                                        Type::Word => {
+                                            types_string.push_str("                word_t")
+                                        }
+                                        Type::Func(_, _) => {
+                                            types_string.push_str("                func_t")
+                                        }
+                                        Type::Enum(_) => continue,
+                                        Type::Pointer(_) => {
+                                            types_string.push_str("                void*")
+                                        }
+                                        _ => panic!("unsupported type!"),
+                                    }
+
+                                    let _ = types_string
+                                        .write_fmt(format_args!(" $${};\n", t.sum_hash(&ir.types)));
+                                }
+                                types_string.push_str("            } values;\n        }");
                             }
-                        }
+
+                            _ => panic!("unsupported type!"),
+                        },
 
                         _ => panic!("unsupported type!"),
                     }
@@ -2399,7 +2411,7 @@ fn convert_module_to_c(
 
         // Deallocate functions
         for a in cf.args.iter() {
-            if let Type::Func(_, _) =  a.1 {
+            if let Type::Func(_, _) = a.1 {
                 // Delete
                 cf.code.push_str("refc_func(&");
                 cf.code.push_str(&sanitise_symbol(&a.0));
