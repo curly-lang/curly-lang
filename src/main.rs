@@ -96,8 +96,6 @@ fn main() -> Result<(), ()> {
                     .map(|v| get_ast_for_mod_file(v.clone())
                     .expect("Failed to convert file to AST."))
                     .collect();
-
-                dbg!(&mod_files_asts);
                 
                 // Try to add each module to the IR, 1 by 1, and log any errors.
                 let mod_files_ir_errors : Vec<Vec<Vec<IRError>>> =
@@ -114,8 +112,6 @@ fn main() -> Result<(), ()> {
                         }
                     )
                     .collect();
-                
-                dbg!(&ir);
 
 
                 // Use the IR errors to make a map of which modules from which library corresponds to each module name.
