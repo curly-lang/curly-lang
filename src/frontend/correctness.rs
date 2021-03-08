@@ -1737,7 +1737,6 @@ fn check_function_body(
             String::from(module_name),
         );
     }
-    func.checked = true;
 }
 
 // check_function_group(T, &HashMap<String, IRFunction>, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
@@ -1789,7 +1788,6 @@ where
             // Check body
             check_sexpr(&mut func.body, module, errors);
             check_externals(&func.body, errors);
-            func.checked = true;
 
             // Pop scope
             module.scope.pop_scope();
@@ -2060,6 +2058,14 @@ fn undo_tailrec(sexpr: &mut SExpr) {
 // outside of a tail call.
 fn check_tailrec(sexpr: &mut SExpr, name: &str, top: bool) -> bool {
     match sexpr {
+        SExpr::As(m, v) => {
+            if !check_tailrec(v, name, top) {
+                return false;
+            }
+            m.tailrec = v.get_metadata().tailrec;
+            true
+        }
+
         SExpr::Function(m, f) => {
             if f == name {
                 m.tailrec = true;
