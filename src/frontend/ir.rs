@@ -1,6 +1,6 @@
 use logos::Span;
 use std::collections::HashMap;
-use std::iter::FromIterator;
+use std::collections::hash_map::Entry;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -964,7 +964,7 @@ fn convert_node(
                 SExpr::Assign(
                     SExprMetadata {
                         loc: Location::new(span, filename),
-                        loc2: Location::new(_type.get_span().clone(), filename),
+                        loc2: Location::new(_type.get_span(), filename),
                         origin: String::with_capacity(0),
                         _type: types::convert_ast_to_type(*_type, filename, types),
                         arity: 0,
@@ -1194,7 +1194,7 @@ fn convert_node(
 
 // extract_types_to_ir(&Vec<AST>, &mut IRModule) -> ()
 // Extracts types and inserts them into the IR's list of types.
-fn extract_types_to_ir(asts: &Vec<AST>, module: &mut IRModule) {
+fn extract_types_to_ir(asts: &[AST], module: &mut IRModule) {
     for ast in asts {
         if let AST::AssignType(_, v, _) = ast {
             module.types.insert(v.clone(), Type::Unknown);
@@ -1291,7 +1291,7 @@ pub fn convert_ast_to_ir(
                     }
                     name.reverse();
 
-                    if a != "" {
+                    if !a.is_empty() {
                         alias = a;
                     } else {
                         alias = name.join("::");
@@ -1324,22 +1324,24 @@ pub fn convert_ast_to_ir(
                         name: name.join("::"),
                         loc: Location::new(s, filename),
                         qualified: false,
-                        imports: HashMap::from_iter(
-                            imports.into_iter().map(|v| (v, (Type::Unknown, 0, false))),
-                        ),
+                        imports: imports.into_iter().map(|v| (v, (Type::Unknown, 0, false))).collect(),
                     };
                 } else {
                     unreachable!("always either a QualifiedImport or an Import");
                 }
 
-                if module.imports.contains_key(&alias) {
-                    errors.push(IRError::RedefineImportAlias(
-                        module.imports.get(&alias).unwrap().loc.clone(),
-                        imp_mod.loc,
-                        alias,
-                    ));
-                } else {
-                    module.imports.insert(alias, imp_mod);
+                match module.imports.entry(alias) {
+                    Entry::Occupied(e) => {
+                        errors.push(IRError::RedefineImportAlias(
+                            e.get().loc.clone(),
+                            imp_mod.loc,
+                            e.key().clone(),
+                        ));
+                    }
+
+                    Entry::Vacant(e) => {
+                        e.insert(imp_mod);
+                    }
                 }
             }
         } else if let AST::Annotation(span, a) = ast {
@@ -1356,7 +1358,7 @@ pub fn convert_ast_to_ir(
             }
         } else if let AST::Extern(span, c, n, t) = ast {
             let ts = t.get_span().clone();
-            let t = types::convert_ast_to_type(*t, &module.filename, &mut module.types);
+            let t = types::convert_ast_to_type(*t, &module.filename, &module.types);
 
             // Check type
             if let Type::UndeclaredTypeError(s) = t {
@@ -1418,7 +1420,7 @@ pub fn convert_ast_to_ir(
     }
 
     // Check module name
-    if module_name == "" {
+    if module_name.is_empty() {
         module_name = filename
             .split('/')
             .last()
@@ -1432,30 +1434,29 @@ pub fn convert_ast_to_ir(
     module.sexprs = sexprs;
 
     // Add module to ir root and error if already exists
-    if ir.modules.contains_key(&module_name) {
-        match std::fs::write(
-            "currentModule.ir",
-            format!("{:?}", ir.modules.get(&module_name).unwrap()),
-        ) {
-            Ok(_) => (),
-            Err(_e) => (),
+    match ir.modules.entry(module_name) {
+        Entry::Occupied(e) => {
+            // let _ = std::fs::write(
+                // "currentModule.ir",
+                // format!("{:?}", ir.modules.get(&module_name).unwrap()),
+            // );
+            // let _ = std::fs::write("newModule.ir", format!("{:?}", module));
+
+            if format!("{:?}", module) == format!("{:?}", e.get()) {
+            } else {
+                errors.push(IRError::DuplicateModule(
+                    e.key().clone(),
+                    DuplicateModuleInfo::NoSuperset,
+                ));
+            }
         }
-        match std::fs::write("newModule.ir", format!("{:?}", module)) {
-            Ok(_) => (),
-            Err(_e) => (),
+
+        Entry::Vacant(e) => {
+            e.insert(module);
         }
-        if format!("{:?}", module) == format!("{:?}", ir.modules.get(&module_name).unwrap()) {
-        } else {
-            errors.push(IRError::DuplicateModule(
-                module_name,
-                DuplicateModuleInfo::NoSuperset,
-            ));
-        }
-    } else {
-        ir.modules.insert(module_name, module);
     }
 
-    if errors.len() == 0 {
+    if errors.is_empty() {
         Ok(())
     } else {
         Err(errors)
@@ -1516,137 +1517,148 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
                     errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
 
                 // Check export is unique
-                } else if module.exports.contains_key(&export.1) {
-                    errors.push(IRError::DoubleExport(
-                        module.exports.get(&export.1).unwrap().0.clone(),
-                        Location::new(export.0, filename),
-                        export.1,
-                    ));
                 } else {
-                    // Add export to list of exports
-                    let loc = Location::new(export.0.clone(), filename);
-                    module.scope.put_var(
-                        &export.1,
-                        &_type,
-                        export.2,
-                        Some(0),
-                        &loc,
-                        true,
-                        &module_name,
-                    );
-                    let mut args = vec![];
-                    let mut ret_type = &_type;
-                    for i in 0..export.2 {
-                        if let Type::Func(l, r) = ret_type {
-                            args.push((format!("${}", i), *l.clone()));
-                            ret_type = r;
+                    let (span, export, arity, impure, _) = export;
+                    match module.exports.entry(export) {
+                        Entry::Occupied(e) => {
+                            errors.push(IRError::DoubleExport(
+                                e.get().0.clone(),
+                                Location::new(span, filename),
+                                e.key().clone(),
+                            ));
+                        }
+
+                        Entry::Vacant(e) => {
+                            // Add export to list of exports
+                            let loc = Location::new(span, filename);
+                            module.scope.put_var(
+                                e.key(),
+                                &_type,
+                                arity,
+                                Some(0),
+                                &loc,
+                                true,
+                                &module_name,
+                            );
+                            let mut args = vec![];
+                            let mut ret_type = &_type;
+                            for i in 0..arity {
+                                if let Type::Func(l, r) = ret_type {
+                                    args.push((format!("${}", i), *l.clone()));
+                                    ret_type = r;
+                                }
+                            }
+
+                            module.funcs.insert(
+                                e.key().clone(),
+                                IRFunction {
+                                    loc: Location::empty(),
+                                    name: e.key().clone(),
+                                    args,
+                                    captured: HashMap::with_capacity(0),
+                                    captured_names: Vec::with_capacity(0),
+                                    body: SExpr::True(SExprMetadata {
+                                        loc: Location::empty(),
+                                        loc2: Location::empty(),
+                                        origin: String::with_capacity(0),
+                                        _type: ret_type.clone(),
+                                        arity: 0,
+                                        saved_argc: None,
+                                        tailrec: false,
+                                        impure
+                                    }),
+                                    global: true,
+                                    checked: true,
+                                    written: true,
+                                    impure
+                                },
+                            );
+                            module.sexprs.push(SExpr::Assign(
+                                SExprMetadata::empty(),
+                                e.key().clone(),
+                                Box::new(SExpr::Function(SExprMetadata::empty(), e.key().clone())),
+                            ));
+                            e.insert((loc, _type));
                         }
                     }
-
-                    module.funcs.insert(
-                        export.1.clone(),
-                        IRFunction {
-                            loc: Location::empty(),
-                            name: export.1.clone(),
-                            args,
-                            captured: HashMap::with_capacity(0),
-                            captured_names: Vec::with_capacity(0),
-                            body: SExpr::True(SExprMetadata {
-                                loc: Location::empty(),
-                                loc2: Location::empty(),
-                                origin: String::with_capacity(0),
-                                _type: ret_type.clone(),
-                                arity: 0,
-                                saved_argc: None,
-                                tailrec: false,
-                                impure: export.3,
-                            }),
-                            global: true,
-                            checked: true,
-                            written: true,
-                            impure: export.3,
-                        },
-                    );
-                    module.sexprs.push(SExpr::Assign(
-                        SExprMetadata::empty(),
-                        export.1.clone(),
-                        Box::new(SExpr::Function(SExprMetadata::empty(), export.1.clone())),
-                    ));
-                    module.exports.insert(export.1, (loc, _type));
                 }
             }
         }
         // Add module to ir root and error if already exists
-        if ir.modules.contains_key(&module_name) {
-            let old_mod = ir.modules.get(&module_name).unwrap();
-            let new_mod = &module;
+        match ir.modules.entry(module_name) {
+            Entry::Occupied(mut e) => {
+                let old_mod = e.get();
+                let new_mod = &module;
 
-            let mut new_superset_of_old = true;
-            let mut old_superset_of_new = true;
+                let mut new_superset_of_old = true;
+                let mut old_superset_of_new = true;
 
-            for i in old_mod.exports.keys() {
-                let old_mod_export = old_mod.exports.get(i).unwrap();
+                for i in old_mod.exports.keys() {
+                    let old_mod_export = old_mod.exports.get(i).unwrap();
 
-                let new_mod_export = match new_mod.exports.get(i) {
-                    Some(v) => v,
-                    _ => {
+                    let new_mod_export = match new_mod.exports.get(i) {
+                        Some(v) => v,
+                        _ => {
+                            new_superset_of_old = false;
+                            break;
+                        }
+                    };
+
+                    if old_mod_export.1 != new_mod_export.1 {
                         new_superset_of_old = false;
                         break;
                     }
-                };
-
-                if old_mod_export.1 != new_mod_export.1 {
-                    new_superset_of_old = false;
-                    break;
                 }
-            }
 
-            for i in new_mod.exports.keys() {
-                let new_mod_export = new_mod.exports.get(i).unwrap();
+                for i in new_mod.exports.keys() {
+                    let new_mod_export = new_mod.exports.get(i).unwrap();
 
-                let old_mod_export = match old_mod.exports.get(i) {
-                    Some(v) => v,
-                    _ => {
+                    let old_mod_export = match old_mod.exports.get(i) {
+                        Some(v) => v,
+                        _ => {
+                            old_superset_of_new = false;
+                            break;
+                        }
+                    };
+
+                    if new_mod_export.1 != old_mod_export.1 {
                         old_superset_of_new = false;
                         break;
                     }
-                };
-
-                if new_mod_export.1 != old_mod_export.1 {
-                    old_superset_of_new = false;
-                    break;
                 }
-            }
 
-            if new_superset_of_old && old_superset_of_new {
-                errors.push(IRError::DuplicateModule(
-                    module_name,
-                    DuplicateModuleInfo::BothSuperset,
-                ));
-            } else if new_superset_of_old ^ old_superset_of_new {
-                //TODO: Duplicate module superset warning
-                if new_superset_of_old {
-                    ir.modules.insert(module_name.clone(), module);
+                if new_superset_of_old && old_superset_of_new {
                     errors.push(IRError::DuplicateModule(
-                        module_name,
-                        DuplicateModuleInfo::NewSupersetOld,
+                        e.key().clone(),
+                        DuplicateModuleInfo::BothSuperset,
                     ));
+                } else if new_superset_of_old ^ old_superset_of_new {
+                    //TODO: Duplicate module superset warning
+                    if new_superset_of_old {
+                        e.insert(module);
+                        errors.push(IRError::DuplicateModule(
+                            e.key().clone(),
+                            DuplicateModuleInfo::NewSupersetOld,
+                        ));
+                    } else {
+                        errors.push(IRError::DuplicateModule(
+                            e.key().clone(),
+                            DuplicateModuleInfo::OldSupersetNew,
+                        ));
+                    }
                 } else {
                     errors.push(IRError::DuplicateModule(
-                        module_name,
-                        DuplicateModuleInfo::OldSupersetNew,
+                        e.key().clone(),
+                        DuplicateModuleInfo::NoSuperset,
                     ));
                 }
-            } else {
-                errors.push(IRError::DuplicateModule(
-                    module_name,
-                    DuplicateModuleInfo::NoSuperset,
-                ));
             }
-        } else {
-            ir.modules.insert(module_name.clone(), module);
+
+            Entry::Vacant(e) => {
+                e.insert(module);
+            }
         }
     }
 
-    return errors;
+    errors
 }
