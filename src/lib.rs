@@ -160,7 +160,7 @@ pub fn check<'a>(
                                     .with_message(format!("Type {} is unsupported by FFI", t))])
                             }
 
-                            IRError::DuplicateModule(v) => {
+                            IRError::DuplicateModule(v, _t) => {
                                 diagnostic =
                                     diagnostic.with_message(format!("Duplicate module `{}`", v))
                             }
@@ -287,7 +287,7 @@ pub fn check<'a>(
                                     .with_message(format!("Type {} is unsupported by FFI", t))])
                             }
 
-                            IRError::DuplicateModule(v) => {
+                            IRError::DuplicateModule(v, _t) => {
                                 diagnostic =
                                     diagnostic.with_message(format!("Duplicate module `{}`", v))
                             }

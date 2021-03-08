@@ -42,7 +42,14 @@ pub enum IRError {
     RedefineImportAlias(Location, Location, String),
     UnsupportedAnnotation(Location, String),
     InvalidFFIType(Location, Type),
-    DuplicateModule(String),
+    DuplicateModule(String, DuplicateModuleInfo),
+}
+
+pub enum DuplicateModuleInfo {
+    NoSuperset,
+    NewSupersetOld,
+    OldSupersetNew,
+    BothSuperset,
 }
 
 // Represents a prefix operator.
@@ -1426,7 +1433,18 @@ pub fn convert_ast_to_ir(
 
     // Add module to ir root and error if already exists
     if ir.modules.contains_key(&module_name) {
-        errors.push(IRError::DuplicateModule(module_name));
+        match std::fs::write("currentModule.ir", format!("{:?}", ir.modules.get(&module_name).unwrap())) {
+            Ok(_) => (),
+            Err(_e) => ()
+        }
+        match std::fs::write("newModule.ir", format!("{:?}", module)) {
+            Ok(_) => (),
+            Err(_e) => ()
+        }
+        if format!("{:?}", module) == format!("{:?}", ir.modules.get(&module_name).unwrap()) {
+        } else {
+            errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::NoSuperset));
+        }
     } else {
         ir.modules.insert(module_name, module);
     }
@@ -1446,107 +1464,7 @@ pub fn convert_library_header(
     let mut errors = vec![];
 
     for ast in asts {
-        if let AST::LibHeader(_, name, exports) = ast {
-            // Get module name
-            let mut full_name = vec![];
-            let mut top = *name;
-            while let AST::Infix(_, _, l, r) = top {
-                if let AST::Symbol(_, v) = *r {
-                    full_name.push(v);
-                }
-
-                top = *l;
-            }
-            if let AST::Symbol(_, v) = top {
-                full_name.push(v);
-            }
-            full_name.reverse();
-            let module_name = full_name.join("::");
-            let mut module = IRModule::new(filename, "");
-            module.name = module_name.clone();
-            module.lib = true;
-
-            // Deal with exports
-            for export in exports {
-                // Check exported variable type
-                if let AST::Empty = export.4 {
-                    unimplemented!("nya :(");
-                } else {
-                    let _type = types::convert_ast_to_type(export.4, filename, &module.types);
-                    if let Type::UndeclaredTypeError(s) = _type {
-                        errors.push(IRError::InvalidType(s));
-                    } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
-                        errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
-
-                    // Check export is unique
-                    } else if module.exports.contains_key(&export.1) {
-                        errors.push(IRError::DoubleExport(
-                            module.exports.get(&export.1).unwrap().0.clone(),
-                            Location::new(export.0, filename),
-                            export.1,
-                        ));
-                    } else {
-                        // Add export to list of exports
-                        let loc = Location::new(export.0.clone(), filename);
-                        module.scope.put_var(
-                            &export.1,
-                            &_type,
-                            export.2,
-                            Some(0),
-                            &loc,
-                            true,
-                            &module_name,
-                        );
-                        let mut args = vec![];
-                        let mut ret_type = &_type;
-                        for i in 0..export.2 {
-                            if let Type::Func(l, r) = ret_type {
-                                args.push((format!("${}", i), *l.clone()));
-                                ret_type = r;
-                            }
-                        }
-
-                        module.funcs.insert(
-                            export.1.clone(),
-                            IRFunction {
-                                loc: Location::empty(),
-                                name: export.1.clone(),
-                                args,
-                                captured: HashMap::with_capacity(0),
-                                captured_names: Vec::with_capacity(0),
-                                body: SExpr::True(SExprMetadata {
-                                    loc: Location::empty(),
-                                    loc2: Location::empty(),
-                                    origin: String::with_capacity(0),
-                                    _type: ret_type.clone(),
-                                    arity: 0,
-                                    saved_argc: None,
-                                    tailrec: false,
-                                    impure: export.3,
-                                }),
-                                global: true,
-                                checked: true,
-                                written: true,
-                                impure: export.3,
-                            },
-                        );
-                        module.sexprs.push(SExpr::Assign(
-                            SExprMetadata::empty(),
-                            export.1.clone(),
-                            Box::new(SExpr::Function(SExprMetadata::empty(), export.1.clone())),
-                        ));
-                        module.exports.insert(export.1, (loc, _type));
-                    }
-                }
-            }
-
-            // Add module to ir root and error if already exists
-            if ir.modules.contains_key(&module_name) {
-                errors.push(IRError::DuplicateModule(module_name));
-            } else {
-                ir.modules.insert(module_name, module);
-            }
-        }
+        errors.extend(convert_module(filename, ast, ir));
     }
 
     if errors.is_empty() {
@@ -1554,4 +1472,170 @@ pub fn convert_library_header(
     } else {
         Err(errors)
     }
+}
+
+
+pub fn convert_module(
+    filename: &str,
+    ast: AST,
+    ir: &mut IR,
+) -> Vec<IRError> {
+    let mut errors = vec![];
+
+    if let AST::LibHeader(_, name, exports) = ast {
+        // Get module name
+        let mut full_name = vec![];
+        let mut top = *name;
+        while let AST::Infix(_, _, l, r) = top {
+            if let AST::Symbol(_, v) = *r {
+                full_name.push(v);
+            }
+
+            top = *l;
+        }
+        if let AST::Symbol(_, v) = top {
+            full_name.push(v);
+        }
+        full_name.reverse();
+        let module_name = full_name.join("::");
+        let mut module = IRModule::new(filename, "");
+        module.name = module_name.clone();
+        module.lib = true;
+
+        // Deal with exports
+        for export in exports {
+            // Check exported variable type
+            if let AST::Empty = export.4 {
+                unimplemented!("nya :(");
+            } else {
+                let _type = types::convert_ast_to_type(export.4, filename, &module.types);
+                if let Type::UndeclaredTypeError(s) = _type {
+                    errors.push(IRError::InvalidType(s));
+                } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
+                    errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
+
+                // Check export is unique
+                } else if module.exports.contains_key(&export.1) {
+                    errors.push(IRError::DoubleExport(
+                        module.exports.get(&export.1).unwrap().0.clone(),
+                        Location::new(export.0, filename),
+                        export.1,
+                    ));
+                } else {
+                    // Add export to list of exports
+                    let loc = Location::new(export.0.clone(), filename);
+                    module.scope.put_var(
+                        &export.1,
+                        &_type,
+                        export.2,
+                        Some(0),
+                        &loc,
+                        true,
+                        &module_name,
+                    );
+                    let mut args = vec![];
+                    let mut ret_type = &_type;
+                    for i in 0..export.2 {
+                        if let Type::Func(l, r) = ret_type {
+                            args.push((format!("${}", i), *l.clone()));
+                            ret_type = r;
+                        }
+                    }
+
+                    module.funcs.insert(
+                        export.1.clone(),
+                        IRFunction {
+                            loc: Location::empty(),
+                            name: export.1.clone(),
+                            args,
+                            captured: HashMap::with_capacity(0),
+                            captured_names: Vec::with_capacity(0),
+                            body: SExpr::True(SExprMetadata {
+                                loc: Location::empty(),
+                                loc2: Location::empty(),
+                                origin: String::with_capacity(0),
+                                _type: ret_type.clone(),
+                                arity: 0,
+                                saved_argc: None,
+                                tailrec: false,
+                                impure: export.3,
+                            }),
+                            global: true,
+                            checked: true,
+                            written: true,
+                            impure: export.3,
+                        },
+                    );
+                    module.sexprs.push(SExpr::Assign(
+                        SExprMetadata::empty(),
+                        export.1.clone(),
+                        Box::new(SExpr::Function(SExprMetadata::empty(), export.1.clone())),
+                    ));
+                    module.exports.insert(export.1, (loc, _type));
+                }
+            }
+        }
+        // Add module to ir root and error if already exists
+        if ir.modules.contains_key(&module_name) {
+            let old_mod = ir.modules.get(&module_name).unwrap();
+            let new_mod = &module;
+            
+            let mut new_superset_of_old = true;
+            let mut old_superset_of_new = true;
+
+            for i in old_mod.exports.keys() {
+                let old_mod_export = old_mod.exports.get(i).unwrap();
+
+                let new_mod_export = 
+                match new_mod.exports.get(i) {
+                    Some(v) =>  v,
+                    _ => {
+                        new_superset_of_old = false;
+                        break;
+                    }
+                };
+                
+                if old_mod_export.1 != new_mod_export.1 {
+                    new_superset_of_old = false;
+                    break;
+                }
+            }
+
+            for i in new_mod.exports.keys() {
+                let new_mod_export = new_mod.exports.get(i).unwrap();
+
+                let old_mod_export = 
+                match old_mod.exports.get(i) {
+                    Some(v) =>  v,
+                    _ => {
+                        old_superset_of_new = false;
+                        break;
+                    }
+                };
+                
+                if new_mod_export.1 != old_mod_export.1 {
+                    old_superset_of_new = false;
+                    break;
+                }
+            }
+
+            if new_superset_of_old && old_superset_of_new {
+                errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::BothSuperset));
+            } else if new_superset_of_old ^ old_superset_of_new {
+                //TODO: Duplicate module superset warning
+                if new_superset_of_old {
+                    ir.modules.insert(module_name.clone(), module);
+                    errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::NewSupersetOld));
+                } else {
+                    errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::OldSupersetNew));
+                }
+            } else {
+                errors.push(IRError::DuplicateModule(module_name, DuplicateModuleInfo::NoSuperset));
+            }
+        } else {
+            ir.modules.insert(module_name.clone(), module);
+        }
+    }
+
+    return errors;
 }
