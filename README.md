@@ -22,7 +22,7 @@ Just type in the following:
 ```bash
 git clone https://github.com/curly-lang/curly-lang && cd curly-lang && cargo build
 ```
-This project depends on either `clang` or `gcc` for compiling, which can each be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS).
+This project depends on `gcc` for compiling, which can be installed using your favourite package manager (`apt`/`pacman`/`dnf` for Linux and Homebrew/MacPorts for macOS (note: `clang` is currently unsupported, so you must install `gcc` on macos)).
 
 Note: This repo has only been tested on Arch Linux, but should work on all other platforms rust supports without much issue.
 
