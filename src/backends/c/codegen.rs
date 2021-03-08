@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use crate::frontend::ir::{BinOp, IRModule, Location, PrefixOp, SExpr, IR};
 use crate::frontend::types::Type;
@@ -84,7 +85,7 @@ fn convert_sexpr(
             func.code.push_str("int_t ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
-            func.code.push_str(&format!("{}", n));
+            let _ = func.code.write_fmt(format_args!("{}", n));
             func.code.push_str(";\n");
 
             name
@@ -100,7 +101,7 @@ fn convert_sexpr(
             func.code.push_str("float_t ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
-            func.code.push_str(&format!("{}", n));
+            let _ = func.code.write_fmt(format_args!("{}", n));
             func.code.push_str(";\n");
 
             name
@@ -116,7 +117,7 @@ fn convert_sexpr(
             func.code.push_str("word_t ");
             func.code.push_str(&name);
             func.code.push_str(" = ");
-            func.code.push_str(&format!("{}", n));
+            let _ = func.code.write_fmt(format_args!("{}", n));
             func.code.push_str("u;\n");
 
             name
@@ -132,7 +133,7 @@ fn convert_sexpr(
             func.code.push_str("char ");
             func.code.push_str(&name);
             func.code.push_str(" = (char) ");
-            func.code.push_str(&format!("{}", c));
+            let _ = func.code.write_fmt(format_args!("{}", c));
             func.code.push_str(";\n");
 
             name
@@ -195,15 +196,14 @@ fn convert_sexpr(
                     func.code.push_str("$FUNC$$, (void*) ");
                     func.code.push_str(&mod_name);
                     func.code.push_str(&s);
-                    func.code
-                        .push_str(&format!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
+                    let _ = func.code.write_fmt(format_args!("$WRAPPER$$, {}", f.args.len() + f.captured.len()));
                     func.code.push_str(", 0, ");
                     if !f.captured.is_empty() {
                         let count = f.args.len() + f.captured.len();
                         func.code.push_str("calloc(");
-                        func.code.push_str(&format!("{}", count));
+                        let _ = func.code.write_fmt(format_args!("{}", count));
                         func.code.push_str(", sizeof(void*)), calloc(");
-                        func.code.push_str(&format!("{}", count));
+                        let _ = func.code.write_fmt(format_args!("{}", count));
                         func.code.push_str(", sizeof(void*)) };\n");
                     } else {
                         func.code.push_str("(void*) 0, (void*) 0 };\n");
@@ -571,13 +571,13 @@ fn convert_sexpr(
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
                     let id = v.get_metadata()._type.sum_hash(&root.types);
-                    func.code.push_str(&format!("{}ull", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull", id));
                     func.code.push_str(";\n");
 
                     if !value.is_empty() {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", id));
+                        let _ = func.code.write_fmt(format_args!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&value);
                         func.code.push_str(";\n");
@@ -648,20 +648,20 @@ fn convert_sexpr(
                 for s in submap.0.iter() {
                     let id = s.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}ull:\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{}ull;\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
 
                     if let Type::Enum(_) = s {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", id));
+                        let _ = func.code.write_fmt(format_args!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&body);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{};\n", id));
+                        let _ = func.code.write_fmt(format_args!("{};\n", id));
                     }
                     func.code.push_str("break;\n");
                 }
@@ -670,17 +670,17 @@ fn convert_sexpr(
                 let id = btype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}ull", id));
+                let _ = func.code.write_fmt(format_args!("{}ull", id));
                 func.code.push_str(";\n");
             } else {
                 let id = btype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}ull", id));
+                let _ = func.code.write_fmt(format_args!("{}ull", id));
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
                 func.code.push_str(".values.$$");
-                func.code.push_str(&format!("{}", id));
+                let _ = func.code.write_fmt(format_args!("{}", id));
                 func.code.push_str(" = ");
                 func.code.push_str(&body);
                 func.code.push_str(";\n");
@@ -707,20 +707,20 @@ fn convert_sexpr(
                 for s in submap.0.iter() {
                     let id = s.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}ull:\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{}ull;\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
 
                     if let Type::Enum(_) = s {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", id));
+                        let _ = func.code.write_fmt(format_args!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&elsy);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{};\n", id));
+                        let _ = func.code.write_fmt(format_args!("{};\n", id));
                     }
                     func.code.push_str("break;\n");
                 }
@@ -729,17 +729,17 @@ fn convert_sexpr(
                 let id = etype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}ull", id));
+                let _ = func.code.write_fmt(format_args!("{}ull", id));
                 func.code.push_str(";\n");
             } else {
                 let id = etype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!("{}ull", id));
+                let _ = func.code.write_fmt(format_args!("{}ull", id));
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
                 func.code.push_str(".values.$$");
-                func.code.push_str(&format!("{}", id));
+                let _ = func.code.write_fmt(format_args!("{}", id));
                 func.code.push_str(" = ");
                 func.code.push_str(&elsy);
                 func.code.push_str(";\n");
@@ -892,17 +892,17 @@ fn convert_sexpr(
                                         for s in submap.0.iter() {
                                             let id = s.sum_hash(&root.types);
                                             func.code.push_str("case ");
-                                            func.code.push_str(&format!("{}ull:\n", id));
+                                            let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
                                             func.code.push_str(&name);
                                             func.code.push_str(".tag = ");
-                                            func.code.push_str(&format!("{}ull;\n", id));
+                                            let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
                                             func.code.push_str(&name);
                                             func.code.push_str(".values.$$");
-                                            func.code.push_str(&format!("{}", id));
+                                            let _ = func.code.write_fmt(format_args!("{}", id));
                                             func.code.push_str(" = ");
                                             func.code.push_str(&v);
                                             func.code.push_str(".values.$$");
-                                            func.code.push_str(&format!("{}", id));
+                                            let _ = func.code.write_fmt(format_args!("{}", id));
                                             func.code.push_str(";\nbreak;\n");
                                         }
                                         func.code.push_str("}\n");
@@ -917,10 +917,10 @@ fn convert_sexpr(
                                         func.code.push_str(";\n");
                                         func.code.push_str(&name);
                                         func.code.push_str(".tag = ");
-                                        func.code.push_str(&format!("{}ull;\n", id));
+                                        let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
                                         func.code.push_str(&name);
                                         func.code.push_str(".values.");
-                                        func.code.push_str(&format!("$${}", id));
+                                        let _ = func.code.write_fmt(format_args!("$${}", id));
                                         func.code.push_str(" = ");
                                         func.code.push_str(&v);
                                         func.code.push_str(";\n");
@@ -947,17 +947,17 @@ fn convert_sexpr(
                                 for s in submap.0.iter() {
                                     let id = s.sum_hash(&root.types);
                                     func.code.push_str("case ");
-                                    func.code.push_str(&format!("{}ull:\n", id));
+                                    let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
                                     func.code.push_str(&name);
                                     func.code.push_str(".tag = ");
-                                    func.code.push_str(&format!("{}ull;\n", id));
+                                    let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
                                     func.code.push_str(&name);
                                     func.code.push_str(".values.$$");
-                                    func.code.push_str(&format!("{}", id));
+                                    let _ = func.code.write_fmt(format_args!("{}", id));
                                     func.code.push_str(" = ");
                                     func.code.push_str(&v);
                                     func.code.push_str(".values.$$");
-                                    func.code.push_str(&format!("{}", id));
+                                    let _ = func.code.write_fmt(format_args!("{}", id));
                                     func.code.push_str(";\nbreak;\n");
                                 }
                                 func.code.push_str("}\n");
@@ -972,10 +972,10 @@ fn convert_sexpr(
                                 func.code.push_str(";\n");
                                 func.code.push_str(&name);
                                 func.code.push_str(".tag = ");
-                                func.code.push_str(&format!("{}ull;\n", id));
+                                let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
                                 func.code.push_str(&name);
                                 func.code.push_str(".values.");
-                                func.code.push_str(&format!("$${}", id));
+                                let _ = func.code.write_fmt(format_args!("$${}", id));
                                 func.code.push_str(" = ");
                                 func.code.push_str(&v);
                                 func.code.push_str(";\n");
@@ -1220,7 +1220,7 @@ fn convert_sexpr(
                                         }
 
                                         func.code.push_str(&fstr);
-                                        func.code.push_str(&format!(".args[{}]", i));
+                                        let _ = func.code.write_fmt(format_args!(".args[{}]", i));
                                     }
 
                                     // Pass new arguments
@@ -1566,8 +1566,8 @@ fn convert_sexpr(
                 if let Type::Sum(submap) = _type {
                     for s in submap.0.iter() {
                         func.code.push_str("case ");
-                        func.code
-                            .push_str(&format!("{}ull:\n", s.sum_hash(&root.types)));
+                        let _ = func.code
+                            .write_fmt(format_args!("{}ull:\n", s.sum_hash(&root.types)));
                     }
 
                     func.code.push_str("{\n");
@@ -1579,15 +1579,15 @@ fn convert_sexpr(
                     for s in submap.0.iter() {
                         let id = s.sum_hash(&root.types);
                         func.code.push_str("case ");
-                        func.code.push_str(&format!("{}ull:\n", id));
+                        let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
                         func.code.push_str("$$MATCHTEMP$$.tag = ");
-                        func.code.push_str(&format!("{}ull;\n", id));
+                        let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
                         func.code.push_str("$$MATCHTEMP$$.values.$$");
-                        func.code.push_str(&format!("{}", id));
+                        let _ = func.code.write_fmt(format_args!("{}", id));
                         func.code.push_str(" = ");
                         func.code.push_str(&value);
                         func.code.push_str(".values.$$");
-                        func.code.push_str(&format!("{}", id));
+                        let _ = func.code.write_fmt(format_args!("{}", id));
                         func.code.push_str(";\nbreak;\n");
                     }
                     func.code.push_str("}\n");
@@ -1600,17 +1600,17 @@ fn convert_sexpr(
                 } else if let Type::Enum(_) = _type {
                     let id = _type.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}ull: {{\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull: {{\n", id));
                 } else {
                     let id = _type.sum_hash(&root.types);
                     func.code.push_str("case ");
-                    func.code.push_str(&format!("{}ull: {{\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull: {{\n", id));
 
                     func.code.push_str(get_c_type(_type, types));
                     func.code.push_str(" $$MATCHTEMP$$ = ");
                     func.code.push_str(&value);
                     func.code.push_str(".values.$$");
-                    func.code.push_str(&format!("{}", id));
+                    let _ = func.code.write_fmt(format_args!("{}", id));
                     func.code.push_str(";\n");
 
                     if let Some(s) = &varname {
@@ -1645,20 +1645,20 @@ fn convert_sexpr(
                     for s in submap.0.iter() {
                         let id = s.sum_hash(&root.types);
                         func.code.push_str("case ");
-                        func.code.push_str(&format!("{}ull:\n", id));
+                        let _ = func.code.write_fmt(format_args!("{}ull:\n", id));
                         func.code.push_str(&name);
                         func.code.push_str(".tag = ");
-                        func.code.push_str(&format!("{}ull;\n", id));
+                        let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
 
                         if let Type::Enum(_) = s {
                         } else {
                             func.code.push_str(&name);
                             func.code.push_str(".values.$$");
-                            func.code.push_str(&format!("{}", id));
+                            let _ = func.code.write_fmt(format_args!("{}", id));
                             func.code.push_str(" = ");
                             func.code.push_str(&arm);
                             func.code.push_str(".values.$$");
-                            func.code.push_str(&format!("{};\n", id));
+                            let _ = func.code.write_fmt(format_args!("{};\n", id));
                         }
                         func.code.push_str("break;\n");
                     }
@@ -1667,16 +1667,16 @@ fn convert_sexpr(
                     let id = atype.sum_hash(&root.types);
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{}ull;\n", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
                 } else {
                     let id = atype.sum_hash(&root.types);
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
-                    func.code.push_str(&format!("{}ull", id));
+                    let _ = func.code.write_fmt(format_args!("{}ull", id));
                     func.code.push_str(";\n");
                     func.code.push_str(&name);
                     func.code.push_str(".values.$$");
-                    func.code.push_str(&format!("{}", id));
+                    let _ = func.code.write_fmt(format_args!("{}", id));
                     func.code.push_str(" = ");
                     func.code.push_str(&arm);
                     func.code.push_str(";\n");
@@ -1705,7 +1705,7 @@ fn convert_sexpr(
                 func.code.push_str(";\n");
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
-                func.code.push_str(&format!(
+                let _ = func.code.write_fmt(format_args!(
                     "{}ull",
                     Type::Enum(a[1].clone()).sum_hash(&root.types)
                 ));
@@ -1764,7 +1764,7 @@ fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &Hash
         }
 
         s.push_str("f->args[");
-        s.push_str(&format!("{}", i));
+        let _ = s.write_fmt(format_args!("{}", i));
         s.push(']');
     }
 
@@ -1848,7 +1848,7 @@ fn put_debug_fn(
     newline: bool,
 ) {
     if newline {
-        code.push_str(&format!(
+        let _ = code.write_fmt(format_args!(
             "printf(\"[{}:{}] = \");\n",
             &ir.filename,
             get_lino(span, &ir.contents)
@@ -1907,7 +1907,7 @@ fn put_debug_fn(
 
         // Print out aggregate types
         Type::Func(_, _) => {
-            code.push_str(&format!("printf(\"<func %p> : {}\", ", original_type));
+            let _ = code.write_fmt(format_args!("printf(\"<func %p> : {}\", ", original_type));
             code.push_str(v);
             code.push_str(".func);\n");
         }
@@ -1919,7 +1919,7 @@ fn put_debug_fn(
 
             for t in map.0.iter() {
                 let id = t.sum_hash(&ir.types);
-                code.push_str(&format!("case {}ull: {{\n", id));
+                let _ = code.write_fmt(format_args!("case {}ull: {{\n", id));
                 put_debug_fn(
                     span,
                     code,
@@ -1932,7 +1932,7 @@ fn put_debug_fn(
                 code.push_str("break;\n}\n");
             }
             code.push_str("}\n");
-            code.push_str(&format!("printf(\" : {}\");\n", original_type));
+            let _ = code.write_fmt(format_args!("printf(\" : {}\");\n", original_type));
         }
 
         Type::Enum(v) => {
@@ -1942,7 +1942,7 @@ fn put_debug_fn(
         }
 
         Type::Pointer(p) => {
-            code.push_str(&format!("printf(\"{} <%p>\", ", p));
+            let _ = code.write_fmt(format_args!("printf(\"{} <%p>\", ", p));
             code.push_str(v);
             code.push_str(");\n");
         }
@@ -2047,7 +2047,7 @@ fn collect_types(
 
             // Sum types are tagged unions
             Type::Sum(v) => {
-                types_string.push_str(&format!(
+                let _ = types_string.write_fmt(format_args!(
                     "struct $${} {{\n    uint64_t tag;\n    union {{\n",
                     last_reference
                 ));
@@ -2113,7 +2113,7 @@ fn collect_types(
                                             _ => panic!("unsupported type!"),
                                         }
 
-                                        types_string.push_str(&format!(" $${};\n", t.sum_hash(&ir.types)));
+                                        let _ = types_string.write_fmt(format_args!(" $${};\n", t.sum_hash(&ir.types)));
                                     }
                                     types_string.push_str("            } values;\n        }");
                                 }
@@ -2125,7 +2125,7 @@ fn collect_types(
                         _ => panic!("unsupported type!"),
                     }
 
-                    types_string.push_str(&format!(" $${};\n", t.sum_hash(&ir.types)));
+                    let _ = types_string.write_fmt(format_args!(" $${};\n", t.sum_hash(&ir.types)));
                     field_ref += 1;
                 }
 
@@ -2226,7 +2226,7 @@ fn collect_type_functions(
                         bodies.push_str(get_c_type(t.0, types));
                         bodies.push_str(" result;\nresult.tag = ");
                         let id = v.sum_hash(&ir.types);
-                        bodies.push_str(&format!("{}ull;\n", id));
+                        let _ = bodies.write_fmt(format_args!("{}ull;\n", id));
 
                         match &**t2 {
                             Type::Sum(v) => {
@@ -2234,24 +2234,24 @@ fn collect_type_functions(
                                 for v in v.0.iter() {
                                     let sub_id = v.sum_hash(&ir.types);
                                     bodies.push_str("case ");
-                                    bodies.push_str(&format!("{}ull:\n", sub_id));
+                                    let _ = bodies.write_fmt(format_args!("{}ull:\n", sub_id));
                                     bodies.push_str("result.values.$$");
-                                    bodies.push_str(&format!("{}", id));
+                                    let _ = bodies.write_fmt(format_args!("{}", id));
                                     bodies.push_str(".tag = ");
-                                    bodies.push_str(&format!("{}ull;\n", sub_id));
+                                    let _ = bodies.write_fmt(format_args!("{}ull;\n", sub_id));
                                     bodies.push_str("result.values.$$");
-                                    bodies.push_str(&format!("{}", id));
+                                    let _ = bodies.write_fmt(format_args!("{}", id));
                                     bodies.push_str(".values.$$");
-                                    bodies.push_str(&format!("{}", sub_id));
+                                    let _ = bodies.write_fmt(format_args!("{}", sub_id));
                                     bodies.push_str(" = arg$.values.$$");
-                                    bodies.push_str(&format!("{};\nbreak;\n", sub_id));
+                                    let _ = bodies.write_fmt(format_args!("{};\nbreak;\n", sub_id));
                                 }
                                 bodies.push_str("}\n");
                             }
 
                             _ => {
                                 bodies.push_str("result.values.$$");
-                                bodies.push_str(&format!("{}", id));
+                                let _ = bodies.write_fmt(format_args!("{}", id));
                                 bodies.push_str(" = arg$;");
                             }
                         }
@@ -2571,7 +2571,7 @@ fn convert_module_to_c(
             if v.0.contains(&Type::Enum(String::from("Ok"))) {
                 code_string.push_str(get_c_type(_type, types));
                 code_string.push_str(" v = Main$main$$GET$$();\n    if (v.tag == ");
-                code_string.push_str(&format!(
+                let _ = code_string.write_fmt(format_args!(
                     "{}ull",
                     Type::Enum(String::from("Ok")).sum_hash(&module.types)
                 ));
@@ -2883,7 +2883,7 @@ pub fn generate_module_file(ir: &IR) -> String {
                 }
                 m.push_str(export.0);
                 m.push_str(" : ");
-                m.push_str(&format!(
+                let _ = m.write_fmt(format_args!(
                     "{} {} : {}\n",
                     module.scope.variables.get(export.0).unwrap().1,
                     module.funcs.get(export.0).unwrap().impure,
