@@ -21,6 +21,7 @@ pub static DEBUG: bool = false;
 
 #[cfg(target_os = "macos")]
 static COMPILER: &str = "gcc-10";
+#[cfg(not(target_os = "macos"))]
 static COMPILER: &str = "gcc";
 
 #[derive(PartialEq)]
@@ -84,7 +85,7 @@ fn main() -> Result<(), ()> {
                 let mod_files_contents: Vec<String> = curly_libs
                     .iter()
                     .map(|v| 
-                        read_file(&v.1).expect(&format!("Failed to read file {}.", v.1.clone()))
+                        read_file(&v.1).unwrap_or_else(|_| panic!("Failed to read file {}.", v.1.clone()))
                     )
                     .collect();
 
@@ -394,7 +395,11 @@ fn handle_args(options: &mut CommandlineBuildOptions, args: &mut Args) -> Result
             }
 
             _ => {
-                options.inputs.push(a);
+                if a.starts_with("-l") || a.starts_with("-L") {
+                    options.compiler_options.push(a);
+                } else {
+                    options.inputs.push(a);
+                }
             }
         }
     }
