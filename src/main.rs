@@ -21,6 +21,7 @@ pub static DEBUG: bool = false;
 
 #[cfg(target_os = "macos")]
 static COMPILER: &str = "gcc-10";
+#[cfg(not(target_os = "macos"))]
 static COMPILER: &str = "gcc";
 
 #[derive(PartialEq)]
