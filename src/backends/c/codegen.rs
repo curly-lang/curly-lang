@@ -1796,7 +1796,7 @@ fn put_fn_declaration(
     s.push('(');
 
     let mut comma = false;
-    for a in func.args.iter() {
+    for (i, a) in func.args.iter().enumerate() {
         let mut _type = a.1;
         if let Type::Symbol(_) = &_type {
             _type = types.get(&_type).unwrap().get_curly_type();
@@ -1819,7 +1819,11 @@ fn put_fn_declaration(
             _ => (),
         }
 
-        s.push_str(&sanitise_symbol(a.0));
+        if a.0 == "_" {
+            let _ = s.write_fmt(format_args!("$${}_", i));
+        } else {
+            s.push_str(&sanitise_symbol(a.0));
+        }
     }
 
     s.push(')');
