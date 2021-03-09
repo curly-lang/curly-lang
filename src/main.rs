@@ -85,7 +85,7 @@ fn main() -> Result<(), ()> {
                 let mod_files_contents: Vec<String> = curly_libs
                     .iter()
                     .map(|v| 
-                        read_file(&v.1).expect(&format!("Failed to read file {}.", v.1.clone()))
+                        read_file(&v.1).unwrap_or_else(|_| panic!("Failed to read file {}.", v.1.clone()))
                     )
                     .collect();
 
