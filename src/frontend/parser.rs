@@ -637,6 +637,7 @@ macro_rules! infixr_op {
         let mut top = call_func!($subfunc, $parser, state);
         let mut acc = &mut top;
         let mut first = true;
+        let mut last = Span { start: 0, end: 0 };
 
         loop {
             // Save current state
@@ -659,6 +660,7 @@ macro_rules! infixr_op {
                 // Get right hand side
                 let right =
                     call_func_fatal!($subfunc, $parser, "Expected value after infix operator");
+                last = right.get_span();
 
                 #[allow(unused_assignments)]
                 if first {
@@ -699,6 +701,14 @@ macro_rules! infixr_op {
             // If there's no operator, break
             } else {
                 break;
+            }
+        }
+
+        acc = &mut top;
+        if !first {
+            while let AST::Infix(s, _, _, r) = acc {
+                s.end = last.end;
+                acc = r;
             }
         }
 
