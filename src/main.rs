@@ -395,7 +395,11 @@ fn handle_args(options: &mut CommandlineBuildOptions, args: &mut Args) -> Result
             }
 
             _ => {
-                options.inputs.push(a);
+                if a.starts_with("-l") || a.starts_with("-L") {
+                    options.compiler_options.push(a);
+                } else {
+                    options.inputs.push(a);
+                }
             }
         }
     }
