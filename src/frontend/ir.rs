@@ -1,6 +1,6 @@
 use logos::Span;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
 use super::parser::AST;
 use super::scopes::Scope;
@@ -1328,7 +1328,10 @@ pub fn convert_ast_to_ir(
                         name: name.join("::"),
                         loc: Location::new(s, filename),
                         qualified: false,
-                        imports: imports.into_iter().map(|v| (v, (Type::Unknown, 0, false))).collect(),
+                        imports: imports
+                            .into_iter()
+                            .map(|v| (v, (Type::Unknown, 0, false)))
+                            .collect(),
                     };
                 } else {
                     unreachable!("always either a QualifiedImport or an Import");
@@ -1441,8 +1444,8 @@ pub fn convert_ast_to_ir(
     match ir.modules.entry(module_name) {
         Entry::Occupied(e) => {
             // let _ = std::fs::write(
-                // "currentModule.ir",
-                // format!("{:?}", ir.modules.get(&module_name).unwrap()),
+            // "currentModule.ir",
+            // format!("{:?}", ir.modules.get(&module_name).unwrap()),
             // );
             // let _ = std::fs::write("newModule.ir", format!("{:?}", module));
 
@@ -1515,9 +1518,7 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
                 unimplemented!("nya :(");
             } else {
                 let _type = types::convert_ast_to_type(export.4, filename, &module.types);
-                if let Type::UndeclaredTypeError(s) = _type {
-                    errors.push(IRError::InvalidType(s));
-                } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
+                if let Type::DuplicateTypeError(s1, s2, t) = _type {
                     errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
 
                 // Check export is unique
@@ -1569,12 +1570,12 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
                                         arity: 0,
                                         saved_argc: None,
                                         tailrec: false,
-                                        impure
+                                        impure,
                                     }),
                                     global: true,
                                     checked: true,
                                     written: true,
-                                    impure
+                                    impure,
                                 },
                             );
                             module.sexprs.push(SExpr::Assign(

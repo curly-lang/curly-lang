@@ -84,9 +84,10 @@ fn main() -> Result<(), ()> {
                 // Get contents of the mod files.
                 let mod_files_contents: Vec<String> = curly_libs
                     .iter()
-                    .map(|v| 
-                        read_file(&v.1).unwrap_or_else(|_| panic!("Failed to read file {}.", v.1.clone()))
-                    )
+                    .map(|v| {
+                        read_file(&v.1)
+                            .unwrap_or_else(|_| panic!("Failed to read file {}.", v.1.clone()))
+                    })
                     .collect();
 
                 // Parse the mod file contents.

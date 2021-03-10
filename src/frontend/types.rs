@@ -340,7 +340,7 @@ impl Type {
 pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Type>) -> Type {
     match ast {
         // Symbols
-        AST::Symbol(s, v) => {
+        AST::Symbol(_, v) => {
             match v.as_str() {
                 // Primitives
                 "Int" => Type::Int,
@@ -349,14 +349,8 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                 "Word" => Type::Word,
                 "Char" => Type::Char,
 
-                // Check if registered in IR
-                _ => {
-                    if let Some(_) = types.get(&v) {
-                        Type::Symbol(v)
-                    } else {
-                        Type::UndeclaredTypeError(Location::new(s, filename))
-                    }
-                }
+                // Symbol
+                _ => Type::Symbol(v),
             }
         }
 
@@ -381,7 +375,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
         // Sum types
         AST::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
-            let s = r.get_span().clone();
+            let s = r.get_span();
             let v = convert_ast_to_type(*r, filename, types);
             if let Type::Sum(v) = v {
                 for v in v.0 {
@@ -500,7 +494,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
         }
 
         AST::Infix(_, op, l, r) if op == ":" => {
-            let s = r.get_span().clone();
+            let s = r.get_span();
             let r = convert_ast_to_type(*r, filename, types);
 
             if let Type::UndeclaredTypeError(s) = r {
@@ -515,9 +509,6 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                 unreachable!("Tag always has symbol as left operand");
             }
         }
-
-        // Parenthesised types
-        AST::Prefix(_, op, v) if op == "" => convert_ast_to_type(*v, filename, types),
 
         // Error
         _ => Type::UndeclaredTypeError(Location::new(ast.get_span(), filename)),
