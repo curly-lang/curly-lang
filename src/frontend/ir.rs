@@ -1250,24 +1250,28 @@ pub fn convert_ast_to_ir(
             // Deal with exports
             for export in exports {
                 // Check exported variable type
-                let _type = types::convert_ast_to_type(export.2, filename, &module.types);
-                if let Type::UndeclaredTypeError(s) = _type {
-                    errors.push(IRError::InvalidType(s));
-                } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
-                    errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
-
-                // Check export is unique
-                } else if module.exports.contains_key(&export.1) {
-                    errors.push(IRError::DoubleExport(
-                        module.exports.get(&export.1).unwrap().0.clone(),
-                        Location::new(export.0, filename),
-                        export.1,
-                    ));
+                if let AST::Empty = export.2 {
+                    unimplemented!("nya :(");
                 } else {
-                    // Add export to list of exports
-                    module
-                        .exports
-                        .insert(export.1, (Location::new(export.0, filename), _type));
+                    let _type = types::convert_ast_to_type(export.2, filename, &module.types);
+                    if let Type::UndeclaredTypeError(s) = _type {
+                        errors.push(IRError::InvalidType(s));
+                    } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
+                        errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
+
+                    // Check export is unique
+                    } else if module.exports.contains_key(&export.1) {
+                        errors.push(IRError::DoubleExport(
+                            module.exports.get(&export.1).unwrap().0.clone(),
+                            Location::new(export.0, filename),
+                            export.1,
+                        ));
+                    } else {
+                        // Add export to list of exports
+                        module
+                            .exports
+                            .insert(export.1, (Location::new(export.0, filename), _type));
+                    }
                 }
             }
 
