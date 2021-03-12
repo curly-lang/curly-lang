@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::rc::Rc;
 
 use crate::frontend::ir::{BinOp, IRModule, Location, PrefixOp, SExpr, IR};
-use crate::frontend::types::Type;
+use crate::frontend::types::{Type, TypeRc};
 
 // Represents a function in C.
 #[derive(Debug)]
 struct CFunction<'a> {
     name: String,
-    args: Vec<(&'a String, &'a Type)>,
-    ret_type: &'a Type,
+    args: Vec<(&'a String, TypeRc)>,
+    ret_type: TypeRc,
     code: String,
     last_reference: usize,
 }
@@ -17,8 +18,8 @@ struct CFunction<'a> {
 // Represents a structure in C
 #[derive(Clone, Debug)]
 enum CType {
-    Primitive(String, Type),
-    Sum(String, Type),
+    Primitive(String, TypeRc),
+    Sum(String, TypeRc),
 }
 
 impl CType {
@@ -32,7 +33,7 @@ impl CType {
 
     // get_curly_type(&self) -> &Type
     // Returns the Curly IRModule type.
-    fn get_curly_type(&self) -> &Type {
+    fn get_curly_type(&self) -> &TypeRc {
         match self {
             CType::Primitive(_, t) | CType::Sum(_, t) => t,
         }
@@ -41,7 +42,7 @@ impl CType {
 
 // get_c_type(&Type, &HashMap<Type, String>) -> &str
 // Converts an IRModule type into a C type.
-fn get_c_type<'a>(_type: &Type, types: &'a HashMap<Type, CType>) -> &'a str {
+fn get_c_type<'a>(_type: &Type, types: &'a HashMap<TypeRc, CType>) -> &'a str {
     match _type {
         Type::Int => "int_t",
         Type::Float => "float_t",
@@ -72,7 +73,7 @@ fn convert_sexpr(
     sexpr: &SExpr,
     root: &IRModule,
     func: &mut CFunction,
-    types: &HashMap<Type, CType>,
+    types: &HashMap<TypeRc, CType>,
 ) -> String {
     match sexpr {
         // Ints
@@ -170,7 +171,7 @@ fn convert_sexpr(
 
         // Symbols
         SExpr::Symbol(m, s) => {
-            if let Type::Enum(_) = m._type {
+            if let Type::Enum(_) = *m._type {
                 String::with_capacity(0)
             } else {
                 sanitise_symbol(s)
@@ -217,12 +218,12 @@ fn convert_sexpr(
                         // Get type
                         let mut v = sanitise_symbol(c);
                         let mut _type = f.captured.get(c).unwrap();
-                        while let Type::Symbol(s) = _type {
+                        while let Type::Symbol(s) = &**_type {
                             _type = root.types.get(s).unwrap();
                         }
 
                         // Fix functions, floats, and sum types
-                        match _type {
+                        match &**_type {
                             Type::Float => {
                                 let name = format!("$${}", func.last_reference);
                                 func.last_reference += 1;
@@ -287,7 +288,7 @@ fn convert_sexpr(
                 } else if m.tailrec {
                     func.code.push_str("$$LOOP$$ = 1;\n");
                 } else {
-                    if let Type::Enum(_) = f.body.get_metadata()._type {
+                    if let Type::Enum(_) = *f.body.get_metadata()._type {
                     } else {
                         func.code
                             .push_str(get_c_type(&f.body.get_metadata()._type, types));
@@ -316,11 +317,11 @@ fn convert_sexpr(
             let mut arg_refs = Vec::with_capacity(0);
             for arg in args {
                 let v = convert_sexpr(arg, root, func, types);
-                arg_refs.push((v, matches!(arg.get_metadata()._type, Type::Func(_, _))));
+                arg_refs.push((v, matches!(*arg.get_metadata()._type, Type::Func(_, _))));
             }
 
             // Push function declaration
-            let ret_type = if let Type::Enum(_) = m._type {
+            let ret_type = if let Type::Enum(_) = *m._type {
                 "void"
             } else {
                 get_c_type(&m._type, types)
@@ -331,7 +332,7 @@ fn convert_sexpr(
             func.code.push('(');
             let mut comma = false;
             for arg in args {
-                if let Type::Enum(_) = arg.get_metadata()._type {
+                if let Type::Enum(_) = *arg.get_metadata()._type {
                     continue;
                 }
 
@@ -341,7 +342,7 @@ fn convert_sexpr(
                     comma = true;
                 }
 
-                if let Type::Func(_, _) = arg.get_metadata()._type {
+                if let Type::Func(_, _) = *arg.get_metadata()._type {
                     func.code.push_str("void*");
                 } else {
                     func.code
@@ -352,7 +353,7 @@ fn convert_sexpr(
 
             // Call function
             let mut _ref = String::with_capacity(0);
-            if let Type::Enum(_) = m._type {
+            if let Type::Enum(_) = *m._type {
             } else {
                 _ref = format!("$${}", func.last_reference);
                 func.last_reference += 1;
@@ -457,7 +458,7 @@ fn convert_sexpr(
         SExpr::Chain(m, l, r) => {
             let a = format!("$${}", func.last_reference);
             func.last_reference += 1;
-            if let Type::Enum(_) = m._type {
+            if let Type::Enum(_) = *m._type {
             } else {
                 func.code.push_str(get_c_type(&m._type, types));
                 func.code.push(' ');
@@ -473,7 +474,7 @@ fn convert_sexpr(
             let v = convert_sexpr(r, root, func, types);
 
             if let SExpr::Walrus(_, _, _) = **l {
-                if let Type::Enum(_) = m._type {
+                if let Type::Enum(_) = *m._type {
                     func.code.push_str("}\n");
                     v
                 } else {
@@ -544,12 +545,12 @@ fn convert_sexpr(
             let value = convert_sexpr(v, root, func, types);
 
             let mut _type = &m._type;
-            while let Type::Symbol(s) = _type {
+            while let Type::Symbol(s) = &**_type {
                 _type = root.types.get(s).unwrap();
             }
 
             let mut vtype = &v.get_metadata()._type;
-            while let Type::Symbol(s) = vtype {
+            while let Type::Symbol(s) = &**vtype {
                 vtype = root.types.get(s).unwrap();
             }
 
@@ -567,7 +568,7 @@ fn convert_sexpr(
             func.code.push_str(&name);
 
             // Check result type
-            match &_type {
+            match &**_type {
                 // Sum types
                 Type::Sum(_) => {
                     func.code.push_str(";\n");
@@ -597,7 +598,7 @@ fn convert_sexpr(
         // If expressions
         SExpr::If(m, c, b, e) => {
             // Get name
-            let name = if let Type::Enum(_) = m._type {
+            let name = if let Type::Enum(_) = *m._type {
                 String::with_capacity(0)
             } else {
                 let name = format!("$${}", func.last_reference);
@@ -619,15 +620,15 @@ fn convert_sexpr(
 
             // Get types
             let mut mtype = &m._type;
-            while let Type::Symbol(s) = mtype {
+            while let Type::Symbol(s) = &**mtype {
                 mtype = root.types.get(s).unwrap();
             }
             let mut btype = &b.get_metadata()._type;
-            while let Type::Symbol(s) = btype {
+            while let Type::Symbol(s) = &**btype {
                 btype = root.types.get(s).unwrap();
             }
             let mut etype = &e.get_metadata()._type;
-            while let Type::Symbol(s) = etype {
+            while let Type::Symbol(s) = &**etype {
                 etype = root.types.get(s).unwrap();
             }
 
@@ -636,14 +637,14 @@ fn convert_sexpr(
 
             // Save
             if mtype == btype {
-                if let Type::Enum(_) = mtype {
+                if let Type::Enum(_) = &**mtype {
                 } else {
                     func.code.push_str(&name);
                     func.code.push_str(" = ");
                     func.code.push_str(&body);
                     func.code.push_str(";\n");
                 }
-            } else if let Type::Sum(submap) = btype {
+            } else if let Type::Sum(submap) = &**btype {
                 func.code.push_str("switch (");
                 func.code.push_str(&body);
                 func.code.push_str(".tag) {\n");
@@ -656,7 +657,7 @@ fn convert_sexpr(
                     func.code.push_str(".tag = ");
                     let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
 
-                    if let Type::Enum(_) = s {
+                    if let Type::Enum(_) = **s {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
@@ -669,7 +670,7 @@ fn convert_sexpr(
                     func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
-            } else if let Type::Enum(_) = btype {
+            } else if let Type::Enum(_) = **btype {
                 let id = btype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
@@ -695,14 +696,14 @@ fn convert_sexpr(
 
             // Save
             if mtype == etype {
-                if let Type::Enum(_) = mtype {
+                if let Type::Enum(_) = **mtype {
                 } else {
                     func.code.push_str(&name);
                     func.code.push_str(" = ");
                     func.code.push_str(&elsy);
                     func.code.push_str(";\n");
                 }
-            } else if let Type::Sum(submap) = etype {
+            } else if let Type::Sum(submap) = &**etype {
                 func.code.push_str("switch (");
                 func.code.push_str(&elsy);
                 func.code.push_str(".tag) {\n");
@@ -715,7 +716,7 @@ fn convert_sexpr(
                     func.code.push_str(".tag = ");
                     let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
 
-                    if let Type::Enum(_) = s {
+                    if let Type::Enum(_) = **s {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(".values.$$");
@@ -728,7 +729,7 @@ fn convert_sexpr(
                     func.code.push_str("break;\n");
                 }
                 func.code.push_str("}\n");
-            } else if let Type::Enum(_) = etype {
+            } else if let Type::Enum(_) = **etype {
                 let id = etype.sum_hash(&root.types);
                 func.code.push_str(&name);
                 func.code.push_str(".tag = ");
@@ -787,14 +788,14 @@ fn convert_sexpr(
             }
 
             let mut _type = &f.get_metadata()._type;
-            while let Type::Symbol(s) = _type {
+            while let Type::Symbol(s) = &**_type {
                 _type = root.types.get(s).unwrap();
             }
 
             let mut ftype = &f.get_metadata()._type;
 
             let mut unknown_arity = false;
-            match _type {
+            match &**_type {
                 // Functions
                 Type::Func(_, _) => {
                     // Get function and args
@@ -835,15 +836,15 @@ fn convert_sexpr(
                         let (n, a) = a;
                         let mut v = convert_sexpr(a, root, func, types);
                         let mut _type = &a.get_metadata()._type;
-                        while let Type::Symbol(s) = _type {
+                        while let Type::Symbol(s) = &**_type {
                             _type = root.types.get(s).unwrap();
                         }
 
-                        while let Type::Symbol(s) = ftype {
+                        while let Type::Symbol(s) = &**ftype {
                             ftype = root.types.get(s).unwrap();
                         }
 
-                        let mut arg_type = &**if let Type::Func(a, b) = &ftype {
+                        let mut arg_type = &**if let Type::Func(a, b) = &**ftype {
                             ftype = b;
                             a
                         } else {
@@ -879,9 +880,9 @@ fn convert_sexpr(
 
                                 Type::Sum(_) => {
                                     // Auto-cast argument if not already done so
-                                    if _type == arg_type {
+                                    if &**_type == arg_type {
                                         v = format!("&{}", &v);
-                                    } else if let Type::Sum(submap) = _type {
+                                    } else if let Type::Sum(submap) = &**_type {
                                         let name = format!("$${}", func.last_reference);
                                         func.last_reference += 1;
                                         func.code.push_str(get_c_type(arg_type, types));
@@ -937,8 +938,8 @@ fn convert_sexpr(
                             }
                         } else if let Type::Sum(_) = arg_type {
                             // Auto-cast argument if not already done so
-                            if _type == arg_type {
-                            } else if let Type::Sum(submap) = _type {
+                            if &**_type == arg_type {
+                            } else if let Type::Sum(submap) = &**_type {
                                 let name = format!("$${}", func.last_reference);
                                 func.last_reference += 1;
                                 func.code.push_str(get_c_type(arg_type, types));
@@ -1042,7 +1043,7 @@ fn convert_sexpr(
 
                             // Save argument
                             let _type = &funcs[n].get_metadata()._type;
-                            let is_enum = matches!(_type, Type::Enum(_));
+                            let is_enum = matches!(**_type, Type::Enum(_));
                             if is_enum {
                                 func.code.push_str(&fstr);
                                 func.code.push_str(".argc++;\n");
@@ -1060,7 +1061,7 @@ fn convert_sexpr(
                                 func.code.push_str(get_c_type(_type, types));
                                 func.code.push(' ');
                                 func.code.push_str(&name);
-                                if let Type::Func(_, _) = _type {
+                                if let Type::Func(_, _) = **_type {
                                     func.code.push_str(" = ");
                                     func.code.push_str(&fstr);
                                 }
@@ -1122,7 +1123,7 @@ fn convert_sexpr(
 
                             if f.get_metadata().tailrec {
                                 for a in func.args.iter().enumerate() {
-                                    if let Type::Enum(_) = a.1 .1 {
+                                    if let Type::Enum(_) = *a.1 .1 {
                                         continue;
                                     }
 
@@ -1133,7 +1134,7 @@ fn convert_sexpr(
                                 }
 
                                 func.code.push_str("$$LOOP$$ = 1;\n");
-                                if let Type::Enum(_) = ftype {
+                                if let Type::Enum(_) = **ftype {
                                 } else {
                                     func.code.push_str(get_c_type(ftype, types));
                                     func.code.push(' ');
@@ -1142,7 +1143,7 @@ fn convert_sexpr(
                                 }
                             } else {
                                 let saved_argc = f.get_metadata().saved_argc.unwrap();
-                                let is_enum = if let Type::Enum(_) = ftype {
+                                let is_enum = if let Type::Enum(_) = **ftype {
                                     true
                                 } else {
                                     false
@@ -1191,7 +1192,7 @@ fn convert_sexpr(
                                     func.code.push_str("((");
 
                                     // Create function pointer
-                                    func.code.push_str(if let Type::Enum(_) = ftype {
+                                    func.code.push_str(if let Type::Enum(_) = **ftype {
                                         "void"
                                     } else {
                                         get_c_type(ftype, types)
@@ -1366,23 +1367,23 @@ fn convert_sexpr(
             if a == "_" {
                 return val;
             }
-            if let Type::Enum(_) = m._type {
+            if let Type::Enum(_) = *m._type {
                 return String::with_capacity(0);
             }
 
-            let _type = if let Type::Symbol(_) = m._type {
+            let _type = if let Type::Symbol(_) = *m._type {
                 types.get(&m._type).unwrap().get_curly_type()
             } else {
                 &m._type
             };
-            let vtype = if let Type::Symbol(_) = v.get_metadata()._type {
+            let vtype = if let Type::Symbol(_) = *v.get_metadata()._type {
                 types.get(&v.get_metadata()._type).unwrap().get_curly_type()
             } else {
                 &v.get_metadata()._type
             };
             let a = &sanitise_symbol(a);
 
-            match _type {
+            match **_type {
                 Type::Sum(_) if _type != vtype => {
                     // Get value and generate code
                     func.code.push_str(get_c_type(&m._type, types));
@@ -1414,7 +1415,7 @@ fn convert_sexpr(
                     func.code.push_str(";\n");
 
                     // Increment reference counter
-                    match m._type {
+                    match *m._type {
                         Type::Func(_, _) => {
                             func.code.push_str(&a);
                             func.code.push_str(".refc++;\n");
@@ -1434,7 +1435,7 @@ fn convert_sexpr(
             let mut name = String::with_capacity(0);
 
             // Declare variable
-            let is_enum = if let Type::Enum(_) = m._type {
+            let is_enum = if let Type::Enum(_) = *m._type {
                 true
             } else {
                 false
@@ -1471,7 +1472,7 @@ fn convert_sexpr(
                 func.code.push_str(";\n");
 
                 // Increment body reference count
-                if let Type::Func(_, _) = m._type {
+                if let Type::Func(_, _) = *m._type {
                     func.code.push_str(&ptr);
                     func.code.push_str("->refc++;\n");
                 }
@@ -1479,7 +1480,7 @@ fn convert_sexpr(
 
             // Decrement assignment reference counts and free if necessary
             for a in a.iter().enumerate() {
-                if let Type::Func(_, _) = a.1.get_metadata()._type {
+                if let Type::Func(_, _) = *a.1.get_metadata()._type {
                     func.code.push_str("refc_func(&");
                     func.code.push_str(&astrs[a.0]);
                     func.code.push_str(");\n");
@@ -1487,7 +1488,7 @@ fn convert_sexpr(
             }
 
             // Decrement body reference count
-            if let Type::Func(_, _) = m._type {
+            if let Type::Func(_, _) = *m._type {
                 func.code.push_str(&ptr);
                 func.code.push_str("->refc--;\n");
             }
@@ -1507,7 +1508,7 @@ fn convert_sexpr(
 
         SExpr::Walrus(m, n, v) => {
             let v = convert_sexpr(v, root, func, types);
-            if let Type::Enum(_) = m._type {
+            if let Type::Enum(_) = *m._type {
                 v
             } else {
                 let a = sanitise_symbol(n);
@@ -1526,7 +1527,7 @@ fn convert_sexpr(
             let value = convert_sexpr(v, root, func, types);
 
             // Create switch statement
-            let name = if let Type::Enum(_) = m._type {
+            let name = if let Type::Enum(_) = *m._type {
                 String::with_capacity(0)
             } else {
                 let name = format!("$${}", func.last_reference);
@@ -1543,31 +1544,31 @@ fn convert_sexpr(
             func.code.push_str(".tag) {\n");
 
             let mut mtype = &m._type;
-            while let Type::Symbol(s) = mtype {
+            while let Type::Symbol(s) = &**mtype {
                 mtype = root.types.get(s).unwrap();
             }
 
             // Create match arms
             for a in a.iter() {
                 let mut _type = &a.0;
-                let varname = if let Type::Tag(s, t) = _type {
-                    _type = &**t;
+                let varname = if let Type::Tag(s, t) = &**_type {
+                    _type = &t;
                     Some(sanitise_symbol(s))
                 } else {
                     None
                 };
 
-                _type = if let Type::Tag(_, t) = _type {
-                    &**t
+                _type = if let Type::Tag(_, t) = &**_type {
+                    t
                 } else {
                     _type
                 };
 
-                while let Type::Symbol(s) = _type {
+                while let Type::Symbol(s) = &**_type {
                     _type = root.types.get(s).unwrap();
                 }
 
-                if let Type::Sum(submap) = _type {
+                if let Type::Sum(submap) = &**_type {
                     for s in submap.0.iter() {
                         func.code.push_str("case ");
                         let _ = func
@@ -1602,7 +1603,7 @@ fn convert_sexpr(
                         func.code.push_str(s);
                         func.code.push_str(" = $$MATCHTEMP$$;\n");
                     }
-                } else if let Type::Enum(_) = _type {
+                } else if let Type::Enum(_) = **_type {
                     let id = _type.sum_hash(&root.types);
                     func.code.push_str("case ");
                     let _ = func.code.write_fmt(format_args!("{}ull: {{\n", id));
@@ -1629,19 +1630,19 @@ fn convert_sexpr(
                 let arm = convert_sexpr(&a.1, root, func, types);
 
                 let mut atype = &a.1.get_metadata()._type;
-                while let Type::Symbol(s) = atype {
+                while let Type::Symbol(s) = &**atype {
                     atype = root.types.get(s).unwrap();
                 }
 
                 if atype == mtype {
-                    if let Type::Enum(_) = atype {
+                    if let Type::Enum(_) = **atype {
                     } else {
                         func.code.push_str(&name);
                         func.code.push_str(" = ");
                         func.code.push_str(&arm);
                         func.code.push_str(";\n");
                     }
-                } else if let Type::Sum(submap) = atype {
+                } else if let Type::Sum(submap) = &**atype {
                     let _type = &m._type;
                     func.code.push_str("switch (");
                     func.code.push_str(&arm);
@@ -1655,7 +1656,7 @@ fn convert_sexpr(
                         func.code.push_str(".tag = ");
                         let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
 
-                        if let Type::Enum(_) = s {
+                        if let Type::Enum(_) = **s {
                         } else {
                             func.code.push_str(&name);
                             func.code.push_str(".values.$$");
@@ -1668,7 +1669,7 @@ fn convert_sexpr(
                         func.code.push_str("break;\n");
                     }
                     func.code.push_str("}\n");
-                } else if let Type::Enum(_) = atype {
+                } else if let Type::Enum(_) = **atype {
                     let id = atype.sum_hash(&root.types);
                     func.code.push_str(&name);
                     func.code.push_str(".tag = ");
@@ -1696,11 +1697,11 @@ fn convert_sexpr(
 
         SExpr::MemberAccess(m, a) => {
             let mut _type = &m._type;
-            while let Type::Symbol(s) = _type {
+            while let Type::Symbol(s) = &**_type {
                 _type = root.types.get(s).unwrap();
             }
 
-            if let Type::Sum(_) = &_type {
+            if let Type::Sum(_) = &**_type {
                 let name = format!("$${}", func.last_reference);
                 func.last_reference += 1;
                 let t = types.get(&m._type).unwrap();
@@ -1728,27 +1729,27 @@ fn convert_sexpr(
 
 // put_fn_wrapper(&mut String, &CFunction) -> ()
 // Puts the wrapper for a given function in the built string.
-fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<Type, CType>) {
-    s.push_str(if let Type::Enum(_) = func.ret_type {
+fn put_fn_wrapper(s: &mut String, mod_name: &str, func: &CFunction, types: &HashMap<TypeRc, CType>) {
+    s.push_str(if let Type::Enum(_) = *func.ret_type {
         "void"
     } else {
-        get_c_type(func.ret_type, types)
+        get_c_type(&*func.ret_type, types)
     });
     s.push(' ');
     s.push_str(&sanitise_symbol(mod_name));
     s.push_str(&func.name);
     s.push_str("$WRAPPER$$");
     s.push_str("(func_t* f) {\nreturn ((");
-    s.push_str(if let Type::Enum(_) = func.ret_type {
+    s.push_str(if let Type::Enum(_) = *func.ret_type {
         "void"
     } else {
-        get_c_type(func.ret_type, types)
+        get_c_type(&*func.ret_type, types)
     });
     s.push_str(" (*) (");
 
     let mut comma = false;
     for a in func.args.iter() {
-        if let Type::Enum(_) = a.1 {
+        if let Type::Enum(_) = *a.1 {
             continue;
         }
 
@@ -1782,12 +1783,12 @@ fn put_fn_declaration(
     s: &mut String,
     mod_name: &str,
     func: &CFunction,
-    types: &HashMap<Type, CType>,
+    types: &HashMap<TypeRc, CType>,
 ) {
-    s.push_str(if let Type::Enum(_) = func.ret_type {
+    s.push_str(if let Type::Enum(_) = *func.ret_type {
         "void"
     } else {
-        get_c_type(func.ret_type, types)
+        get_c_type(&*func.ret_type, types)
     });
     s.push(' ');
     s.push_str(&sanitise_symbol(mod_name));
@@ -1797,12 +1798,12 @@ fn put_fn_declaration(
 
     let mut comma = false;
     for (i, a) in func.args.iter().enumerate() {
-        let mut _type = a.1;
-        if let Type::Symbol(_) = &_type {
-            _type = types.get(&_type).unwrap().get_curly_type();
+        let mut _type = a.1.clone();
+        if let Type::Symbol(_) = *_type {
+            _type = types.get(&_type).unwrap().get_curly_type().clone();
         }
 
-        if let Type::Enum(_) = _type {
+        if let Type::Enum(_) = *_type {
             continue;
         }
 
@@ -1812,9 +1813,9 @@ fn put_fn_declaration(
             comma = true;
         }
 
-        s.push_str(get_c_type(_type, types));
+        s.push_str(get_c_type(&*_type, types));
         s.push(' ');
-        match _type {
+        match *_type {
             Type::Float | Type::Func(_, _) | Type::Sum(_) => s.push_str("*$$"),
             _ => (),
         }
@@ -1853,7 +1854,7 @@ fn put_debug_fn(
     v: &str,
     _type: &Type,
     ir: &IRModule,
-    types: &HashMap<Type, CType>,
+    types: &HashMap<TypeRc, CType>,
     newline: bool,
 ) {
     if newline {
@@ -1976,12 +1977,12 @@ fn put_debug_fn(
 // Collects user defined types into a string containing all type definitions.
 fn collect_types(
     ir: &IRModule,
-    types: &mut HashMap<Type, CType>,
+    types: &mut HashMap<TypeRc, CType>,
     types_string: &mut String,
     last_reference: &mut usize,
 ) {
     // Iterate over every type
-    for _type in ir.types.iter().filter(|v| !matches!(v.1, Type::Symbol(_))) {
+    for _type in ir.types.iter().filter(|v| !matches!(**v.1, Type::Symbol(_))) {
         // Check if the type was actually already added
         // This is necessary if you define types like so:
         // type A = Int
@@ -2003,53 +2004,53 @@ fn collect_types(
             continue;
         }
 
-        match _type.1 {
+        match &**_type.1 {
             // Primitives get mapped to old type
             Type::Int => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("int_t"), _type.1.clone()),
                 );
             }
 
             Type::Float => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("float_t"), _type.1.clone()),
                 );
             }
 
             Type::Word => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("word_t"), _type.1.clone()),
                 );
             }
 
             Type::Char => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("char"), _type.1.clone()),
                 );
             }
 
             Type::Bool => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("bool"), _type.1.clone()),
                 );
             }
 
             Type::Func(_, _) => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("func_t"), _type.1.clone()),
                 );
             }
 
             Type::Pointer(_) => {
                 types.insert(
-                    Type::Symbol(_type.0.clone()),
+                    Rc::new(Type::Symbol(_type.0.clone())),
                     CType::Primitive(String::from("void*"), _type.1.clone()),
                 );
             }
@@ -2062,14 +2063,14 @@ fn collect_types(
                 ));
 
                 let mut field_ref = 0;
-                let mut iter: Vec<&Type> = v.0.iter().collect();
+                let mut iter: Vec<&TypeRc> = v.0.iter().collect();
                 while let Some(t) = iter.get(field_ref) {
                     let mut t = *t;
-                    while let Type::Symbol(s) = t {
+                    while let Type::Symbol(s) = &**t {
                         t = ir.types.get(s).unwrap();
                     }
 
-                    match t {
+                    match &**t {
                         Type::Int => types_string.push_str("        int_t"),
                         Type::Float => types_string.push_str("        float_t"),
                         Type::Bool => types_string.push_str("        bool"),
@@ -2105,11 +2106,11 @@ fn collect_types(
                                 types_string.push_str("        struct {\n            uint64_t tag;\n            union {\n");
 
                                 for mut t in v.0.iter() {
-                                    while let Type::Symbol(s) = t {
+                                    while let Type::Symbol(s) = &**t {
                                         t = ir.types.get(s).unwrap();
                                     }
 
-                                    match t {
+                                    match &**t {
                                         Type::Int => types_string.push_str("                int_t"),
                                         Type::Float => {
                                             types_string.push_str("                float_t")
@@ -2149,7 +2150,7 @@ fn collect_types(
                 let ct = CType::Sum(format!("struct $${}", last_reference), _type.1.clone());
                 types_string.push_str("    } values;\n};\n\n");
                 types.insert(_type.1.clone(), ct.clone());
-                types.insert(Type::Symbol(_type.0.clone()), ct);
+                types.insert(Rc::new(Type::Symbol(_type.0.clone())), ct);
                 *last_reference += 1;
             }
 
@@ -2160,18 +2161,18 @@ fn collect_types(
     // Do symbols
     for _type in ir.types.iter() {
         // Symbols get mapped to last type in chain
-        if let Type::Symbol(_s) = _type.1 {
+        if let Type::Symbol(_s) = &**_type.1 {
             let mut s = _s;
             let __type = loop {
                 let _type = ir.types.get(s).unwrap();
-                match _type {
+                match &**_type {
                     Type::Symbol(v) => s = v,
                     _ => break _type,
                 }
             };
 
             types.insert(
-                Type::Symbol(_type.0.clone()),
+                Rc::new(Type::Symbol(_type.0.clone())),
                 types.get(__type).unwrap().clone(),
             );
         }
@@ -2183,13 +2184,13 @@ fn collect_types(
 // function).
 fn collect_type_functions(
     ir: &IRModule,
-    types: &HashMap<Type, CType>,
+    types: &HashMap<TypeRc, CType>,
     header: &mut String,
     bodies: &mut String,
 ) {
     'a: for t in types.iter() {
         // Find symbols
-        if let Type::Symbol(tname) = t.0 {
+        if let Type::Symbol(tname) = &**t.0 {
             // Skip if the first character is a digit
             if "0123456789".contains(tname.chars().next().unwrap()) {
                 continue;
@@ -2197,7 +2198,7 @@ fn collect_type_functions(
 
             // Get type
             let mut t = t;
-            while let Type::Symbol(s) = t.0 {
+            while let Type::Symbol(s) = &**t.0 {
                 if let Some(v) = ir.types.get(s) {
                     t.0 = v;
                 } else {
@@ -2206,26 +2207,26 @@ fn collect_type_functions(
             }
 
             // Find sum types
-            if let Type::Sum(f) = t.0 {
+            if let Type::Sum(f) = &**t.0 {
                 for v in f.0.iter() {
                     // Find tags
-                    if let Type::Tag(fname, t2) = v {
+                    if let Type::Tag(fname, t2) = &**v {
                         let sanitised = sanitise_symbol(&format!("{}::{}", tname, fname));
                         let aname = String::from("arg");
                         let cf = CFunction {
                             name: sanitised,
-                            args: vec![(&aname, &**t2)],
-                            ret_type: t.0,
+                            args: vec![(&aname, t2.clone())],
+                            ret_type: t.0.clone(),
                             code: String::with_capacity(0),
                             last_reference: 0,
                         };
 
                         put_fn_declaration(header, &ir.name, &cf, types);
                         header.push_str(";\n\n");
-                        header.push_str(if let Type::Enum(_) = cf.ret_type {
+                        header.push_str(if let Type::Enum(_) = *cf.ret_type {
                             "void"
                         } else {
-                            get_c_type(cf.ret_type, types)
+                            get_c_type(&*cf.ret_type, types)
                         });
                         header.push(' ');
                         header.push_str(&sanitise_symbol(&ir.name));
@@ -2238,7 +2239,7 @@ fn collect_type_functions(
 
                         // Build function
                         bodies.push_str(" {\n");
-                        fix_argument(&(&aname, &**t2), ir, bodies, types, &mut last_reference);
+                        fix_argument(&(&aname, t2.clone()), ir, bodies, types, &mut last_reference);
                         bodies.push_str(get_c_type(t.0, types));
                         bodies.push_str(" result;\nresult.tag = ");
                         let id = v.sum_hash(&ir.types);
@@ -2285,13 +2286,13 @@ fn collect_type_functions(
 // fix_argument(&(String, &Type), &IRModule, &mut String, &HashMap<Type, CType>, &mut usize) -> ()
 // Fixes an argument where necessary.
 fn fix_argument(
-    a: &(&String, &Type),
+    a: &(&String, TypeRc),
     ir: &IRModule,
     code: &mut String,
-    types: &HashMap<Type, CType>,
+    types: &HashMap<TypeRc, CType>,
     last_reference: &mut usize,
 ) {
-    let mut _type = a.1;
+    let mut _type = &*a.1;
     while let Type::Symbol(s) = _type {
         _type = ir.types.get(s).unwrap();
     }
@@ -2352,7 +2353,7 @@ fn fix_argument(
 fn convert_module_to_c(
     module: &IRModule,
     funcs: &mut HashMap<String, CFunction>,
-    types: &mut HashMap<Type, CType>,
+    types: &mut HashMap<TypeRc, CType>,
 ) -> String {
     // Create and populate functions
     for f in module.funcs.iter() {
@@ -2364,36 +2365,36 @@ fn convert_module_to_c(
 
         // Fix doubles and functions
         for a in cf.args.iter() {
-            fix_argument(a, module, &mut cf.code, &types, &mut cf.last_reference);
+            fix_argument(a, module, &mut cf.code, types, &mut cf.last_reference);
         }
 
         if f.1.body.get_metadata().tailrec {
             for a in cf.args.iter() {
-                if let Type::Enum(_) = a.1 {
+                if let Type::Enum(_) = *a.1 {
                     continue;
                 }
 
-                cf.code.push_str(get_c_type(a.1, &types));
+                cf.code.push_str(get_c_type(&*a.1, types));
                 cf.code.push(' ');
                 cf.code.push_str(&sanitise_symbol(a.0));
                 cf.code.push_str("$PARAM$$;\n");
             }
 
             cf.code.push_str("bool $$LOOP$$ = 1;\n");
-            if let Type::Enum(_) = f.1.body.get_metadata()._type {
+            if let Type::Enum(_) = *f.1.body.get_metadata()._type {
             } else {
                 cf.code
-                    .push_str(get_c_type(&f.1.body.get_metadata()._type, &types));
+                    .push_str(get_c_type(&f.1.body.get_metadata()._type, types));
                 cf.code.push_str(" $$RET$$;\n");
             }
             cf.code.push_str("while ($$LOOP$$) {\n$$LOOP$$ = 0;\n");
         }
 
-        let last = convert_sexpr(&f.1.body, module, cf, &types);
+        let last = convert_sexpr(&f.1.body, module, cf, types);
 
         if f.1.body.get_metadata().tailrec {
             for a in cf.args.iter() {
-                if let Type::Enum(_) = a.1 {
+                if let Type::Enum(_) = *a.1 {
                     continue;
                 }
 
@@ -2404,7 +2405,7 @@ fn convert_module_to_c(
                 cf.code.push_str(";\n");
             }
 
-            if let Type::Enum(_) = f.1.body.get_metadata()._type {
+            if let Type::Enum(_) = *f.1.body.get_metadata()._type {
             } else {
                 cf.code.push_str("$$RET$$ = ");
                 cf.code.push_str(&last);
@@ -2415,7 +2416,7 @@ fn convert_module_to_c(
 
         // Deallocate functions
         for a in cf.args.iter() {
-            if let Type::Func(_, _) = a.1 {
+            if let Type::Func(_, _) = *a.1 {
                 // Delete
                 cf.code.push_str("refc_func(&");
                 cf.code.push_str(&sanitise_symbol(&a.0));
@@ -2424,7 +2425,7 @@ fn convert_module_to_c(
         }
 
         // Return statement
-        if let Type::Enum(_) = f.1.body.get_metadata()._type {
+        if let Type::Enum(_) = *f.1.body.get_metadata()._type {
         } else {
             cf.code.push_str("return ");
             if f.1.body.get_metadata().tailrec {
@@ -2458,7 +2459,7 @@ fn convert_module_to_c(
     // Declare getter functions
     for s in module.sexprs.iter() {
         if let SExpr::Assign(m, n, v) = s {
-            code_string.push_str(if let Type::Enum(_) = m._type {
+            code_string.push_str(if let Type::Enum(_) = *m._type {
                 "void"
             } else {
                 get_c_type(&v.get_metadata()._type, types)
@@ -2495,7 +2496,7 @@ fn convert_module_to_c(
                 let v = &v.body;
 
                 // Create getter
-                let is_enum = matches!(m._type, Type::Enum(_));
+                let is_enum = matches!(*m._type, Type::Enum(_));
                 let sanitised = sanitise_symbol(n);
                 let mod_name = sanitise_symbol(&module.name);
 
@@ -2538,7 +2539,7 @@ fn convert_module_to_c(
                 let mut func = CFunction {
                     name: String::with_capacity(0),
                     args: Vec::with_capacity(0),
-                    ret_type: &Type::Unknown,
+                    ret_type: Rc::new(Type::Unknown),
                     code: code_string,
                     last_reference: 0,
                 };
@@ -2574,16 +2575,16 @@ fn convert_module_to_c(
     if module.name == "Main" && module.funcs.contains_key("main") {
         code_string.push_str("int_t main(void) {\n    ");
         let _type = &module.funcs.get("main").unwrap().body.get_metadata()._type;
-        if *_type == Type::Int {
+        if **_type == Type::Int {
             code_string.push_str("return Main$main$$GET$$();\n");
-        } else if let Type::Enum(v) = _type {
+        } else if let Type::Enum(v) = &**_type {
             code_string.push_str("Main$main$$GET$$();\n    ");
             if v == "Ok" {
                 code_string.push_str("return 0;\n");
             } else {
                 code_string.push_str("return 1;\n");
             }
-        } else if let Type::Sum(v) = _type {
+        } else if let Type::Sum(v) = &**_type {
             if v.0.contains(&Type::Enum(String::from("Ok"))) {
                 code_string.push_str(get_c_type(_type, types));
                 code_string.push_str(" v = Main$main$$GET$$();\n    if (v.tag == ");
@@ -2609,7 +2610,7 @@ fn convert_module_to_c(
 fn generate_header_files(
     module: &IRModule,
     funcs: &HashMap<String, CFunction>,
-    types: &HashMap<Type, CType>,
+    types: &HashMap<TypeRc, CType>,
 ) -> (String, String) {
     // Include Curly stuff
     let mut filename = sanitise_symbol(&module.name);
@@ -2625,10 +2626,10 @@ fn generate_header_files(
             if !f.args.is_empty() {
                 put_fn_declaration(&mut header, &module.name, f, types);
                 header.push_str(";\n\n");
-                header.push_str(if let Type::Enum(_) = f.ret_type {
+                header.push_str(if let Type::Enum(_) = *f.ret_type {
                     "void"
                 } else {
-                    get_c_type(f.ret_type, types)
+                    get_c_type(&*f.ret_type, types)
                 });
                 header.push(' ');
                 header.push_str(&sanitise_symbol(&module.name));
@@ -2643,7 +2644,7 @@ fn generate_header_files(
             let mut f = CFunction {
                 name: sanitise_symbol(&export.0),
                 args: vec![],
-                ret_type: &v.0,
+                ret_type: v.0.clone(),
                 code: String::with_capacity(0),
                 last_reference: 0,
             };
@@ -2655,9 +2656,9 @@ fn generate_header_files(
 
             for s in strs.iter() {
                 let t = f.ret_type;
-                if let Type::Func(l, r) = t {
-                    f.args.push((s, &**l));
-                    f.ret_type = &**r;
+                if let Type::Func(l, r) = &*t {
+                    f.args.push((s, l.clone()));
+                    f.ret_type = r.clone();
                 } else {
                     unreachable!("always a function");
                 }
@@ -2666,10 +2667,10 @@ fn generate_header_files(
             if !f.args.is_empty() {
                 put_fn_declaration(&mut header, &module.name, &f, types);
                 header.push_str(";\n\n");
-                header.push_str(if let Type::Enum(_) = f.ret_type {
+                header.push_str(if let Type::Enum(_) = *f.ret_type {
                     "void"
                 } else {
-                    get_c_type(f.ret_type, types)
+                    get_c_type(&*f.ret_type, types)
                 });
                 header.push(' ');
                 header.push_str(&sanitise_symbol(&module.name));
@@ -2685,7 +2686,7 @@ fn generate_header_files(
 
         // Put getter
         if add_getter {
-            header.push_str(if let Type::Enum(_) = export.1 .1 {
+            header.push_str(if let Type::Enum(_) = *export.1 .1 {
                 "void"
             } else {
                 get_c_type(&export.1 .1, types)
@@ -2733,10 +2734,10 @@ pub fn convert_ir_to_c(ir: &IR) -> Vec<(String, String)> {
                     .1
                     .captured_names
                     .iter()
-                    .map(|v| (v, f.1.captured.get(v).unwrap()))
-                    .chain(f.1.args.iter().map(|v| (&v.0, &v.1)))
+                    .map(|v| (v, f.1.captured.get(v).unwrap().clone()))
+                    .chain(f.1.args.iter().map(|v| (&v.0, v.1.clone())))
                     .collect(),
-                ret_type: &f.1.body.get_metadata()._type,
+                ret_type: f.1.body.get_metadata()._type.clone(),
                 code: String::new(),
                 last_reference: 0,
             };

@@ -2,7 +2,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
+use std::rc::Rc;
 
 use super::ir::Location;
 use super::parser::AST;
@@ -30,12 +30,14 @@ impl<T: Hash + Eq> Hash for HashSetWrapper<T> {
     }
 }
 
+pub type TypeRc = Rc<Type>;
+
 // Represents a type.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Type {
     Error,
     UndeclaredTypeError(Location),
-    DuplicateTypeError(Location, Location, Box<Type>),
+    DuplicateTypeError(Location, Location, TypeRc),
     Unknown,
     Int,
     Float,
@@ -43,11 +45,11 @@ pub enum Type {
     Word,
     Char,
     Symbol(String),
-    Func(Box<Type>, Box<Type>),
-    Sum(HashSetWrapper<Type>),
+    Func(TypeRc, TypeRc),
+    Sum(HashSetWrapper<TypeRc>),
     Enum(String),
     Pointer(String),
-    Tag(String, Box<Type>),
+    Tag(String, TypeRc),
 }
 
 impl Display for Type {
@@ -113,7 +115,7 @@ impl Display for Type {
                         bar = true;
                     }
 
-                    if let Type::Func(_, _) = field {
+                    if let Type::Func(_, _) = **field {
                         write!(f, "({})", field)?;
                     } else {
                         write!(f, "{}", field)?;
@@ -131,9 +133,9 @@ impl Display for Type {
 }
 
 impl Type {
-    // sum_hash(&self, &HashMap<String, Type>) -> u64
+    // sum_hash(&self, &HashMap<String, TypeRc>) -> u64
     // Returns the hash value used by codegenned sum/union types.
-    pub fn sum_hash(&self, types: &HashMap<String, Type>) -> u64 {
+    pub fn sum_hash(&self, types: &HashMap<String, TypeRc>) -> u64 {
         match self {
             Type::Symbol(_) => {
                 let mut t = self;
@@ -154,7 +156,7 @@ impl Type {
 
     // is_ffi_compatible(&self, &HashMap<String, Type>) -> bool
     // Returns true if function is ffi compatible.
-    pub fn is_ffi_compatible(&self, types: &HashMap<String, Type>) -> bool {
+    pub fn is_ffi_compatible(&self, types: &HashMap<String, TypeRc>) -> bool {
         match self {
             Type::Int => true,
             Type::Float => true,
@@ -171,7 +173,7 @@ impl Type {
 
     // equals(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if the two types are equal, accounting for type aliases.
-    pub fn equals(&self, other: &Type, types: &HashMap<String, Type>) -> bool {
+    pub fn equals(&self, other: &Type, types: &HashMap<String, TypeRc>) -> bool {
         let mut _type = self;
         while let Type::Symbol(s) = _type {
             if let Some(v) = types.get(s) {
@@ -229,7 +231,7 @@ impl Type {
 
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
-    pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, Type>) -> bool {
+    pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, TypeRc>) -> bool {
         let mut _type = self;
         while let Type::Symbol(s) = _type {
             if let Some(t) = types.get(s) {
@@ -337,7 +339,7 @@ impl Type {
 
 // convert_ast_to_type(AST, &IR) -> Type
 // Converts an ast node into a type.
-pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Type>) -> Type {
+pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
     match ast {
         // Symbols
         AST::Symbol(_, v) => {
@@ -376,14 +378,14 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
         AST::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
             let s = r.get_span();
-            let v = convert_ast_to_type(*r, filename, types);
+            let v = convert_ast_to_type(*r, filename);
             if let Type::Sum(v) = v {
                 for v in v.0 {
                     if let Some(s2) = fields.remove(&v) {
                         return Type::DuplicateTypeError(
                             Location::new(s, filename),
                             Location::new(s2, filename),
-                            Box::new(v),
+                            v,
                         );
                     }
 
@@ -394,11 +396,11 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                     return Type::DuplicateTypeError(
                         Location::new(s, filename),
                         Location::new(s2, filename),
-                        Box::new(v),
+                        Rc::new(v),
                     );
                 }
 
-                fields.insert(v, s);
+                fields.insert(Rc::new(v), s);
             }
             let mut acc = *l;
 
@@ -406,14 +408,14 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                 match acc {
                     AST::Infix(_, op, l, r) if op == "|" => {
                         let s = r.get_span().clone();
-                        let v = convert_ast_to_type(*r, filename, types);
+                        let v = convert_ast_to_type(*r, filename);
                         if let Type::Sum(v) = v {
                             for v in v.0 {
                                 if let Some(s2) = fields.remove(&v) {
                                     return Type::DuplicateTypeError(
                                         Location::new(s, filename),
                                         Location::new(s2, filename),
-                                        Box::new(v),
+                                        v,
                                     );
                                 }
 
@@ -424,11 +426,11 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                                 return Type::DuplicateTypeError(
                                     Location::new(s, filename),
                                     Location::new(s2, filename),
-                                    Box::new(v),
+                                    Rc::new(v),
                                 );
                             }
 
-                            fields.insert(v, s);
+                            fields.insert(Rc::new(v), s);
                         }
 
                         acc = *l;
@@ -439,14 +441,14 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
             }
 
             let s = acc.get_span();
-            let v = convert_ast_to_type(acc, filename, types);
+            let v = convert_ast_to_type(acc, filename);
             if let Type::Sum(v) = v {
                 for v in v.0 {
-                    if let Some(s2) = fields.remove(&v) {
+                    if let Some(s2) = fields.remove(&*v) {
                         return Type::DuplicateTypeError(
                             Location::new(s, filename),
                             Location::new(s2, filename),
-                            Box::new(v),
+                            v,
                         );
                     }
 
@@ -457,45 +459,45 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
                     return Type::DuplicateTypeError(
                         Location::new(s, filename),
                         Location::new(s2, filename),
-                        Box::new(v),
+                        Rc::new(v),
                     );
                 }
 
-                fields.insert(v, s);
+                fields.insert(Rc::new(v), s);
             }
 
             for f in fields.iter() {
-                if let Type::UndeclaredTypeError(s) = f.0 {
+                if let Type::UndeclaredTypeError(s) = &**f.0 {
                     return Type::UndeclaredTypeError(s.clone());
                 }
             }
 
             if fields.len() == 1 {
-                fields.into_iter().next().unwrap().0
+                (*fields.into_iter().next().unwrap().0).clone()
             } else {
-                Type::Sum(HashSetWrapper(HashSet::from_iter(
-                    fields.into_iter().map(|v| v.0),
-                )))
+                Type::Sum(HashSetWrapper(
+                    fields.into_iter().map(|v| v.0).collect()
+                ))
             }
         }
 
         // Function types
         AST::Infix(_, op, l, r) if op == "->" => {
-            let l = convert_ast_to_type(*l, filename, types);
-            let r = convert_ast_to_type(*r, filename, types);
+            let l = convert_ast_to_type(*l, filename);
+            let r = convert_ast_to_type(*r, filename);
 
             if let Type::UndeclaredTypeError(s) = l {
                 Type::UndeclaredTypeError(s)
             } else if let Type::UndeclaredTypeError(s) = r {
                 Type::UndeclaredTypeError(s)
             } else {
-                Type::Func(Box::new(l), Box::new(r))
+                Type::Func(Rc::new(l), Rc::new(r))
             }
         }
 
         AST::Infix(_, op, l, r) if op == ":" => {
             let s = r.get_span();
-            let r = convert_ast_to_type(*r, filename, types);
+            let r = convert_ast_to_type(*r, filename);
 
             if let Type::UndeclaredTypeError(s) = r {
                 Type::UndeclaredTypeError(s)
@@ -504,7 +506,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str, types: &HashMap<String, Typ
             } else if let Type::Enum(_) = r {
                 Type::UndeclaredTypeError(Location::new(s, filename))
             } else if let AST::Symbol(_, s) = *l {
-                Type::Tag(s, Box::new(r))
+                Type::Tag(s, Rc::new(r))
             } else {
                 unreachable!("Tag always has symbol as left operand");
             }

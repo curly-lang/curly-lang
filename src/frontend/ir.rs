@@ -1,11 +1,12 @@
 use logos::Span;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::parser::AST;
 use super::scopes::Scope;
 use super::types;
-use super::types::Type;
+use super::types::{Type, TypeRc};
 
 // Represents a location
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -37,11 +38,11 @@ impl Location {
 // Represents an error in IR
 pub enum IRError {
     InvalidType(Location),
-    DuplicateTypeInUnion(Location, Location, Type),
+    DuplicateTypeInUnion(Location, Location, TypeRc),
     DoubleExport(Location, Location, String),
     RedefineImportAlias(Location, Location, String),
     UnsupportedAnnotation(Location, String),
-    InvalidFFIType(Location, Type),
+    InvalidFFIType(Location, TypeRc),
     DuplicateModule(String, DuplicateModuleInfo),
 }
 
@@ -87,7 +88,7 @@ pub struct SExprMetadata {
     pub loc: Location,
     pub loc2: Location,
     pub origin: String,
-    pub _type: Type,
+    pub _type: TypeRc,
     pub arity: usize,
     pub saved_argc: Option<usize>,
     pub tailrec: bool,
@@ -102,7 +103,7 @@ impl SExprMetadata {
             loc: Location::empty(),
             loc2: Location::empty(),
             origin: String::with_capacity(0),
-            _type: Type::Error,
+            _type: Rc::new(Type::Error),
             arity: 0,
             saved_argc: None,
             tailrec: false,
@@ -181,7 +182,7 @@ pub enum SExpr {
     Walrus(SExprMetadata, String, Box<SExpr>),
 
     // Match expressions
-    Match(SExprMetadata, Box<SExpr>, Vec<(Type, SExpr, Location)>),
+    Match(SExprMetadata, Box<SExpr>, Vec<(TypeRc, SExpr, Location)>),
 
     // Member access
     MemberAccess(SExprMetadata, Vec<String>),
@@ -260,8 +261,8 @@ impl SExpr {
 pub struct IRFunction {
     pub loc: Location,
     pub name: String,
-    pub args: Vec<(String, Type)>,
-    pub captured: HashMap<String, Type>,
+    pub args: Vec<(String, TypeRc)>,
+    pub captured: HashMap<String, TypeRc>,
     pub captured_names: Vec<String>,
     pub body: SExpr,
     pub global: bool,
@@ -275,15 +276,15 @@ pub struct IRImport {
     pub name: String,
     pub loc: Location,
     pub qualified: bool,
-    pub imports: HashMap<String, (Type, usize, bool)>,
+    pub imports: HashMap<String, (TypeRc, usize, bool)>,
 }
 
 #[derive(Debug)]
 pub struct IRExtern {
     pub loc: Location,
     pub extern_name: String,
-    pub arg_types: Vec<Type>,
-    pub ret_type: Type,
+    pub arg_types: Vec<TypeRc>,
+    pub ret_type: TypeRc,
     pub impure: bool,
 }
 
@@ -295,11 +296,11 @@ pub struct IRModule {
     pub contents: String,
     pub lib: bool,
     pub imports: HashMap<String, IRImport>,
-    pub exports: HashMap<String, (Location, Type)>,
+    pub exports: HashMap<String, (Location, TypeRc)>,
     pub externals: HashMap<String, IRExtern>,
     pub scope: Scope,
     pub funcs: HashMap<String, IRFunction>,
-    pub types: HashMap<String, Type>,
+    pub types: HashMap<String, TypeRc>,
     pub sexprs: Vec<SExpr>,
 }
 
@@ -338,7 +339,7 @@ fn convert_node(
     funcs: &mut HashMap<String, IRFunction>,
     global: bool,
     seen_funcs: &mut HashMap<String, usize>,
-    types: &mut HashMap<String, Type>,
+    types: &mut HashMap<String, TypeRc>,
 ) -> SExpr {
     match ast {
         AST::Empty => unreachable!("never empty"),
@@ -349,7 +350,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Int,
+                _type: Rc::new(Type::Int),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -364,7 +365,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Float,
+                _type: Rc::new(Type::Float),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -379,7 +380,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Word,
+                _type: Rc::new(Type::Word),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -394,7 +395,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Char,
+                _type: Rc::new(Type::Char),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -408,7 +409,7 @@ fn convert_node(
             loc: Location::new(span, filename),
             loc2: Location::empty(),
             origin: String::with_capacity(0),
-            _type: Type::Bool,
+            _type: Rc::new(Type::Bool),
             arity: 0,
             saved_argc: None,
             tailrec: false,
@@ -420,7 +421,7 @@ fn convert_node(
             loc: Location::new(span, filename),
             loc2: Location::empty(),
             origin: String::with_capacity(0),
-            _type: Type::Bool,
+            _type: Rc::new(Type::Bool),
             arity: 0,
             saved_argc: None,
             tailrec: false,
@@ -432,7 +433,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -449,7 +450,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -464,7 +465,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Enum(e.clone()),
+                _type: Rc::new(Type::Enum(e.clone())),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -491,7 +492,7 @@ fn convert_node(
                 SExprMetadata {
                     loc: loc.clone(),
                     loc2: Location::empty(),
-                    _type: Type::Error,
+                    _type: Rc::new(Type::Error),
                     origin: String::with_capacity(0),
                     arity: 0,
                     saved_argc: None,
@@ -502,7 +503,7 @@ fn convert_node(
                     SExprMetadata {
                         loc: loc.clone(),
                         loc2: Location::empty(),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         origin: String::with_capacity(0),
                         arity: 0,
                         saved_argc: None,
@@ -513,7 +514,7 @@ fn convert_node(
                         SExprMetadata {
                             loc: loc.clone(),
                             loc2: Location::empty(),
-                            _type: Type::Error,
+                            _type: Rc::new(Type::Error),
                             origin: String::with_capacity(0),
                             arity: 0,
                             saved_argc: None,
@@ -526,7 +527,7 @@ fn convert_node(
                         SExprMetadata {
                             loc: loc.clone(),
                             loc2: Location::empty(),
-                            _type: Type::Char,
+                            _type: Rc::new(Type::Char),
                             origin: String::with_capacity(0),
                             arity: 0,
                             saved_argc: None,
@@ -544,7 +545,7 @@ fn convert_node(
                     SExprMetadata {
                         loc: loc.clone(),
                         loc2: Location::empty(),
-                        _type: Type::Char,
+                        _type: Rc::new(Type::Char),
                         origin: String::with_capacity(0),
                         arity: 0,
                         saved_argc: None,
@@ -562,7 +563,7 @@ fn convert_node(
                         SExprMetadata {
                             loc: loc.clone(),
                             loc2: Location::empty(),
-                            _type: Type::Error,
+                            _type: Rc::new(Type::Error),
                             origin: String::with_capacity(0),
                             arity: 0,
                             saved_argc: None,
@@ -573,7 +574,7 @@ fn convert_node(
                             SExprMetadata {
                                 loc: loc.clone(),
                                 loc2: Location::empty(),
-                                _type: Type::Error,
+                                _type: Rc::new(Type::Error),
                                 origin: String::with_capacity(0),
                                 arity: 0,
                                 saved_argc: None,
@@ -584,7 +585,7 @@ fn convert_node(
                                 SExprMetadata {
                                     loc: loc.clone(),
                                     loc2: Location::empty(),
-                                    _type: Type::Error,
+                                    _type: Rc::new(Type::Error),
                                     origin: String::with_capacity(0),
                                     arity: 0,
                                     saved_argc: None,
@@ -597,7 +598,7 @@ fn convert_node(
                                 SExprMetadata {
                                     loc: loc.clone(),
                                     loc2: Location::empty(),
-                                    _type: Type::Char,
+                                    _type: Rc::new(Type::Char),
                                     origin: String::with_capacity(0),
                                     arity: 0,
                                     saved_argc: None,
@@ -627,7 +628,7 @@ fn convert_node(
                     loc: Location::new(span, filename),
                     loc2: Location::empty(),
                     origin: String::with_capacity(0),
-                    _type: Type::Error,
+                    _type: Rc::new(Type::Error),
                     arity: 0,
                     saved_argc: None,
                     tailrec: false,
@@ -647,7 +648,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -662,7 +663,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -697,7 +698,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -711,7 +712,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -726,7 +727,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -764,7 +765,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -782,7 +783,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::new(_type.get_span(), filename),
                 origin: String::with_capacity(0),
-                _type: types::convert_ast_to_type(*_type, filename, types),
+                _type: Rc::new(types::convert_ast_to_type(*_type, filename)),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -799,7 +800,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -822,7 +823,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -865,7 +866,7 @@ fn convert_node(
                         loc: Location::new(span.clone(), filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -877,7 +878,7 @@ fn convert_node(
                             loc: Location::new(span, filename),
                             loc2: Location::empty(),
                             origin: String::with_capacity(0),
-                            _type: Type::Error,
+                            _type: Rc::new(Type::Error),
                             arity: 0,
                             saved_argc: None,
                             tailrec: false,
@@ -892,7 +893,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::empty(),
                         origin: String::with_capacity(0),
-                        _type: Type::Error,
+                        _type: Rc::new(Type::Error),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -933,7 +934,7 @@ fn convert_node(
                 );
 
                 let ts = _type.get_span();
-                let _type = types::convert_ast_to_type(*_type, filename, types);
+                let _type = Rc::new(types::convert_ast_to_type(*_type, filename));
                 SExpr::Assign(
                     SExprMetadata {
                         loc: Location::new(span.clone(), filename),
@@ -966,7 +967,7 @@ fn convert_node(
                         loc: Location::new(span, filename),
                         loc2: Location::new(_type.get_span(), filename),
                         origin: String::with_capacity(0),
-                        _type: types::convert_ast_to_type(*_type, filename, types),
+                        _type: Rc::new(types::convert_ast_to_type(*_type, filename)),
                         arity: 0,
                         saved_argc: None,
                         tailrec: false,
@@ -980,7 +981,7 @@ fn convert_node(
 
         AST::AssignType(span, name, _type) => {
             let span2 = _type.get_span();
-            let _type = types::convert_ast_to_type(*_type, filename, types);
+            let _type = Rc::new(types::convert_ast_to_type(*_type, filename));
             types.insert(name.clone(), _type.clone());
             SExpr::TypeAlias(
                 SExprMetadata {
@@ -1015,7 +1016,7 @@ fn convert_node(
                     loc: Location::new(span.clone(), filename),
                     loc2: Location::empty(),
                     origin: String::with_capacity(0),
-                    _type: Type::Error,
+                    _type: Rc::new(Type::Error),
                     arity,
                     saved_argc: None,
                     tailrec: false,
@@ -1036,7 +1037,7 @@ fn convert_node(
                 name: name.clone(),
                 args: args
                     .into_iter()
-                    .map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types)))
+                    .map(|v| (v.0, Rc::new(types::convert_ast_to_type(v.1, filename))))
                     .collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
@@ -1047,12 +1048,12 @@ fn convert_node(
                 impure: false,
             };
 
-            let mut _type = Type::Error;
+            let mut _type = Rc::new(Type::Error);
             for a in func.args.iter() {
-                if let Type::UndeclaredTypeError(_) = a.1 {
+                if let Type::UndeclaredTypeError(_) = *a.1 {
                     _type = a.1.clone();
                     break;
-                } else if let Type::DuplicateTypeError(_, _, _) = a.1 {
+                } else if let Type::DuplicateTypeError(_, _, _) = *a.1 {
                     _type = a.1.clone();
                     break;
                 }
@@ -1090,7 +1091,7 @@ fn convert_node(
                     loc: Location::new(span.clone(), filename),
                     loc2: Location::empty(),
                     origin: String::with_capacity(0),
-                    _type: Type::Error,
+                    _type: Rc::new(Type::Error),
                     arity,
                     saved_argc: None,
                     tailrec: false,
@@ -1105,7 +1106,7 @@ fn convert_node(
                 name: String::with_capacity(0),
                 args: args
                     .into_iter()
-                    .map(|v| (v.0, types::convert_ast_to_type(v.1, filename, types)))
+                    .map(|v| (v.0, Rc::new(types::convert_ast_to_type(v.1, filename))))
                     .collect(),
                 captured: HashMap::with_capacity(0),
                 captured_names: Vec::with_capacity(0),
@@ -1116,12 +1117,12 @@ fn convert_node(
                 impure: false,
             };
 
-            let mut _type = Type::Error;
+            let mut _type = Rc::new(Type::Error);
             for a in func.args.iter() {
-                if let Type::UndeclaredTypeError(_) = a.1 {
+                if let Type::UndeclaredTypeError(_) = *a.1 {
                     _type = a.1.clone();
                     break;
-                } else if let Type::DuplicateTypeError(_, _, _) = a.1 {
+                } else if let Type::DuplicateTypeError(_, _, _) = *a.1 {
                     _type = a.1.clone();
                     break;
                 }
@@ -1139,7 +1140,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -1156,7 +1157,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -1171,7 +1172,7 @@ fn convert_node(
                 loc: Location::new(span, filename),
                 loc2: Location::empty(),
                 origin: String::with_capacity(0),
-                _type: Type::Error,
+                _type: Rc::new(Type::Error),
                 arity: 0,
                 saved_argc: None,
                 tailrec: false,
@@ -1182,7 +1183,7 @@ fn convert_node(
                 .map(|a| {
                     let span2 = a.0.get_span().clone();
                     (
-                        types::convert_ast_to_type(a.0, filename, types),
+                        Rc::new(types::convert_ast_to_type(a.0, filename)),
                         convert_node(a.1, filename, funcs, global, seen_funcs, types),
                         Location::new(span2, filename),
                     )
@@ -1197,7 +1198,7 @@ fn convert_node(
 fn extract_types_to_ir(asts: &[AST], module: &mut IRModule) {
     for ast in asts {
         if let AST::AssignType(_, v, _) = ast {
-            module.types.insert(v.clone(), Type::Unknown);
+            module.types.insert(v.clone(), Rc::new(Type::Unknown));
         }
     }
 }
@@ -1253,11 +1254,11 @@ pub fn convert_ast_to_ir(
                 if let AST::Empty = export.2 {
                     unimplemented!("nya :(");
                 } else {
-                    let _type = types::convert_ast_to_type(export.2, filename, &module.types);
+                    let _type = types::convert_ast_to_type(export.2, filename);
                     if let Type::UndeclaredTypeError(s) = _type {
                         errors.push(IRError::InvalidType(s));
                     } else if let Type::DuplicateTypeError(s1, s2, t) = _type {
-                        errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
+                        errors.push(IRError::DuplicateTypeInUnion(s1, s2, t));
 
                     // Check export is unique
                     } else if module.exports.contains_key(&export.1) {
@@ -1270,7 +1271,7 @@ pub fn convert_ast_to_ir(
                         // Add export to list of exports
                         module
                             .exports
-                            .insert(export.1, (Location::new(export.0, filename), _type));
+                            .insert(export.1, (Location::new(export.0, filename), Rc::new(_type)));
                     }
                 }
             }
@@ -1330,7 +1331,7 @@ pub fn convert_ast_to_ir(
                         qualified: false,
                         imports: imports
                             .into_iter()
-                            .map(|v| (v, (Type::Unknown, 0, false)))
+                            .map(|v| (v, (Rc::new(Type::Unknown), 0, false)))
                             .collect(),
                     };
                 } else {
@@ -1365,26 +1366,26 @@ pub fn convert_ast_to_ir(
             }
         } else if let AST::Extern(span, c, n, t) = ast {
             let ts = t.get_span().clone();
-            let t = types::convert_ast_to_type(*t, &module.filename, &module.types);
+            let t = types::convert_ast_to_type(*t, &module.filename);
 
             // Check type
             if let Type::UndeclaredTypeError(s) = t {
                 errors.push(IRError::InvalidType(s));
             } else if let Type::DuplicateTypeError(s1, s2, t2) = t {
-                errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t2));
+                errors.push(IRError::DuplicateTypeInUnion(s1, s2, t2));
             } else if !t.is_ffi_compatible(&module.types) {
                 errors.push(IRError::InvalidFFIType(
                     Location::new(ts, &module.filename),
-                    t,
+                    Rc::new(t),
                 ));
             } else {
                 // Get arg types and return function
                 let mut arg_types = vec![];
-                let mut ret_type = t;
+                let mut ret_type = Rc::new(t);
 
-                while let Type::Func(f, a) = ret_type {
-                    arg_types.push(*f);
-                    ret_type = *a;
+                while let Type::Func(f, a) = &*ret_type {
+                    arg_types.push(f.clone());
+                    ret_type = a.clone();
                 }
 
                 // Add external function
@@ -1395,10 +1396,7 @@ pub fn convert_ast_to_ir(
                         extern_name: c,
                         arg_types,
                         ret_type,
-                        impure: match purity {
-                            Purity::Default | Purity::Impure => true,
-                            Purity::Pure => false,
-                        },
+                        impure: matches!(purity, Purity::Default | Purity::Impure)
                     },
                 );
             }
@@ -1413,12 +1411,10 @@ pub fn convert_ast_to_ir(
                 &mut seen_funcs,
                 &mut module.types,
             );
+
             if let SExpr::Assign(_, _, v) = &v {
                 if let SExpr::Function(_, f) = &**v {
-                    module.funcs.get_mut(f).unwrap().impure = match purity {
-                        Purity::Pure | Purity::Default => false,
-                        Purity::Impure => true,
-                    };
+                    module.funcs.get_mut(f).unwrap().impure = matches!(purity, Purity::Impure);
                 }
             }
             sexprs.push(v);
@@ -1443,12 +1439,6 @@ pub fn convert_ast_to_ir(
     // Add module to ir root and error if already exists
     match ir.modules.entry(module_name) {
         Entry::Occupied(e) => {
-            // let _ = std::fs::write(
-            // "currentModule.ir",
-            // format!("{:?}", ir.modules.get(&module_name).unwrap()),
-            // );
-            // let _ = std::fs::write("newModule.ir", format!("{:?}", module));
-
             if format!("{:?}", module) == format!("{:?}", e.get()) {
             } else {
                 errors.push(IRError::DuplicateModule(
@@ -1517,9 +1507,9 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
             if let AST::Empty = export.4 {
                 unimplemented!("nya :(");
             } else {
-                let _type = types::convert_ast_to_type(export.4, filename, &module.types);
-                if let Type::DuplicateTypeError(s1, s2, t) = _type {
-                    errors.push(IRError::DuplicateTypeInUnion(s1, s2, *t));
+                let _type = Rc::new(types::convert_ast_to_type(export.4, filename));
+                if let Type::DuplicateTypeError(s1, s2, t) = &*_type {
+                    errors.push(IRError::DuplicateTypeInUnion(s1.clone(), s2.clone(), t.clone()));
 
                 // Check export is unique
                 } else {
@@ -1546,11 +1536,11 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
                                 &module_name,
                             );
                             let mut args = vec![];
-                            let mut ret_type = &_type;
+                            let mut ret_type = _type.clone();
                             for i in 0..arity {
-                                if let Type::Func(l, r) = ret_type {
-                                    args.push((format!("${}", i), *l.clone()));
-                                    ret_type = r;
+                                if let Type::Func(l, r) = &*ret_type {
+                                    args.push((format!("${}", i), l.clone()));
+                                    ret_type = r.clone();
                                 }
                             }
 
@@ -1589,6 +1579,7 @@ pub fn convert_module(filename: &str, ast: AST, ir: &mut IR) -> Vec<IRError> {
                 }
             }
         }
+
         // Add module to ir root and error if already exists
         match ir.modules.entry(module_name) {
             Entry::Occupied(mut e) => {

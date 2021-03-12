@@ -1,32 +1,33 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
+use std::rc::Rc;
 
 use super::ir::{
     BinOp, IRExtern, IRFunction, IRImport, IRModule, Location, PrefixOp, SExpr, SExprMetadata, IR,
 };
 use super::scopes::{FunctionName, Scope};
-use super::types::{HashSetWrapper, Type};
+use super::types::{HashSetWrapper, Type, TypeRc};
 
 #[derive(Debug)]
 pub enum CorrectnessError {
-    UndefinedPrefixOp(Location, PrefixOp, Type),
-    UndefinedInfixOp(Location, BinOp, Type, Type),
-    NonboolInBoolExpr(Location, Type),
-    NonboolInIfCond(Location, Type),
-    NonmatchingAssignTypes(Location, Type, Location, Type),
+    UndefinedPrefixOp(Location, PrefixOp, TypeRc),
+    UndefinedInfixOp(Location, BinOp, TypeRc, TypeRc),
+    NonboolInBoolExpr(Location, TypeRc),
+    NonboolInIfCond(Location, TypeRc),
+    NonmatchingAssignTypes(Location, TypeRc, Location, TypeRc),
     SymbolNotFound(Location, String),
     Reassignment(Location, Location, String),
     InvalidType(Location),
-    DuplicateTypeInUnion(Location, Location, Type),
+    DuplicateTypeInUnion(Location, Location, TypeRc),
     UnknownFunctionReturnType(Location, String),
-    MismatchedFunctionArgType(Location, Type, Type),
-    InvalidApplication(Location, Type),
-    InvalidCast(Location, Type, Location, Type),
-    NonSubtypeOnMatch(Location, Type, Location, Type),
-    InfiniteSizedType(Location, Type),
+    MismatchedFunctionArgType(Location, TypeRc, TypeRc),
+    InvalidApplication(Location, TypeRc),
+    InvalidCast(Location, TypeRc, Location, TypeRc),
+    NonSubtypeOnMatch(Location, TypeRc, Location, TypeRc),
+    InfiniteSizedType(Location, TypeRc),
     NonmemberAccess(Location, String, String),
-    MismatchedDeclarationAssignmentTypes(Location, Type, Location, Type),
+    MismatchedDeclarationAssignmentTypes(Location, TypeRc, Location, TypeRc),
     VariableImportedTwice(Location, Location),
     ImportedValueNotExported(Location, String, String),
     NoMainFunction,
@@ -41,17 +42,21 @@ pub enum CorrectnessError {
 // check_sexpr(&mut SExpr, &mut IRModule, &mut Vec<CorrectnessError>) -> ()
 // Checks an s expression for type correctness and correct symbol usage.
 fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
-    if let Type::UndeclaredTypeError(s) = &sexpr.get_metadata()._type {
-        errors.push(CorrectnessError::InvalidType(s.clone()));
-        sexpr.get_mutable_metadata()._type = Type::Error;
+    if let Type::UndeclaredTypeError(s) = &*sexpr.get_metadata()._type {
+        let s = s.clone();
+        sexpr.get_mutable_metadata()._type = Rc::new(Type::Error);
+        errors.push(CorrectnessError::InvalidType(s));
         return;
-    } else if let Type::DuplicateTypeError(s1, s2, t) = &sexpr.get_metadata()._type {
+    } else if let Type::DuplicateTypeError(s1, s2, t) = &*sexpr.get_metadata()._type {
+        let s1 = s1.clone();
+        let s2 = s2.clone();
+        let t = t.clone();
+        sexpr.get_mutable_metadata()._type = Rc::new(Type::Error);
         errors.push(CorrectnessError::DuplicateTypeInUnion(
-            s1.clone(),
-            s2.clone(),
-            *t.clone(),
+            s1,
+            s2,
+            t
         ));
-        sexpr.get_mutable_metadata()._type = Type::Error;
         return;
     }
 
@@ -94,7 +99,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     module.funcs.insert(f.clone(), func);
                 }
 
-                if m._type == Type::Unknown {
+                if *m._type == Type::Unknown {
                     module.funcs.remove(f);
                 }
             }
@@ -163,9 +168,9 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         m._type = v.ret_type.clone();
 
                         for t in v.arg_types.iter().rev() {
-                            let mut _type = Type::Unknown;
+                            let mut _type = Rc::new(Type::Unknown);
                             swap(&mut _type, &mut m._type);
-                            m._type = Type::Func(Box::new(t.clone()), Box::new(_type));
+                            m._type = Rc::new(Type::Func(t.clone(), _type));
                         }
 
                         let mut temp = SExprMetadata::empty();
@@ -188,7 +193,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     check_sexpr(v, module, errors);
 
                     // Check if an error occurred
-                    if v.get_metadata()._type == Type::Error {
+                    if *v.get_metadata()._type == Type::Error {
                         return;
                     }
 
@@ -218,7 +223,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(right, module, errors);
 
             // Check if an error occurred
-            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
+            if *left.get_metadata()._type == Type::Error || *right.get_metadata()._type == Type::Error
             {
                 return;
             }
@@ -255,7 +260,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             }
 
             // Check if an error occurred
-            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
+            if *left.get_metadata()._type == Type::Error || *right.get_metadata()._type == Type::Error
             {
                 return;
             }
@@ -268,7 +273,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(v, module, errors);
 
             // Check if an error occurred
-            if v.get_metadata()._type == Type::Error {
+            if *v.get_metadata()._type == Type::Error {
                 return;
             }
 
@@ -280,7 +285,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     m.loc2.clone(),
                     m._type.clone(),
                 ));
-                m._type = Type::Error;
+                m._type = Rc::new(Type::Error);
             }
         }
 
@@ -291,28 +296,28 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(right, module, errors);
 
             // Check if an error occurred
-            if left.get_metadata()._type == Type::Error || right.get_metadata()._type == Type::Error
+            if *left.get_metadata()._type == Type::Error || *right.get_metadata()._type == Type::Error
             {
                 return;
             }
 
             // Assert the types are booleans.
-            if left.get_metadata()._type != Type::Bool {
+            if *left.get_metadata()._type != Type::Bool {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
                     left.get_metadata().loc.clone(),
                     left.get_metadata()._type.clone(),
                 ));
             }
 
-            if right.get_metadata()._type != Type::Bool {
+            if *right.get_metadata()._type != Type::Bool {
                 errors.push(CorrectnessError::NonboolInBoolExpr(
                     right.get_metadata().loc.clone(),
                     right.get_metadata()._type.clone(),
                 ));
             }
 
-            if left.get_metadata()._type == Type::Bool && right.get_metadata()._type == Type::Bool {
-                m._type = Type::Bool;
+            if *left.get_metadata()._type == Type::Bool && *right.get_metadata()._type == Type::Bool {
+                m._type = Rc::new(Type::Bool);
             }
         }
 
@@ -324,15 +329,15 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(elsy, module, errors);
 
             // Check if an error occurred
-            if cond.get_metadata()._type == Type::Error
-                || then.get_metadata()._type == Type::Error
-                || elsy.get_metadata()._type == Type::Error
+            if *cond.get_metadata()._type == Type::Error
+                || *then.get_metadata()._type == Type::Error
+                || *elsy.get_metadata()._type == Type::Error
             {
                 return;
             }
 
             // Check that condition is a boolean
-            if cond.get_metadata()._type != Type::Bool {
+            if *cond.get_metadata()._type != Type::Bool {
                 errors.push(CorrectnessError::NonboolInIfCond(
                     cond.get_metadata().loc.clone(),
                     cond.get_metadata()._type.clone(),
@@ -354,13 +359,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 m._type = then.get_metadata()._type.clone()
             } else if then.get_metadata()._type != elsy.get_metadata()._type {
                 let mut set = Vec::with_capacity(0);
-                if let Type::Sum(v) = &then.get_metadata()._type {
+                if let Type::Sum(v) = &*then.get_metadata()._type {
                     set = v.0.iter().collect();
                 } else {
                     set.push(&then.get_metadata()._type);
                 }
 
-                if let Type::Sum(v) = &elsy.get_metadata()._type {
+                if let Type::Sum(v) = &*elsy.get_metadata()._type {
                     for v in v.0.iter() {
                         set.push(v);
                     }
@@ -368,7 +373,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     set.push(&elsy.get_metadata()._type);
                 }
 
-                m._type = Type::Sum(HashSetWrapper(set.into_iter().cloned().collect()));
+                m._type = Rc::new(Type::Sum(HashSetWrapper(set.into_iter().cloned().collect())));
             } else {
                 m._type = then.get_metadata()._type.clone();
             }
@@ -388,7 +393,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             check_sexpr(arg, module, errors);
 
             // Check if either the function or argument resulted in an error
-            if func.get_metadata()._type == Type::Error || arg.get_metadata()._type == Type::Error {
+            if *func.get_metadata()._type == Type::Error || *arg.get_metadata()._type == Type::Error {
                 return;
             }
 
@@ -402,15 +407,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
             // External functions
             } else if let SExpr::ExternalFunc(m1, name, args) = &mut **func {
-                if let Type::Func(l, r) = &mut m1._type {
+                if let Type::Func(l, r) = &*m1._type {
                     if l.equals(&arg.get_metadata()._type, &module.types) {
                         let mut temp = SExpr::True(SExprMetadata::empty());
                         swap(&mut temp, arg);
                         args.push(temp);
-                        let mut temp = Type::Unknown;
-                        swap(&mut **r, &mut temp);
                         m1.loc.span.end = m.loc.span.end;
-                        m1._type = temp;
+                        m1._type = r.clone();
                         m1.arity -= 1;
                         m1.saved_argc = Some(m1.saved_argc.unwrap() + 1);
                         let mut tm = SExprMetadata::empty();
@@ -424,7 +427,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     } else {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
                             arg.get_metadata().loc.clone(),
-                            *l.clone(),
+                            l.clone(),
                             arg.get_metadata()._type.clone(),
                         ));
                         return;
@@ -432,7 +435,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
             }
 
-            let mut _type = &func.get_metadata()._type;
+            let mut _type = &*func.get_metadata()._type;
             while let Type::Symbol(s) = _type {
                 _type = module.types.get(s).unwrap();
             }
@@ -447,7 +450,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 // Functions apply their arguments
                 Type::Func(l, r) => {
                     if arg.get_metadata()._type.is_subtype(l, &module.types) {
-                        m._type = *r.clone();
+                        m._type = r.clone();
                         m.arity = if func.get_metadata().arity > 0 {
                             func.get_metadata().arity - 1
                         } else {
@@ -464,7 +467,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     } else {
                         errors.push(CorrectnessError::MismatchedFunctionArgType(
                             arg.get_metadata().loc.clone(),
-                            *l.clone(),
+                            l.clone(),
                             arg.get_metadata()._type.clone(),
                         ));
                     }
@@ -484,7 +487,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
         SExpr::Assign(m, name, value) => {
             // Check child node
             check_sexpr(value, module, errors);
-            if value.get_metadata()._type == Type::Error {
+            if *value.get_metadata()._type == Type::Error {
                 return;
             }
 
@@ -502,18 +505,18 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         }
                         module.funcs.remove(f);
                     }
-                    m._type = Type::Error;
+                    m._type = Rc::new(Type::Error);
                     return;
-                } else if m._type != Type::Error && !m._type.is_subtype(&v.0, &module.types) {
+                } else if *m._type != Type::Error && !m._type.is_subtype(&v.0, &module.types) {
                     errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                         v.3.clone(),
                         v.0.clone(),
                         m.loc.clone(),
                         m._type.clone(),
                     ));
-                    m._type = Type::Error;
+                    m._type = Rc::new(Type::Error);
                     return;
-                } else if m._type == Type::Error
+                } else if *m._type == Type::Error
                     && !value.get_metadata()._type.is_subtype(&v.0, &module.types)
                 {
                     errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
@@ -522,7 +525,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         value.get_metadata().loc.clone(),
                         value.get_metadata()._type.clone(),
                     ));
-                    m._type = Type::Error;
+                    m._type = Rc::new(Type::Error);
                     return;
                 }
 
@@ -532,13 +535,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             }
 
             // Check if variable value is unknown type
-            if value.get_metadata()._type == Type::Unknown {
+            if *value.get_metadata()._type == Type::Unknown {
                 module.scope.variables.remove(name);
                 return;
             }
 
             // Check that the types match
-            match m._type {
+            match *m._type {
                 // No preassigned type
                 Type::Error => m._type = value.get_metadata()._type.clone(),
 
@@ -556,13 +559,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                             value.get_metadata().loc.clone(),
                             value.get_metadata()._type.clone(),
                         ));
-                        m._type = Type::Error;
+                        m._type = Rc::new(Type::Error);
                     }
                 }
             }
 
             // Add variable to scope if no error occurred
-            if m._type != Type::Error && name != "_" {
+            if *m._type != Type::Error && name != "_" {
                 module.scope.put_var(
                     name,
                     &m._type,
@@ -639,9 +642,9 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             // Check value
             check_sexpr(value, module, errors);
             let _type = &value.get_metadata()._type;
-            if *_type == Type::Error {
+            if **_type == Type::Error {
                 return;
-            } else if let Type::UndeclaredTypeError(_) = *_type {
+            } else if let Type::UndeclaredTypeError(_) = **_type {
                 return;
             }
 
@@ -651,21 +654,21 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             let mut last = None;
             for arm in arms.iter_mut() {
                 // Get name of symbol
-                let (name, atype) = if let Type::Tag(s, t) = &arm.0 {
+                let (name, atype) = if let Type::Tag(s, t) = &*arm.0 {
                     let vtype = if let Type::Tag(_, t) = &**t {
-                        &**t
+                        t
                     } else {
-                        &**t
+                        t
                     };
                     module
                         .scope
                         .put_var(s, vtype, 0, None, &arm.1.get_metadata().loc2, true, "");
-                    (Some(s), &**t)
+                    (Some(s), t)
                 } else {
                     (None, &arm.0)
                 };
 
-                if let Type::UndeclaredTypeError(s) = &arm.0 {
+                if let Type::UndeclaredTypeError(s) = &*arm.0 {
                     errors.push(CorrectnessError::InvalidType(s.clone()));
                     module.scope.pop_scope();
                     continue;
@@ -692,8 +695,8 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
 
                 // Check for error
-                if arm.1.get_metadata()._type == Type::Error {
-                    last = Some(Type::Error);
+                if *arm.1.get_metadata()._type == Type::Error {
+                    last = Some(Rc::new(Type::Error));
                     continue;
                 }
 
@@ -705,16 +708,15 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, &module.types))
                 {
                     last = Some(_type);
-                } else if let Some(Type::Error) = last {
-                    last = Some(Type::Error);
+                } else if last.is_some() && **last.as_ref().unwrap() == Type::Error {
                 } else if let Type::Sum(set) = &mut returned {
                     if let Some(mut t) = last {
-                        while let Type::Symbol(s) = t {
-                            t = module.types.get(&s).unwrap().clone();
+                        while let Type::Symbol(s) = &*t {
+                            t = module.types.get(s).unwrap().clone();
                         }
-                        if let Type::Sum(v) = t {
-                            for v in v.0 {
-                                set.0.insert(v);
+                        if let Type::Sum(v) = &*t {
+                            for v in v.0.iter() {
+                                set.0.insert(v.clone());
                             }
                         } else {
                             set.0.insert(t);
@@ -722,12 +724,12 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         last = None;
                     }
 
-                    while let Type::Symbol(s) = _type {
-                        _type = module.types.get(&s).unwrap().clone();
+                    while let Type::Symbol(s) = &*_type {
+                        _type = module.types.get(s).unwrap().clone();
                     }
-                    if let Type::Sum(v) = _type {
-                        for v in v.0 {
-                            set.0.insert(v);
+                    if let Type::Sum(v) = &*_type {
+                        for v in v.0.iter() {
+                            set.0.insert(v.clone());
                         }
                     } else {
                         set.0.insert(_type);
@@ -742,7 +744,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 if v.0.len() == 1 {
                     v.0.into_iter().next().unwrap()
                 } else {
-                    Type::Sum(v)
+                    Rc::new(Type::Sum(v))
                 }
             } else {
                 unreachable!("if youre here you dont deserve a single uwu");
@@ -814,7 +816,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
             // Get type
             if let Some(t) = types.get(&a[pos]) {
-                if let Type::Sum(f) = t {
+                if let Type::Sum(f) = &**t {
                     if f.0.contains(&Type::Enum(a[1].clone())) {
                         if a.len() != 2 {
                             errors.push(CorrectnessError::NonmemberAccess(
@@ -823,10 +825,10 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                                 a[2].clone(),
                             ));
                         } else {
-                            m._type = Type::Symbol(a[pos].clone());
+                            m._type = Rc::new(Type::Symbol(a[pos].clone()));
                         }
                     } else if let Some(v) = f.0.iter().find(|v| {
-                        if let Type::Tag(t, _) = v {
+                        if let Type::Tag(t, _) = &***v {
                             t == &a[1]
                         } else {
                             false
@@ -838,14 +840,14 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                                 format!("{}::{}", a[0], a[1]),
                                 a[2].clone(),
                             ));
-                        } else if let Type::Tag(_, t) = v {
+                        } else if let Type::Tag(_, t) = &**v {
                             let mut temp = SExprMetadata::empty();
 
                             swap(&mut temp, m);
                             temp.arity = 1;
                             temp.saved_argc = Some(0);
-                            temp._type =
-                                Type::Func(t.clone(), Box::new(Type::Symbol(a[0].clone())));
+                            temp._type = Rc::new(
+                                Type::Func(t.clone(), Rc::new(Type::Symbol(a[0].clone()))));
 
                             *sexpr = SExpr::Function(temp, a.join("::"));
                         }
@@ -990,12 +992,12 @@ fn get_function_type(
     scope: &mut Scope,
     funcs: &mut HashMap<String, IRFunction>,
     errors: &mut Vec<CorrectnessError>,
-    captured: &mut HashMap<String, Type>,
+    captured: &mut HashMap<String, TypeRc>,
     captured_names: &mut Vec<String>,
-    types: &HashMap<String, Type>,
+    types: &HashMap<String, TypeRc>,
     externals: &HashMap<String, IRExtern>,
     imports: &HashMap<String, IRImport>,
-) -> Type {
+) -> TypeRc {
     match sexpr {
         // Values
         SExpr::TypeAlias(m, _)
@@ -1057,14 +1059,14 @@ fn get_function_type(
                     if let Some(v) = externals.get(s) {
                         let mut _type = v.ret_type.clone();
                         for t in v.arg_types.iter().rev() {
-                            let mut temp = Type::Unknown;
+                            let mut temp = Rc::new(Type::Unknown);
                             swap(&mut temp, &mut _type);
-                            _type = Type::Func(Box::new(t.clone()), Box::new(temp));
+                            _type = Rc::new(Type::Func(t.clone(), temp));
                         }
 
                         _type
                     } else {
-                        Type::Unknown
+                        Rc::new(Type::Unknown)
                     }
                 }
             }
@@ -1088,7 +1090,7 @@ fn get_function_type(
 
                 match scope.get_func_ret(FunctionName::Prefix(vt)) {
                     Some(v) => v.clone(),
-                    None => Type::Unknown,
+                    None => Rc::new(Type::Unknown),
                 }
             }
 
@@ -1124,7 +1126,7 @@ fn get_function_type(
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt)) {
                 Some(v) => v.clone(),
-                None => Type::Unknown,
+                None => Rc::new(Type::Unknown),
             }
         }
 
@@ -1190,7 +1192,7 @@ fn get_function_type(
                 externals,
                 imports,
             );
-            Type::Bool
+            Rc::new(Type::Bool)
         }
 
         // If expressions
@@ -1220,37 +1222,37 @@ fn get_function_type(
                 imports,
             );
 
-            if bt == Type::Unknown && et == Type::Unknown {
-                Type::Unknown
-            } else if bt.equals(&et, types) || et == Type::Unknown {
-                if let Type::Symbol(_) = bt {
+            if *bt == Type::Unknown && *et == Type::Unknown {
+                Rc::new(Type::Unknown)
+            } else if bt.equals(&et, types) || *et == Type::Unknown {
+                if let Type::Symbol(_) = *bt {
                     bt
-                } else if et != Type::Unknown {
+                } else if *et != Type::Unknown {
                     et
                 } else {
                     bt
                 }
-            } else if bt == Type::Unknown || bt.is_subtype(&et, types) {
+            } else if *bt == Type::Unknown || bt.is_subtype(&et, types) {
                 et
-            } else if et.is_subtype(&bt, types) {
+            } else if et.is_subtype(&*bt, types) {
                 bt
             } else {
                 let mut set = Vec::with_capacity(0);
-                if let Type::Sum(v) = bt {
-                    set = v.0.into_iter().collect();
+                if let Type::Sum(v) = &*bt {
+                    set = v.0.iter().cloned().collect();
                 } else {
                     set.push(bt);
                 }
 
-                if let Type::Sum(v) = et {
-                    for v in v.0 {
-                        set.push(v);
+                if let Type::Sum(v) = &*et {
+                    for v in v.0.iter() {
+                        set.push(v.clone());
                     }
                 } else {
                     set.push(et);
                 }
 
-                Type::Sum(HashSetWrapper(set.into_iter().collect()))
+                Rc::new(Type::Sum(HashSetWrapper(set.into_iter().collect())))
             }
         }
 
@@ -1287,15 +1289,15 @@ fn get_function_type(
                 externals,
                 imports,
             );
-            if let Type::Unknown = ft {
-                return Type::Unknown;
+            if let Type::Unknown = *ft {
+                return Rc::new(Type::Unknown);
             }
 
-            while let Type::Symbol(s) = ft {
-                ft = types.get(&s).unwrap().clone();
+            while let Type::Symbol(s) = &*ft {
+                ft = types.get(s).unwrap().clone();
             }
 
-            match ft {
+            match &*ft {
                 // Strings concatenate to other strings
                 // Type::String => Type::String,
 
@@ -1313,17 +1315,17 @@ fn get_function_type(
                         externals,
                         imports,
                     );
-                    *r
+                    r.clone()
                 }
 
                 // Everything else is invalid
-                _ => Type::Unknown,
+                _ => Rc::new(Type::Unknown),
             }
         }
 
         // Assignments
         SExpr::Assign(m, name, value) => {
-            let t = if m._type != Type::Error {
+            let t = if *m._type != Type::Error {
                 m._type.clone()
             } else {
                 get_function_type(
@@ -1425,10 +1427,10 @@ fn get_function_type(
             // Check match arms
             scope.push_scope(false);
             let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
-            let mut last: Option<Type> = None;
+            let mut last: Option<TypeRc> = None;
             for arm in arms.iter() {
                 // Check body of match arm
-                let name = if let Type::Tag(s, t) = &arm.0 {
+                let name = if let Type::Tag(s, t) = &*arm.0 {
                     scope.put_var(&s, &t, 0, None, &arm.1.get_metadata().loc2, true, "");
                     Some(s)
                 } else {
@@ -1452,7 +1454,7 @@ fn get_function_type(
                     scope.variables.remove(s);
                 }
 
-                if _type == Type::Unknown {
+                if *_type == Type::Unknown {
                     continue;
                 }
 
@@ -1460,16 +1462,15 @@ fn get_function_type(
                     && (last.is_none() || last.as_ref().unwrap().is_subtype(&_type, types))
                 {
                     last = Some(_type);
-                } else if let Some(Type::Error) = last {
-                    last = Some(Type::Error);
+                } else if last.is_some() && **last.as_ref().unwrap() == Type::Error {
                 } else if let Type::Sum(set) = &mut returned {
                     if let Some(mut t) = last {
-                        while let Type::Symbol(s) = t {
-                            t = types.get(&s).unwrap().clone();
+                        while let Type::Symbol(s) = &*t {
+                            t = types.get(s).unwrap().clone();
                         }
-                        if let Type::Sum(v) = t {
-                            for v in v.0 {
-                                set.0.insert(v);
+                        if let Type::Sum(v) = &*t {
+                            for v in v.0.iter() {
+                                set.0.insert(v.clone());
                             }
                         } else {
                             set.0.insert(t);
@@ -1477,12 +1478,12 @@ fn get_function_type(
                         last = None;
                     }
 
-                    while let Type::Symbol(s) = _type {
-                        _type = types.get(&s).unwrap().clone();
+                    while let Type::Symbol(s) = &*_type {
+                        _type = types.get(s).unwrap().clone();
                     }
-                    if let Type::Sum(v) = _type {
-                        for v in v.0 {
-                            set.0.insert(v);
+                    if let Type::Sum(v) = &*_type {
+                        for v in v.0.iter() {
+                            set.0.insert(v.clone());
                         }
                     } else {
                         set.0.insert(_type);
@@ -1496,15 +1497,15 @@ fn get_function_type(
                 v
             } else if let Type::Sum(v) = returned {
                 if v.0.is_empty() {
-                    Type::Unknown
+                    Rc::new(Type::Unknown)
                 } else if v.0.len() == 1 {
                     v.0.into_iter().next().unwrap()
                 } else {
-                    Type::Sum(v)
+                    Rc::new(Type::Sum(v))
                 }
-            } else {
+             } else {
                 unreachable!("if youre here you dont deserve a single uwu");
-            }
+             }
         }
 
         SExpr::MemberAccess(_, a) => {
@@ -1539,46 +1540,46 @@ fn get_function_type(
                 if pos < a.len() {
                     if let Some(v) = imports.get(&module_name).unwrap().imports.get(&a[pos]) {
                         return if a.len() > pos + 1 {
-                            Type::Unknown
+                            Rc::new(Type::Unknown)
                         } else {
                             v.0.clone()
                         };
                     }
                 } else {
-                    return Type::Unknown;
+                    return Rc::new(Type::Unknown);
                 }
             }
 
             if let Some(t) = types.get(&a[0]) {
-                if let Type::Sum(f) = t {
+                if let Type::Sum(f) = &**t {
                     if f.0.contains(&Type::Enum(a[1].clone())) {
                         if a.len() != 2 {
-                            Type::Unknown
+                            Rc::new(Type::Unknown)
                         } else {
                             t.clone()
                         }
                     } else if let Some(v) = f.0.iter().find(|v| {
-                        if let Type::Tag(t, _) = v {
+                        if let Type::Tag(t, _) = &***v {
                             t == &a[1]
                         } else {
                             false
                         }
                     }) {
                         if a.len() != 2 {
-                            Type::Unknown
-                        } else if let Type::Tag(_, t2) = v {
-                            Type::Func(t2.clone(), Box::new(t.clone()))
+                            Rc::new(Type::Unknown)
+                        } else if let Type::Tag(_, t2) = &**v {
+                            Rc::new(Type::Func(t2.clone(), t.clone()))
                         } else {
                             unreachable!("always a tag type");
                         }
                     } else {
-                        Type::Unknown
+                        Rc::new(Type::Unknown)
                     }
                 } else {
-                    Type::Unknown
+                    Rc::new(Type::Unknown)
                 }
             } else {
-                Type::Unknown
+                Rc::new(Type::Unknown)
             }
         }
     }
@@ -1594,7 +1595,7 @@ fn check_function_body(
     scope: &mut Scope,
     funcs: &mut HashMap<String, IRFunction>,
     errors: &mut Vec<CorrectnessError>,
-    types: &HashMap<String, Type>,
+    types: &HashMap<String, TypeRc>,
     externals: &HashMap<String, IRExtern>,
     imports: &HashMap<String, IRImport>,
 ) {
@@ -1606,7 +1607,7 @@ fn check_function_body(
         // Put function in scope
         scope.put_var_raw(
             String::from(name),
-            Type::Unknown,
+            Rc::new(Type::Unknown),
             func.args.len(),
             None,
             Location::new(Span { start: 0, end: 0 }, &func.loc.filename),
@@ -1616,7 +1617,7 @@ fn check_function_body(
         if name != refr {
             scope.put_var_raw(
                 String::from(refr),
-                Type::Unknown,
+                Rc::new(Type::Unknown),
                 func.args.len(),
                 None,
                 Location::new(Span { start: 0, end: 0 }, &func.loc.filename),
@@ -1662,7 +1663,7 @@ fn check_function_body(
     scope.pop_scope();
 
     // Push an error if type is unknown
-    if _type == Type::Unknown {
+    if *_type == Type::Unknown {
         errors.push(CorrectnessError::UnknownFunctionReturnType(
             func.body.get_metadata().loc.clone(),
             String::from(name),
@@ -1671,11 +1672,11 @@ fn check_function_body(
         // Construct the type
         let mut acc = _type;
         for t in func.args.iter().rev() {
-            acc = Type::Func(Box::new(t.1.clone()), Box::new(acc));
+            acc = Rc::new(Type::Func(t.1.clone(), acc));
         }
 
         if let Some(v) = scope.variables.remove(refr) {
-            if v.0 != Type::Unknown && !v.0.equals(&acc, types) {
+            if *v.0 != Type::Unknown && !v.0.equals(&acc, types) {
                 errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                     v.3,
                     v.0,
@@ -1686,7 +1687,7 @@ fn check_function_body(
             }
         }
         if let Some(v) = scope.variables.remove(name) {
-            if v.0 != Type::Unknown && !v.0.equals(&acc, types) {
+            if *v.0 != Type::Unknown && !v.0.equals(&acc, types) {
                 errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                     v.3,
                     v.0,
@@ -1842,7 +1843,7 @@ fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
 
 // save_single_type(&mut usize, &Type, &mut HashMap) -> ()
 // Saves one type.
-fn save_single_type(id: &mut usize, _type: &Type, types: &mut HashMap<String, Type>) {
+fn save_single_type(id: &mut usize, _type: &TypeRc, types: &mut HashMap<String, TypeRc>) {
     for t in types.iter() {
         if _type.equals(t.1, types) {
             return;
@@ -1855,25 +1856,25 @@ fn save_single_type(id: &mut usize, _type: &Type, types: &mut HashMap<String, Ty
 
 // save_types(&mut IR) -> ()
 // Saves anonymous types.
-fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize) {
+fn save_types(sexpr: &SExpr, types: &mut HashMap<String, TypeRc>, id: &mut usize) {
     let m = sexpr.get_metadata();
-    if let Type::Sum(_) = &m._type {
+    if let Type::Sum(_) = &*m._type {
         save_single_type(id, &m._type, types);
-    } else if let Type::Func(l, r) = &m._type {
+    } else if let Type::Func(l, r) = &*m._type {
         if let Type::Sum(_) = &**l {
             save_single_type(id, l, types);
         }
 
-        let mut t = &**r;
-        while let Type::Func(l, r) = t {
+        let mut t = r;
+        while let Type::Func(l, r) = &**t {
             if let Type::Sum(_) = &**l {
-                save_single_type(id, &**l, types);
+                save_single_type(id, l, types);
             }
 
-            t = &**r;
+            t = r;
         }
 
-        if let Type::Sum(_) = t {
+        if let Type::Sum(_) = **t {
             save_single_type(id, t, types);
         }
     }
@@ -1920,9 +1921,9 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize) 
         SExpr::Match(_, v, a) => {
             save_types(v, types, id);
             for a in a.iter() {
-                let _type = if let Type::Tag(_, t) = &a.0 { t } else { &a.0 };
+                let _type = if let Type::Tag(_, t) = &*a.0 { t } else { &a.0 };
 
-                if let Type::Sum(_) = _type {
+                if let Type::Sum(_) = &**_type {
                     save_single_type(id, &_type, types);
                 }
                 save_types(&a.1, types, id);
@@ -1938,7 +1939,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, Type>, id: &mut usize) 
 fn check_type_validity(module: &IRModule, errors: &mut Vec<CorrectnessError>) {
     for s in module.sexprs.iter() {
         if let SExpr::TypeAlias(m, n) = s {
-            match &m._type {
+            match &*m._type {
                 Type::Symbol(s) if s == n => {
                     errors.push(CorrectnessError::InfiniteSizedType(
                         m.loc2.clone(),
@@ -1946,7 +1947,7 @@ fn check_type_validity(module: &IRModule, errors: &mut Vec<CorrectnessError>) {
                     ));
                 }
 
-                Type::Sum(s) if s.0.contains(&Type::Symbol(n.clone())) => {
+                Type::Sum(s) if s.0.contains(&Rc::new(Type::Symbol(n.clone()))) => {
                     errors.push(CorrectnessError::InfiniteSizedType(
                         m.loc2.clone(),
                         m._type.clone(),
@@ -2202,7 +2203,7 @@ fn fix_arity(sexpr: &mut SExpr, scope: &mut Scope, funcs: &HashMap<String, IRFun
             if l.get_metadata().arity > 0 {
                 m.arity = l.get_metadata().arity - 1;
                 if let Some(v) = l.get_metadata().saved_argc {
-                    if let Type::Enum(_) = r.get_metadata()._type {
+                    if let Type::Enum(_) = *r.get_metadata()._type {
                         m.saved_argc = Some(v);
                     } else {
                         m.saved_argc = Some(v + 1);
@@ -2573,7 +2574,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
         // Collect globals
         for sexpr in module.sexprs.iter() {
             if let SExpr::Assign(m, a, _) = sexpr {
-                if m._type != Type::Error {
+                if *m._type != Type::Error {
                     module
                         .scope
                         .put_var(a, &m._type, 0, None, &m.loc, false, &module.name);
@@ -2665,7 +2666,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                     // Add functions
                     for i in import.1.imports.iter() {
                         let mut func = IRFunction {
-                            args: std::iter::once((String::with_capacity(0), Type::Unknown))
+                            args: std::iter::once((String::with_capacity(0), Rc::new(Type::Unknown)))
                                 .cycle()
                                 .take(i.1 .1)
                                 .collect(),
@@ -2723,11 +2724,11 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                         if m.arity > 0 && m.saved_argc.is_some() {
                             let mut arity = m.arity;
                             while arity > 0 {
-                                if let Type::Func(a, r) = &func.body.get_metadata()._type {
-                                    func.args.push((format!("$${}", arity), *a.clone()));
+                                if let Type::Func(a, r) = &*func.body.get_metadata()._type {
+                                    func.args.push((format!("$${}", arity), a.clone()));
                                     let mut temp = SExpr::True(SExprMetadata::empty());
-                                    let _type = *r.clone();
-                                    let _t2 = *a.clone();
+                                    let _type = r.clone();
+                                    let _t2 = a.clone();
                                     swap(&mut func.body, &mut temp);
                                     func.body = SExpr::Application(
                                         SExprMetadata {

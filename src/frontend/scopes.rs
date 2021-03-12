@@ -1,18 +1,19 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::ir::{BinOp, Location};
-use super::types::Type;
+use super::types::{Type, TypeRc};
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub enum FunctionName {
-    Infix(BinOp, Type, Type),
-    Prefix(Type),
+    Infix(BinOp, TypeRc, TypeRc),
+    Prefix(TypeRc),
 }
 
 #[derive(Debug)]
 pub struct Scope {
-    pub variables: HashMap<String, (Type, usize, Option<usize>, Location, bool, String)>,
-    func_ret_types: HashMap<FunctionName, Type>,
+    pub variables: HashMap<String, (TypeRc, usize, Option<usize>, Location, bool, String)>,
+    func_ret_types: HashMap<FunctionName, TypeRc>,
     pub parent: Option<Box<Scope>>,
     new_func: bool,
 }
@@ -34,297 +35,297 @@ impl Scope {
     pub fn init_builtins(mut self) -> Scope {
         // Prefix operators
         self.func_ret_types
-            .insert(FunctionName::Prefix(Type::Int), Type::Int);
+            .insert(FunctionName::Prefix(Rc::new(Type::Int)), Rc::new(Type::Int));
         self.func_ret_types
-            .insert(FunctionName::Prefix(Type::Float), Type::Float);
+            .insert(FunctionName::Prefix(Rc::new(Type::Float)), Rc::new(Type::Float));
 
         // Infix operators
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Type::Word, Type::Word),
-            Type::Word,
+            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Type::Int, Type::Int),
-            Type::Int,
+            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Type::Float, Type::Int),
-            Type::Float,
+            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Type::Int, Type::Float),
-            Type::Float,
+            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Type::Float, Type::Float),
-            Type::Float,
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Type::Word, Type::Word),
-            Type::Word,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Type::Int, Type::Int),
-            Type::Int,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Type::Float, Type::Int),
-            Type::Float,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Type::Int, Type::Float),
-            Type::Float,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Type::Float, Type::Float),
-            Type::Float,
+            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mod, Type::Word, Type::Word),
-            Type::Word,
+            FunctionName::Infix(BinOp::Div, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mod, Type::Int, Type::Int),
-            Type::Int,
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Type::Word, Type::Word),
-            Type::Word,
+            FunctionName::Infix(BinOp::Div, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Type::Int, Type::Int),
-            Type::Int,
+            FunctionName::Infix(BinOp::Div, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Type::Float, Type::Int),
-            Type::Float,
+            FunctionName::Infix(BinOp::Div, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Type::Int, Type::Float),
-            Type::Float,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Type::Float, Type::Float),
-            Type::Float,
+            FunctionName::Infix(BinOp::Div, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Type::Word, Type::Word),
-            Type::Word,
+            FunctionName::Infix(BinOp::Mod, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Type::Int, Type::Int),
-            Type::Int,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Type::Float, Type::Int),
-            Type::Float,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Type::Int, Type::Float),
-            Type::Float,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Type::Float, Type::Float),
-            Type::Float,
+            FunctionName::Infix(BinOp::Mod, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSL, Type::Word, Type::Word),
-            Type::Word,
+            FunctionName::Infix(BinOp::Add, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSL, Type::Int, Type::Int),
-            Type::Int,
+            FunctionName::Infix(BinOp::Add, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSR, Type::Word, Type::Word),
-            Type::Word,
+            FunctionName::Infix(BinOp::Add, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSR, Type::Int, Type::Int),
-            Type::Int,
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Type::Char, Type::Char),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Add, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Type::Word, Type::Word),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Type::Int, Type::Int),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Type::Float, Type::Int),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Type::Int, Type::Float),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Type::Float, Type::Float),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Add, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Type::Char, Type::Char),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Type::Word, Type::Word),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Type::Int, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Type::Float, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Type::Int, Type::Float),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Type::Float, Type::Float),
-            Type::Bool,
+            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Type::Char, Type::Char),
-            Type::Bool,
+            FunctionName::Infix(BinOp::BSL, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Type::Word, Type::Word),
-            Type::Bool,
+            FunctionName::Infix(BinOp::BSL, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::BSR, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Int),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Type::Int, Type::Float),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Type::Float, Type::Float),
-            Type::Bool,
+            FunctionName::Infix(BinOp::BSR, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Type::Char, Type::Char),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LT, Rc::new(Type::Char), Rc::new(Type::Char)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Type::Word, Type::Word),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LT, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LT, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LT, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Type::Int, Type::Float),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LT, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Type::Float, Type::Float),
-            Type::Bool,
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Type::Char, Type::Char),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Type::Word, Type::Word),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Type::Int, Type::Int),
-            Type::Bool,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Type::Float, Type::Float),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LT, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::Char, Type::Char),
-            Type::Bool,
+            FunctionName::Infix(BinOp::GT, Rc::new(Type::Char), Rc::new(Type::Char)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::Word, Type::Word),
-            Type::Bool,
+            FunctionName::Infix(BinOp::GT, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::GT, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Int),
-            Type::Bool,
+            FunctionName::Infix(BinOp::GT, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::Int, Type::Float),
-            Type::Bool,
+            FunctionName::Infix(BinOp::GT, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Type::Float, Type::Float),
-            Type::Bool,
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::And, Type::Word, Type::Word),
-            Type::Word,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::And, Type::Int, Type::Int),
-            Type::Int,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Or, Type::Word, Type::Word),
-            Type::Word,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Or, Type::Int, Type::Int),
-            Type::Int,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Xor, Type::Word, Type::Word),
-            Type::Word,
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Xor, Type::Int, Type::Int),
-            Type::Int,
+            FunctionName::Infix(BinOp::GT, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BoolXor, Type::Bool, Type::Bool),
-            Type::Bool,
+            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Char), Rc::new(Type::Char)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Char), Rc::new(Type::Char)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Char), Rc::new(Type::Char)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Char), Rc::new(Type::Char)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Float), Rc::new(Type::Int)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Int), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Float), Rc::new(Type::Float)),
+            Rc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::And, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::And, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Or, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Or, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Xor, Rc::new(Type::Word), Rc::new(Type::Word)),
+            Rc::new(Type::Word),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Xor, Rc::new(Type::Int), Rc::new(Type::Int)),
+            Rc::new(Type::Int),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::BoolXor, Rc::new(Type::Bool), Rc::new(Type::Bool)),
+            Rc::new(Type::Bool),
         );
 
         // Functions
         self.put_var_raw(
             String::from("debug"),
-            Type::Unknown,
+            Rc::new(Type::Unknown),
             1,
             None,
             Location::empty(),
@@ -335,12 +336,12 @@ impl Scope {
         self
     }
 
-    // put_var_raw(&mut self, String, Type, usize, Option<usize>, Span, bool) -> ()
+    // put_var_raw(&mut self, String, TypeRc, usize, Option<usize>, Span, bool) -> ()
     // Puts a variable in the current scope.
     pub fn put_var_raw(
         &mut self,
         name: String,
-        _type: Type,
+        _type: TypeRc,
         arity: usize,
         saved_argc: Option<usize>,
         loc: Location,
@@ -356,7 +357,7 @@ impl Scope {
     pub fn put_var(
         &mut self,
         name: &str,
-        _type: &Type,
+        _type: &TypeRc,
         arity: usize,
         saved_argc: Option<usize>,
         loc: &Location,
@@ -381,7 +382,7 @@ impl Scope {
     pub fn get_var(
         &self,
         name: &str,
-    ) -> Option<&(Type, usize, Option<usize>, Location, bool, String)> {
+    ) -> Option<&(TypeRc, usize, Option<usize>, Location, bool, String)> {
         // Set up
         let name = String::from(name);
         let mut scope = self;
@@ -402,13 +403,13 @@ impl Scope {
 
     // put_func_ret(&mut self, FunctionName, &type) -> ()
     // Puts a function and its return type in the current scope.
-    pub fn put_func_ret(&mut self, name: FunctionName, _type: &Type) {
+    pub fn put_func_ret(&mut self, name: FunctionName, _type: &TypeRc) {
         self.func_ret_types.insert(name, _type.clone());
     }
 
     // get_func_ret(&self, FunctionName) -> Option<&Type>
     // Gets a function's return type from the stack of scopes.
-    pub fn get_func_ret(&self, name: FunctionName) -> Option<&Type> {
+    pub fn get_func_ret(&self, name: FunctionName) -> Option<&TypeRc> {
         // Set up
         let mut scope = self;
 
@@ -473,7 +474,7 @@ impl Scope {
 
             // Return success if found
             if let Some(v) = scope.variables.get(name) {
-                break if let Type::Enum(_) = v.0 {
+                break if let Type::Enum(_) = *v.0 {
                     false
                 } else {
                     new_func
