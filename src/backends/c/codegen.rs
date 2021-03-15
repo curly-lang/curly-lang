@@ -924,12 +924,14 @@ fn convert_sexpr(
                                         func.code.push_str(&name);
                                         func.code.push_str(".tag = ");
                                         let _ = func.code.write_fmt(format_args!("{}ull;\n", id));
-                                        func.code.push_str(&name);
-                                        func.code.push_str(".values.");
-                                        let _ = func.code.write_fmt(format_args!("$${}", id));
-                                        func.code.push_str(" = ");
-                                        func.code.push_str(&v);
-                                        func.code.push_str(";\n");
+                                        if !v.is_empty() {
+                                            func.code.push_str(&name);
+                                            func.code.push_str(".values.");
+                                            let _ = func.code.write_fmt(format_args!("$${}", id));
+                                            func.code.push_str(" = ");
+                                            func.code.push_str(&v);
+                                            func.code.push_str(";\n");
+                                        }
                                         v = format!("&{}", name);
                                     }
                                 }
