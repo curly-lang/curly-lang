@@ -940,7 +940,7 @@ fn copy_lib_files(options: &mut CommandlineBuildOptions) {
 
                 if file_type == "o" || file_type == "a" {
                     fs::copy(&file_path, format!("{}/{}", target_dir, file_name))
-                        .expect("Failed to copy file.");
+                        .unwrap_or_else(|_| panic!("Failed to copy {:?} to file \"{}/{}\".", &file_path, target_dir, file_name));
                 } else {
                     options.compiler_options.push(
                         file_path
