@@ -2514,36 +2514,35 @@ fn check_module(module: &mut IRModule, ir: &IR, errors: &mut Vec<CorrectnessErro
                     }
                 }
             }
+        }
 
         // Import qualified
-        } else {
-            for i in ir.modules.get(&import.1.name).unwrap().exports.iter() {
-                let mut impure = false;
-                for s in ir.modules.get(&import.1.name).unwrap().sexprs.iter() {
-                    if let SExpr::Assign(_, n, v) = s {
-                        if n == i.0 {
-                            if let SExpr::Function(_, f) = &**v {
-                                if ir
-                                    .modules
-                                    .get(&import.1.name)
-                                    .unwrap()
-                                    .funcs
-                                    .get(f)
-                                    .unwrap()
-                                    .impure
-                                {
-                                    impure = true;
-                                }
+        for i in ir.modules.get(&import.1.name).unwrap().exports.iter() {
+            let mut impure = false;
+            for s in ir.modules.get(&import.1.name).unwrap().sexprs.iter() {
+                if let SExpr::Assign(_, n, v) = s {
+                    if n == i.0 {
+                        if let SExpr::Function(_, f) = &**v {
+                            if ir
+                                .modules
+                                .get(&import.1.name)
+                                .unwrap()
+                                .funcs
+                                .get(f)
+                                .unwrap()
+                                .impure
+                            {
+                                impure = true;
                             }
-                            break;
                         }
+                        break;
                     }
                 }
-                import
-                    .1
-                    .imports
-                    .insert(i.0.clone(), (i.1 .1.clone(), 0, impure));
             }
+            import
+                .1
+                .imports
+                .insert(i.0.clone(), (i.1 .1.clone(), 0, impure));
         }
     }
 }
