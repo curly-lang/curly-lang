@@ -775,7 +775,7 @@ fn handle_module_ir_errors(
                                         .with_message(format!("Type {} is unsupported by FFI", t))])
                                 }
 
-                                IRError::DuplicateModule(v, _t) => {
+                                IRError::DuplicateModule(v, _) => {
                                     diagnostic =
                                         diagnostic.with_message(format!("Duplicate module `{}`", v))
                                 }
@@ -856,7 +856,10 @@ fn extract_modules_from_file(file_name: &str, modules_to_unpack: Vec<String>) {
             .wait()
             .expect("Failed to wait for ar.");
 
-        fs::remove_file(&included_libs_file_name).expect("Failed to remove file");
+        match fs::remove_file(&included_libs_file_name) {
+            Err(e) => eprintln!("Failed to remove file {} with error \"{:?}\"", &included_libs_file_name, e),
+            _ => ()
+        };
     }
 }
 
