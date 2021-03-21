@@ -488,8 +488,12 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
 
             if let Type::UndeclaredTypeError(s) = l {
                 Type::UndeclaredTypeError(s)
+            } else if let Type::DuplicateTypeError(a, b, c) = l {
+                Type::DuplicateTypeError(a, b, c)
             } else if let Type::UndeclaredTypeError(s) = r {
                 Type::UndeclaredTypeError(s)
+            } else if let Type::DuplicateTypeError(a, b, c) = r {
+                Type::DuplicateTypeError(a, b, c)
             } else {
                 Type::Func(Rc::new(l), Rc::new(r))
             }
