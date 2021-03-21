@@ -110,7 +110,7 @@ fn main() -> Result<(), ()> {
 
                 // Use the IR errors to make a map of which modules from which library corresponds to each module name.
                 let module_references =
-                    handle_module_ir_errors(&curly_libs, &mod_files_contents, mod_files_asts, mod_files_ir_errors);
+                    handle_module_ir_errors(&curly_libs, &mod_files_contents, mod_files_asts, mod_files_ir_errors)?;
 
                 // Use the previous map to make a different map of what modules are being pulled from each library.
                 let lib_modules_to_unpack =
@@ -621,14 +621,16 @@ fn handle_module_ir_errors(
     contents: &[String],
     mod_files_asts: Vec<Vec<AST>>,
     mod_files_ir_errors: Vec<Vec<Vec<IRError>>>,
-) -> HashMap<String, (usize, usize)> {
+) -> Result<HashMap<String, (usize, usize)>, ()> {
+    let mut without_error = true;
+
     let mut module_references: HashMap<String, (usize, usize)> = HashMap::new();
     let mut files = SimpleFiles::new();
     let mut file_hash = HashMap::new();
 
     for file in curly_libs
         .iter()
-        .map(|v| (v.0.clone(), true))
+        .map(|v| (v.1.clone(), true))
         .enumerate()
     {
         file_hash.insert(file.1.0.clone(), files.add(file.1.0.clone(), contents[file.0].clone()));
@@ -660,6 +662,7 @@ fn handle_module_ir_errors(
                                     ));
                                     term::emit(&mut writer.lock(), &config, &files, &diagnostic)
                                         .unwrap();
+                                    without_error = false;
                                 }
 
                                 DuplicateModuleInfo::NewSupersetOld
@@ -782,6 +785,7 @@ fn handle_module_ir_errors(
                                 }
                             }
                             term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                            without_error = false;
                         }
                     }
                 }
@@ -789,7 +793,11 @@ fn handle_module_ir_errors(
         }
     }
 
-    module_references
+    if !without_error {
+        return Err(());
+    }
+
+    return Ok(module_references);
 }
 
 fn module_refs_to_file_modules(
