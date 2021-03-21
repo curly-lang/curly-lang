@@ -639,7 +639,6 @@ fn handle_module_ir_errors(
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
-    // skyler please learn more rust and fix this aaaaaaaaaaaaaaaaaaaaa
     for file_num in 0..mod_files_ir_errors.len() {
         for module_num in 0..mod_files_ir_errors[file_num].len() {
             if mod_files_ir_errors[file_num][module_num].is_empty() {
