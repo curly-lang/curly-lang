@@ -70,7 +70,7 @@ fn main() -> Result<(), ()> {
                 };
 
                 handle_args(&mut options, &mut args).expect("Failed to handle args.");
-                post_process_args(&mut options, name).expect("Failed to post-process args.");
+                post_process_args(&mut options, &name).expect("Failed to post-process args.");
 
                 make_dirs().expect("Failed to make dirs.");
 
@@ -408,7 +408,7 @@ fn handle_args(options: &mut CommandlineBuildOptions, args: &mut Args) -> Result
     Ok(())
 }
 
-fn post_process_args(options: &mut CommandlineBuildOptions, name: String) -> Result<(), ()> {
+fn post_process_args(options: &mut CommandlineBuildOptions, name: &str) -> Result<(), ()> {
     if options.inputs.is_empty() {
         println!(
             "usage:
@@ -422,7 +422,7 @@ options:
     -L /path/to/dir     - Adds /path/to/dir as a directory where cc can look for libraries
     -l lib              - adds lib as a library
 ",
-            &name
+            name
         );
         return Err(());
     }
