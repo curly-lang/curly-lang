@@ -110,7 +110,7 @@ fn main() -> Result<(), ()> {
 
                 // Use the IR errors to make a map of which modules from which library corresponds to each module name.
                 let module_references =
-                    handle_module_ir_errors(&curly_libs, mod_files_asts, mod_files_ir_errors);
+                    handle_module_ir_errors(&curly_libs, &mod_files_contents, mod_files_asts, mod_files_ir_errors);
 
                 // Use the previous map to make a different map of what modules are being pulled from each library.
                 let lib_modules_to_unpack =
@@ -618,6 +618,7 @@ fn get_module_name_from_ast(ast: AST) -> Result<String, ()> {
 
 fn handle_module_ir_errors(
     curly_libs: &[(String, String)],
+    contents: &[String],
     mod_files_asts: Vec<Vec<AST>>,
     mod_files_ir_errors: Vec<Vec<Vec<IRError>>>,
 ) -> HashMap<String, (usize, usize)> {
@@ -625,12 +626,12 @@ fn handle_module_ir_errors(
     let mut files = SimpleFiles::new();
     let mut file_hash = HashMap::new();
 
-    for (file, lib) in curly_libs
+    for file in curly_libs
         .iter()
-        .map(|v| v.0.clone())
-        .zip(curly_libs.iter())
+        .map(|v| (v.0.clone(), true))
+        .enumerate()
     {
-        file_hash.insert(file.clone(), files.add(file.clone(), lib.1.clone()));
+        file_hash.insert(file.1.0.clone(), files.add(file.1.0.clone(), contents[file.0].clone()));
     }
 
     let writer = StandardStream::stderr(ColorChoice::Auto);
