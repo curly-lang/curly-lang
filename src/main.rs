@@ -184,8 +184,10 @@ fn main() -> Result<(), ()> {
 
                 let mut command = Command::new(COMPILER);
 
-                for i in linker_files.iter() {
-                    command.arg(i);
+                if options.mode == CompileMode::Executable {
+                    for i in linker_files.iter() {
+                        command.arg(i);
+                    }
                 }
 
                 for c in c.iter() {
