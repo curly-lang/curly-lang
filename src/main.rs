@@ -798,7 +798,7 @@ fn handle_module_ir_errors(
         return Err(());
     }
 
-    return Ok(module_references);
+    Ok(module_references)
 }
 
 fn module_refs_to_file_modules(
@@ -866,10 +866,9 @@ fn extract_modules_from_file(file_name: &str, modules_to_unpack: Vec<String>) {
             .wait()
             .expect("Failed to wait for ar.");
 
-        match fs::remove_file(&included_libs_file_name) {
-            Err(e) => eprintln!("Failed to remove file {} with error \"{:?}\"", &included_libs_file_name, e),
-            _ => ()
-        };
+            if let Err(e) = fs::remove_file(&included_libs_file_name) {
+                eprintln!("Failed to remove file {} with error \"{:?}\"", &included_libs_file_name, e)
+            }
     }
 }
 
