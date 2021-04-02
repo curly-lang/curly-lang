@@ -70,7 +70,7 @@ fn main() -> Result<(), ()> {
                 };
 
                 handle_args(&mut options, &mut args).expect("Failed to handle args.");
-                post_process_args(&mut options, name).expect("Failed to post-process args.");
+                post_process_args(&mut options, &name).expect("Failed to post-process args.");
 
                 make_dirs().expect("Failed to make dirs.");
 
@@ -110,7 +110,7 @@ fn main() -> Result<(), ()> {
 
                 // Use the IR errors to make a map of which modules from which library corresponds to each module name.
                 let module_references =
-                    handle_module_ir_errors(&curly_libs, &mod_files_contents, mod_files_asts, mod_files_ir_errors);
+                    handle_module_ir_errors(&curly_libs, &mod_files_contents, mod_files_asts, mod_files_ir_errors)?;
 
                 // Use the previous map to make a different map of what modules are being pulled from each library.
                 let lib_modules_to_unpack =
@@ -184,8 +184,10 @@ fn main() -> Result<(), ()> {
 
                 let mut command = Command::new(COMPILER);
 
-                for i in linker_files.iter() {
-                    command.arg(i);
+                if options.mode == CompileMode::Executable {
+                    for i in linker_files.iter() {
+                        command.arg(i);
+                    }
                 }
 
                 for c in c.iter() {
@@ -408,7 +410,7 @@ fn handle_args(options: &mut CommandlineBuildOptions, args: &mut Args) -> Result
     Ok(())
 }
 
-fn post_process_args(options: &mut CommandlineBuildOptions, name: String) -> Result<(), ()> {
+fn post_process_args(options: &mut CommandlineBuildOptions, name: &str) -> Result<(), ()> {
     if options.inputs.is_empty() {
         println!(
             "usage:
@@ -422,7 +424,7 @@ options:
     -L /path/to/dir     - Adds /path/to/dir as a directory where cc can look for libraries
     -l lib              - adds lib as a library
 ",
-            &name
+            name
         );
         return Err(());
     }
@@ -621,14 +623,16 @@ fn handle_module_ir_errors(
     contents: &[String],
     mod_files_asts: Vec<Vec<AST>>,
     mod_files_ir_errors: Vec<Vec<Vec<IRError>>>,
-) -> HashMap<String, (usize, usize)> {
+) -> Result<HashMap<String, (usize, usize)>, ()> {
+    let mut without_error = true;
+
     let mut module_references: HashMap<String, (usize, usize)> = HashMap::new();
     let mut files = SimpleFiles::new();
     let mut file_hash = HashMap::new();
 
     for file in curly_libs
         .iter()
-        .map(|v| (v.0.clone(), true))
+        .map(|v| (v.1.clone(), true))
         .enumerate()
     {
         file_hash.insert(file.1.0.clone(), files.add(file.1.0.clone(), contents[file.0].clone()));
@@ -637,7 +641,6 @@ fn handle_module_ir_errors(
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
-    // skyler please learn more rust and fix this aaaaaaaaaaaaaaaaaaaaa
     for file_num in 0..mod_files_ir_errors.len() {
         for module_num in 0..mod_files_ir_errors[file_num].len() {
             if mod_files_ir_errors[file_num][module_num].is_empty() {
@@ -660,6 +663,7 @@ fn handle_module_ir_errors(
                                     ));
                                     term::emit(&mut writer.lock(), &config, &files, &diagnostic)
                                         .unwrap();
+                                    without_error = false;
                                 }
 
                                 DuplicateModuleInfo::NewSupersetOld
@@ -782,6 +786,7 @@ fn handle_module_ir_errors(
                                 }
                             }
                             term::emit(&mut writer.lock(), &config, &files, &diagnostic).unwrap();
+                            without_error = false;
                         }
                     }
                 }
@@ -789,7 +794,11 @@ fn handle_module_ir_errors(
         }
     }
 
-    module_references
+    if !without_error {
+        return Err(());
+    }
+
+    Ok(module_references)
 }
 
 fn module_refs_to_file_modules(
@@ -857,10 +866,9 @@ fn extract_modules_from_file(file_name: &str, modules_to_unpack: Vec<String>) {
             .wait()
             .expect("Failed to wait for ar.");
 
-        match fs::remove_file(&included_libs_file_name) {
-            Err(e) => eprintln!("Failed to remove file {} with error \"{:?}\"", &included_libs_file_name, e),
-            _ => ()
-        };
+            if let Err(e) = fs::remove_file(&included_libs_file_name) {
+                eprintln!("Failed to remove file {} with error \"{:?}\"", &included_libs_file_name, e)
+            }
     }
 }
 

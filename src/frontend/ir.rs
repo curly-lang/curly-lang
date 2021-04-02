@@ -1181,7 +1181,7 @@ fn convert_node(
             Box::new(convert_node(*v, filename, funcs, global, seen_funcs, types)),
             a.into_iter()
                 .map(|a| {
-                    let span2 = a.0.get_span().clone();
+                    let span2 = a.0.get_span();
                     (
                         Rc::new(types::convert_ast_to_type(a.0, filename)),
                         convert_node(a.1, filename, funcs, global, seen_funcs, types),

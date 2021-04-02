@@ -1145,11 +1145,10 @@ fn convert_sexpr(
                                 }
                             } else {
                                 let saved_argc = f.get_metadata().saved_argc.unwrap();
-                                let is_enum = if let Type::Enum(_) = **ftype {
-                                    true
-                                } else {
-                                    false
-                                };
+                                let is_enum = matches!(
+                                    **ftype,
+                                    Type::Enum(_)
+                                );
 
                                 if !is_enum {
                                     func.code.push_str(get_c_type(ftype, types));
@@ -1158,7 +1157,7 @@ fn convert_sexpr(
                                     func.code.push_str(" = ");
                                 }
 
-                                if fstr == "" {
+                                if fstr.is_empty() {
                                     // Get function name
                                     fstr = format!(
                                         "{}{}$FUNC$$",
@@ -1174,8 +1173,8 @@ fn convert_sexpr(
 
                                     // Pass arguments
                                     let mut comma = saved_argc > 0;
-                                    for i in 0..f.get_metadata().arity {
-                                        if let Type::Enum(_) = astrs[i].1 {
+                                    for astrs_item in astrs.iter().take(f.get_metadata().arity) {
+                                        if let Type::Enum(_) = astrs_item.1 {
                                             continue;
                                         }
 
@@ -1185,7 +1184,7 @@ fn convert_sexpr(
                                             comma = true;
                                         }
 
-                                        func.code.push_str(&astrs[i].0);
+                                        func.code.push_str(&astrs_item.0);
                                     }
 
                                     // Close parentheses
@@ -1417,13 +1416,9 @@ fn convert_sexpr(
                     func.code.push_str(";\n");
 
                     // Increment reference counter
-                    match *m._type {
-                        Type::Func(_, _) => {
-                            func.code.push_str(&a);
-                            func.code.push_str(".refc++;\n");
-                        }
-
-                        _ => (),
+                    if let Type::Func(_, _) = *m._type {
+                        func.code.push_str(&a);
+                        func.code.push_str(".refc++;\n");
                     }
 
                     a.clone()
@@ -1437,11 +1432,10 @@ fn convert_sexpr(
             let mut name = String::with_capacity(0);
 
             // Declare variable
-            let is_enum = if let Type::Enum(_) = *m._type {
-                true
-            } else {
-                false
-            };
+            let is_enum = matches!(
+                *m._type,
+                Type::Enum(_)
+            );
             if !is_enum {
                 name = format!("$${}", func.last_reference);
                 func.last_reference += 1;
@@ -2475,7 +2469,7 @@ fn convert_module_to_c(
 
     // Put all function definitions
     for f in funcs {
-        if f.1.args.len() == 0 {
+        if f.1.args.is_empty() {
             continue;
         }
 

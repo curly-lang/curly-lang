@@ -1096,7 +1096,7 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError> {
     // Get arguments
     loop {
         // Get comma
-        if args.len() != 0 {
+        if !args.is_empty() {
             match parser.peek() {
                 Some((Token::Comma, _)) => {
                     parser.next();
@@ -1118,7 +1118,7 @@ fn lambda(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 
     // Check that there is at least one argument
-    if args.len() == 0 {
+    if args.is_empty() {
         parser.return_state(state);
         return Err(ParseError {
             span: parser.span(),
@@ -1168,7 +1168,7 @@ fn matchy(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 
     // Error if no match arms
-    if arms.len() == 0 {
+    if arms.is_empty() {
         return Err(ParseError {
             span: Span {
                 start: span.start,
@@ -1477,7 +1477,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError> {
     // Get arguments
     loop {
         // Get comma
-        if args.len() != 0 {
+        if !args.is_empty() {
             match parser.peek() {
                 Some((Token::Comma, _)) => {
                     parser.next();
@@ -1499,7 +1499,7 @@ fn assignment_func(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 
     // Check that there is at least one argument
-    if args.len() == 0 {
+    if args.is_empty() {
         parser.return_state(state);
         return ParseError::empty();
     }
@@ -1558,7 +1558,7 @@ fn with(parser: &mut Parser) -> Result<AST, ParseError> {
     }
 
     // Check that there is at least one assignment
-    if assigns.len() == 0 {
+    if assigns.is_empty() {
         parser.return_state(state);
         return ParseError::empty();
     }
@@ -1588,11 +1588,10 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError> {
     let name = call_func_fatal!(access_member, parser, "Expected module name after `import`");
     let mut end = name.get_span().end;
 
-    let qualified = if let Some((Token::LParen, _)) = parser.peek() {
-        false
-    } else {
-        true
-    };
+    let qualified = !matches!(
+        parser.peek(),
+        Some((Token::LParen, _))
+    );
 
     if qualified {
         let mut alias = String::with_capacity(0);
@@ -1613,7 +1612,7 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError> {
         parser.next();
         loop {
             newline(parser);
-            if let None = parser.peek() {
+            if parser.peek().is_none() {
                 parser.return_state(state);
                 return Err(ParseError {
                     span: parser.span(),
@@ -1624,24 +1623,30 @@ fn import(parser: &mut Parser) -> Result<AST, ParseError> {
                 });
             }
 
-            if imports.len() > 0 {
-                if let Some((Token::Comma, _)) = parser.peek() {
-                    parser.next();
-                } else if let Some((Token::RParen, _)) = parser.peek() {
-                    parser.next();
-                    break;
-                } else {
-                    return Err(ParseError {
-                        span: parser.span(),
-                        msg: String::from("Expected comma or right parenthesis"),
-                        fatal: true,
-                    });
-                }
-            } else if imports.len() == 0 {
+            if imports.is_empty() {
                 if let Some((Token::Mul, _)) = parser.peek() {
                     parser.next();
                     consume_nosave!(parser, RParen, state, true, "Expected right parenthesis");
                     break;
+                }
+            } else {
+                match parser.peek() {
+                    Some((Token::Comma, _)) => {
+                        parser.next();
+                    },
+
+                    Some((Token::RParen, _)) => {
+                        parser.next();
+                        break;
+                    }
+
+                    _ => {
+                        return Err(ParseError {
+                            span: parser.span(),
+                            msg: String::from("Expected comma or right parenthesis"),
+                            fatal: true,
+                        });
+                    }
                 }
             }
 
@@ -1838,7 +1843,7 @@ pub fn parse(s: &str) -> Result<Vec<AST>, ParseError> {
                 Ok(v) => v,
                 Err(e) if e.fatal => return Err(e),
                 Err(_) => {
-                    let peeked = if let Some(_) = p.peek() {
+                    let peeked = if p.peek().is_some() {
                         p.slice()
                     } else {
                         String::from("eof")
