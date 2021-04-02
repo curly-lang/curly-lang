@@ -1,3 +1,4 @@
+use logos::Span;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
@@ -337,6 +338,70 @@ impl Type {
     }
 }
 
+// ast_sum_builder_helper(AST, &str, &mut HashMap<TypeRc, Span>, &mut HashMap<String, Span>) -> Type
+// Helper function for building sum/union types.
+fn ast_sum_builder_helper(ast: AST, filename: &str, fields: &mut HashMap<TypeRc, Span>, labels: &mut HashMap<String, Span>) -> Type {
+    let s = ast.get_span();
+    let v = convert_ast_to_type(ast, filename);
+    if let Type::Sum(v) = v {
+        for v in v.0 {
+            if let Some(s2) = fields.remove(&v) {
+                return Type::DuplicateTypeError(
+                    Location::new(s, filename),
+                    Location::new(s2, filename),
+                    v,
+                );
+            } else {
+                match &*v {
+                    Type::Enum(v) | Type::Tag(v, _) => {
+                        if let Some(s2) = labels.remove(v) {
+                            return Type::DuplicateTypeError(
+                                Location::new(s, filename),
+                                Location::new(s2, filename),
+                                Rc::new(Type::Symbol(v.clone()))
+                            );
+                        }
+
+                        labels.insert(v.clone(), s.clone());
+                    }
+
+                    _ => ()
+                }
+            }
+
+            fields.insert(v, s.clone());
+        }
+    } else {
+        if let Some(s2) = fields.remove(&v) {
+            return Type::DuplicateTypeError(
+                Location::new(s, filename),
+                Location::new(s2, filename),
+                Rc::new(v),
+            );
+        } else {
+            match &v {
+                Type::Enum(v) | Type::Tag(v, _) => {
+                    if let Some(s2) = labels.remove(v) {
+                        return Type::DuplicateTypeError(
+                            Location::new(s, filename),
+                            Location::new(s2, filename),
+                            Rc::new(Type::Symbol(v.clone()))
+                        );
+                    }
+
+                    labels.insert(v.clone(), s.clone());
+                }
+
+                _ => ()
+            }
+        }
+
+        fields.insert(Rc::new(v), s);
+    }
+
+    Type::Unknown
+}
+
 // convert_ast_to_type(AST, &IR) -> Type
 // Converts an ast node into a type.
 pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
@@ -377,60 +442,19 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
         // Sum types
         AST::Infix(_, op, l, r) if op == "|" => {
             let mut fields = HashMap::new();
-            let s = r.get_span();
-            let v = convert_ast_to_type(*r, filename);
-            if let Type::Sum(v) = v {
-                for v in v.0 {
-                    if let Some(s2) = fields.remove(&v) {
-                        return Type::DuplicateTypeError(
-                            Location::new(s, filename),
-                            Location::new(s2, filename),
-                            v,
-                        );
-                    }
-
-                    fields.insert(v, s.clone());
-                }
-            } else {
-                if let Some(s2) = fields.remove(&v) {
-                    return Type::DuplicateTypeError(
-                        Location::new(s, filename),
-                        Location::new(s2, filename),
-                        Rc::new(v),
-                    );
-                }
-
-                fields.insert(Rc::new(v), s);
-            }
+            let mut labels = HashMap::new();
             let mut acc = *l;
+            let t = ast_sum_builder_helper(*r, filename, &mut fields, &mut labels);
+            if t != Type::Unknown {
+                return t;
+            }
 
             loop {
                 match acc {
                     AST::Infix(_, op, l, r) if op == "|" => {
-                        let s = r.get_span().clone();
-                        let v = convert_ast_to_type(*r, filename);
-                        if let Type::Sum(v) = v {
-                            for v in v.0 {
-                                if let Some(s2) = fields.remove(&v) {
-                                    return Type::DuplicateTypeError(
-                                        Location::new(s, filename),
-                                        Location::new(s2, filename),
-                                        v,
-                                    );
-                                }
-
-                                fields.insert(v, s.clone());
-                            }
-                        } else {
-                            if let Some(s2) = fields.remove(&v) {
-                                return Type::DuplicateTypeError(
-                                    Location::new(s, filename),
-                                    Location::new(s2, filename),
-                                    Rc::new(v),
-                                );
-                            }
-
-                            fields.insert(Rc::new(v), s);
+                        let t = ast_sum_builder_helper(*r, filename, &mut fields, &mut labels);
+                        if t != Type::Unknown {
+                            return t;
                         }
 
                         acc = *l;
@@ -440,30 +464,9 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
                 }
             }
 
-            let s = acc.get_span();
-            let v = convert_ast_to_type(acc, filename);
-            if let Type::Sum(v) = v {
-                for v in v.0 {
-                    if let Some(s2) = fields.remove(&*v) {
-                        return Type::DuplicateTypeError(
-                            Location::new(s, filename),
-                            Location::new(s2, filename),
-                            v,
-                        );
-                    }
-
-                    fields.insert(v, s.clone());
-                }
-            } else {
-                if let Some(s2) = fields.remove(&v) {
-                    return Type::DuplicateTypeError(
-                        Location::new(s, filename),
-                        Location::new(s2, filename),
-                        Rc::new(v),
-                    );
-                }
-
-                fields.insert(Rc::new(v), s);
+            let t = ast_sum_builder_helper(acc, filename, &mut fields, &mut labels);
+            if t != Type::Unknown {
+                return t;
             }
 
             for f in fields.iter() {
