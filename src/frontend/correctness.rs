@@ -1,13 +1,12 @@
 use logos::Span;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
-use std::rc::Rc;
 
 use super::ir::{
     BinOp, IRExtern, IRFunction, IRImport, IRModule, Location, PrefixOp, SExpr, SExprMetadata, IR,
 };
 use super::scopes::{FunctionName, Scope};
-use super::types::{HashSetWrapper, Type, TypeRc};
+use super::types::{arc, HashSetWrapper, Type, TypeRc};
 
 #[derive(Debug)]
 pub enum CorrectnessError {
@@ -44,14 +43,14 @@ pub enum CorrectnessError {
 fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
     if let Type::UndeclaredTypeError(s) = &*sexpr.get_metadata()._type {
         let s = s.clone();
-        sexpr.get_mutable_metadata()._type = Rc::new(Type::Error);
+        sexpr.get_mutable_metadata()._type = arc::new(Type::Error);
         errors.push(CorrectnessError::InvalidType(s));
         return;
     } else if let Type::DuplicateTypeError(s1, s2, t) = &*sexpr.get_metadata()._type {
         let s1 = s1.clone();
         let s2 = s2.clone();
         let t = t.clone();
-        sexpr.get_mutable_metadata()._type = Rc::new(Type::Error);
+        sexpr.get_mutable_metadata()._type = arc::new(Type::Error);
         errors.push(CorrectnessError::DuplicateTypeInUnion(
             s1,
             s2,
@@ -168,9 +167,9 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         m._type = v.ret_type.clone();
 
                         for t in v.arg_types.iter().rev() {
-                            let mut _type = Rc::new(Type::Unknown);
+                            let mut _type = arc::new(Type::Unknown);
                             swap(&mut _type, &mut m._type);
-                            m._type = Rc::new(Type::Func(t.clone(), _type));
+                            m._type = arc::new(Type::Func(t.clone(), _type));
                         }
 
                         let mut temp = SExprMetadata::empty();
@@ -285,7 +284,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     m.loc2.clone(),
                     m._type.clone(),
                 ));
-                m._type = Rc::new(Type::Error);
+                m._type = arc::new(Type::Error);
             }
         }
 
@@ -317,7 +316,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             }
 
             if *left.get_metadata()._type == Type::Bool && *right.get_metadata()._type == Type::Bool {
-                m._type = Rc::new(Type::Bool);
+                m._type = arc::new(Type::Bool);
             }
         }
 
@@ -359,13 +358,13 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 m._type = then.get_metadata()._type.clone()
             } else if then.get_metadata()._type != elsy.get_metadata()._type {
                 let mut set = Vec::with_capacity(0);
-                if let Type::Sum(v) = &*then.get_metadata()._type {
+                if let Type::Union(v) = &*then.get_metadata()._type {
                     set = v.0.iter().collect();
                 } else {
                     set.push(&then.get_metadata()._type);
                 }
 
-                if let Type::Sum(v) = &*elsy.get_metadata()._type {
+                if let Type::Union(v) = &*elsy.get_metadata()._type {
                     for v in v.0.iter() {
                         set.push(v);
                     }
@@ -373,7 +372,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     set.push(&elsy.get_metadata()._type);
                 }
 
-                m._type = Rc::new(Type::Sum(HashSetWrapper(set.into_iter().cloned().collect())));
+                m._type = arc::new(Type::Union(HashSetWrapper(set.into_iter().cloned().collect())));
             } else {
                 m._type = then.get_metadata()._type.clone();
             }
@@ -408,7 +407,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             // External functions
             } else if let SExpr::ExternalFunc(m1, name, args) = &mut **func {
                 if let Type::Func(l, r) = &*m1._type {
-                    if l.equals(&arg.get_metadata()._type, &module.types) {
+                    if *l == arg.get_metadata()._type {
                         let mut temp = SExpr::True(SExprMetadata::empty());
                         swap(&mut temp, arg);
                         args.push(temp);
@@ -505,7 +504,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         }
                         module.funcs.remove(f);
                     }
-                    m._type = Rc::new(Type::Error);
+                    m._type = arc::new(Type::Error);
                     return;
                 } else if *m._type != Type::Error && !m._type.is_subtype(&v.0, &module.types) {
                     errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
@@ -514,7 +513,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         m.loc.clone(),
                         m._type.clone(),
                     ));
-                    m._type = Rc::new(Type::Error);
+                    m._type = arc::new(Type::Error);
                     return;
                 } else if *m._type == Type::Error
                     && !value.get_metadata()._type.is_subtype(&v.0, &module.types)
@@ -525,7 +524,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                         value.get_metadata().loc.clone(),
                         value.get_metadata()._type.clone(),
                     ));
-                    m._type = Rc::new(Type::Error);
+                    m._type = arc::new(Type::Error);
                     return;
                 }
 
@@ -559,7 +558,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                             value.get_metadata().loc.clone(),
                             value.get_metadata()._type.clone(),
                         ));
-                        m._type = Rc::new(Type::Error);
+                        m._type = arc::new(Type::Error);
                     }
                 }
             }
@@ -650,7 +649,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
             // Check match arms
             module.scope.push_scope(false);
-            let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
+            let mut returned = Type::Union(HashSetWrapper(HashSet::with_capacity(0)));
             let mut last = None;
             for arm in arms.iter_mut() {
                 // Get name of symbol
@@ -675,7 +674,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 }
 
                 // Nonsubtypes are errors
-                if !atype.is_subtype(&_type, &module.types) || atype.equals(_type, &module.types) {
+                if !atype.is_subtype(&_type, &module.types) || atype == _type {
                     errors.push(CorrectnessError::NonSubtypeOnMatch(
                         value.get_metadata().loc.clone(),
                         _type.clone(),
@@ -696,7 +695,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
                 // Check for error
                 if *arm.1.get_metadata()._type == Type::Error {
-                    last = Some(Rc::new(Type::Error));
+                    last = Some(arc::new(Type::Error));
                     continue;
                 }
 
@@ -709,12 +708,12 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                 {
                     last = Some(_type);
                 } else if last.is_some() && **last.as_ref().unwrap() == Type::Error {
-                } else if let Type::Sum(set) = &mut returned {
+                } else if let Type::Union(set) = &mut returned {
                     if let Some(mut t) = last {
                         while let Type::Symbol(s) = &*t {
                             t = module.types.get(s).unwrap().clone();
                         }
-                        if let Type::Sum(v) = &*t {
+                        if let Type::Union(v) = &*t {
                             for v in v.0.iter() {
                                 set.0.insert(v.clone());
                             }
@@ -727,7 +726,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                     while let Type::Symbol(s) = &*_type {
                         _type = module.types.get(s).unwrap().clone();
                     }
-                    if let Type::Sum(v) = &*_type {
+                    if let Type::Union(v) = &*_type {
                         for v in v.0.iter() {
                             set.0.insert(v.clone());
                         }
@@ -740,11 +739,11 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
             module.scope.pop_scope();
             m._type = if let Some(v) = last {
                 v
-            } else if let Type::Sum(v) = returned {
+            } else if let Type::Union(v) = returned {
                 if v.0.len() == 1 {
                     v.0.into_iter().next().unwrap()
                 } else {
-                    Rc::new(Type::Sum(v))
+                    arc::new(Type::Union(v))
                 }
             } else {
                 unreachable!("if youre here you dont deserve a single uwu");
@@ -816,7 +815,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
 
             // Get type
             if let Some(t) = types.get(&a[pos]) {
-                if let Type::Sum(f) = &**t {
+                if let Type::Union(f) = &**t {
                     if f.0.contains(&Type::Enum(a[1].clone())) {
                         if a.len() != 2 {
                             errors.push(CorrectnessError::NonmemberAccess(
@@ -825,7 +824,7 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                                 a[2].clone(),
                             ));
                         } else {
-                            m._type = Rc::new(Type::Symbol(a[pos].clone()));
+                            m._type = arc::new(Type::Symbol(a[pos].clone()));
                         }
                     } else if let Some(v) = f.0.iter().find(|v| {
                         if let Type::Tag(t, _) = &***v {
@@ -846,8 +845,8 @@ fn check_sexpr(sexpr: &mut SExpr, module: &mut IRModule, errors: &mut Vec<Correc
                             swap(&mut temp, m);
                             temp.arity = 1;
                             temp.saved_argc = Some(0);
-                            temp._type = Rc::new(
-                                Type::Func(t.clone(), Rc::new(Type::Symbol(a[0].clone()))));
+                            temp._type = arc::new(
+                                Type::Func(t.clone(), arc::new(Type::Symbol(a[0].clone()))));
 
                             *sexpr = SExpr::Function(temp, a.join("::"));
                         }
@@ -1059,14 +1058,14 @@ fn get_function_type(
                     if let Some(v) = externals.get(s) {
                         let mut _type = v.ret_type.clone();
                         for t in v.arg_types.iter().rev() {
-                            let mut temp = Rc::new(Type::Unknown);
+                            let mut temp = arc::new(Type::Unknown);
                             swap(&mut temp, &mut _type);
-                            _type = Rc::new(Type::Func(t.clone(), temp));
+                            _type = arc::new(Type::Func(t.clone(), temp));
                         }
 
                         _type
                     } else {
-                        Rc::new(Type::Unknown)
+                        arc::new(Type::Unknown)
                     }
                 }
             }
@@ -1090,7 +1089,7 @@ fn get_function_type(
 
                 match scope.get_func_ret(FunctionName::Prefix(vt)) {
                     Some(v) => v.clone(),
-                    None => Rc::new(Type::Unknown),
+                    None => arc::new(Type::Unknown),
                 }
             }
 
@@ -1126,7 +1125,7 @@ fn get_function_type(
 
             match scope.get_func_ret(FunctionName::Infix(*op, lt, rt)) {
                 Some(v) => v.clone(),
-                None => Rc::new(Type::Unknown),
+                None => arc::new(Type::Unknown),
             }
         }
 
@@ -1192,7 +1191,7 @@ fn get_function_type(
                 externals,
                 imports,
             );
-            Rc::new(Type::Bool)
+            arc::new(Type::Bool)
         }
 
         // If expressions
@@ -1223,8 +1222,8 @@ fn get_function_type(
             );
 
             if *bt == Type::Unknown && *et == Type::Unknown {
-                Rc::new(Type::Unknown)
-            } else if bt.equals(&et, types) || *et == Type::Unknown {
+                arc::new(Type::Unknown)
+            } else if bt == et || *et == Type::Unknown {
                 if let Type::Symbol(_) = *bt {
                     bt
                 } else if *et != Type::Unknown {
@@ -1238,13 +1237,13 @@ fn get_function_type(
                 bt
             } else {
                 let mut set = Vec::with_capacity(0);
-                if let Type::Sum(v) = &*bt {
+                if let Type::Union(v) = &*bt {
                     set = v.0.iter().cloned().collect();
                 } else {
                     set.push(bt);
                 }
 
-                if let Type::Sum(v) = &*et {
+                if let Type::Union(v) = &*et {
                     for v in v.0.iter() {
                         set.push(v.clone());
                     }
@@ -1252,7 +1251,7 @@ fn get_function_type(
                     set.push(et);
                 }
 
-                Rc::new(Type::Sum(HashSetWrapper(set.into_iter().collect())))
+                arc::new(Type::Union(HashSetWrapper(set.into_iter().collect())))
             }
         }
 
@@ -1290,7 +1289,7 @@ fn get_function_type(
                 imports,
             );
             if let Type::Unknown = *ft {
-                return Rc::new(Type::Unknown);
+                return arc::new(Type::Unknown);
             }
 
             while let Type::Symbol(s) = &*ft {
@@ -1319,7 +1318,7 @@ fn get_function_type(
                 }
 
                 // Everything else is invalid
-                _ => Rc::new(Type::Unknown),
+                _ => arc::new(Type::Unknown),
             }
         }
 
@@ -1426,7 +1425,7 @@ fn get_function_type(
         SExpr::Match(_, _, arms) => {
             // Check match arms
             scope.push_scope(false);
-            let mut returned = Type::Sum(HashSetWrapper(HashSet::with_capacity(0)));
+            let mut returned = Type::Union(HashSetWrapper(HashSet::with_capacity(0)));
             let mut last: Option<TypeRc> = None;
             for arm in arms.iter() {
                 // Check body of match arm
@@ -1463,12 +1462,12 @@ fn get_function_type(
                 {
                     last = Some(_type);
                 } else if last.is_some() && **last.as_ref().unwrap() == Type::Error {
-                } else if let Type::Sum(set) = &mut returned {
+                } else if let Type::Union(set) = &mut returned {
                     if let Some(mut t) = last {
                         while let Type::Symbol(s) = &*t {
                             t = types.get(s).unwrap().clone();
                         }
-                        if let Type::Sum(v) = &*t {
+                        if let Type::Union(v) = &*t {
                             for v in v.0.iter() {
                                 set.0.insert(v.clone());
                             }
@@ -1481,7 +1480,7 @@ fn get_function_type(
                     while let Type::Symbol(s) = &*_type {
                         _type = types.get(s).unwrap().clone();
                     }
-                    if let Type::Sum(v) = &*_type {
+                    if let Type::Union(v) = &*_type {
                         for v in v.0.iter() {
                             set.0.insert(v.clone());
                         }
@@ -1495,13 +1494,13 @@ fn get_function_type(
 
             if let Some(v) = last {
                 v
-            } else if let Type::Sum(v) = returned {
+            } else if let Type::Union(v) = returned {
                 if v.0.is_empty() {
-                    Rc::new(Type::Unknown)
+                    arc::new(Type::Unknown)
                 } else if v.0.len() == 1 {
                     v.0.into_iter().next().unwrap()
                 } else {
-                    Rc::new(Type::Sum(v))
+                    arc::new(Type::Union(v))
                 }
              } else {
                 unreachable!("if youre here you dont deserve a single uwu");
@@ -1540,21 +1539,21 @@ fn get_function_type(
                 if pos < a.len() {
                     if let Some(v) = imports.get(&module_name).unwrap().imports.get(&a[pos]) {
                         return if a.len() > pos + 1 {
-                            Rc::new(Type::Unknown)
+                            arc::new(Type::Unknown)
                         } else {
                             v.0.clone()
                         };
                     }
                 } else {
-                    return Rc::new(Type::Unknown);
+                    return arc::new(Type::Unknown);
                 }
             }
 
             if let Some(t) = types.get(&a[0]) {
-                if let Type::Sum(f) = &**t {
+                if let Type::Union(f) = &**t {
                     if f.0.contains(&Type::Enum(a[1].clone())) {
                         if a.len() != 2 {
-                            Rc::new(Type::Unknown)
+                            arc::new(Type::Unknown)
                         } else {
                             t.clone()
                         }
@@ -1566,20 +1565,20 @@ fn get_function_type(
                         }
                     }) {
                         if a.len() != 2 {
-                            Rc::new(Type::Unknown)
+                            arc::new(Type::Unknown)
                         } else if let Type::Tag(_, t2) = &**v {
-                            Rc::new(Type::Func(t2.clone(), t.clone()))
+                            arc::new(Type::Func(t2.clone(), t.clone()))
                         } else {
                             unreachable!("always a tag type");
                         }
                     } else {
-                        Rc::new(Type::Unknown)
+                        arc::new(Type::Unknown)
                     }
                 } else {
-                    Rc::new(Type::Unknown)
+                    arc::new(Type::Unknown)
                 }
             } else {
-                Rc::new(Type::Unknown)
+                arc::new(Type::Unknown)
             }
         }
     }
@@ -1607,7 +1606,7 @@ fn check_function_body(
         // Put function in scope
         scope.put_var_raw(
             String::from(name),
-            Rc::new(Type::Unknown),
+            arc::new(Type::Unknown),
             func.args.len(),
             None,
             Location::new(Span { start: 0, end: 0 }, &func.loc.filename),
@@ -1617,7 +1616,7 @@ fn check_function_body(
         if name != refr {
             scope.put_var_raw(
                 String::from(refr),
-                Rc::new(Type::Unknown),
+                arc::new(Type::Unknown),
                 func.args.len(),
                 None,
                 Location::new(Span { start: 0, end: 0 }, &func.loc.filename),
@@ -1672,11 +1671,11 @@ fn check_function_body(
         // Construct the type
         let mut acc = _type;
         for t in func.args.iter().rev() {
-            acc = Rc::new(Type::Func(t.1.clone(), acc));
+            acc = arc::new(Type::Func(t.1.clone(), acc));
         }
 
         if let Some(v) = scope.variables.remove(refr) {
-            if *v.0 != Type::Unknown && !v.0.equals(&acc, types) {
+            if *v.0 != Type::Unknown && v.0 != acc {
                 errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                     v.3,
                     v.0,
@@ -1687,7 +1686,7 @@ fn check_function_body(
             }
         }
         if let Some(v) = scope.variables.remove(name) {
-            if *v.0 != Type::Unknown && !v.0.equals(&acc, types) {
+            if *v.0 != Type::Unknown && v.0 != acc {
                 errors.push(CorrectnessError::MismatchedDeclarationAssignmentTypes(
                     v.3,
                     v.0,
@@ -1845,7 +1844,7 @@ fn check_globals(module: &mut IRModule, errors: &mut Vec<CorrectnessError>) {
 // Saves one type.
 fn save_single_type(id: &mut usize, _type: &TypeRc, types: &mut HashMap<String, TypeRc>) {
     for t in types.iter() {
-        if _type.equals(t.1, types) {
+        if _type == t.1 {
             return;
         }
     }
@@ -1858,23 +1857,23 @@ fn save_single_type(id: &mut usize, _type: &TypeRc, types: &mut HashMap<String, 
 // Saves anonymous types.
 fn save_types(sexpr: &SExpr, types: &mut HashMap<String, TypeRc>, id: &mut usize) {
     let m = sexpr.get_metadata();
-    if let Type::Sum(_) = &*m._type {
+    if let Type::Union(_) = &*m._type {
         save_single_type(id, &m._type, types);
     } else if let Type::Func(l, r) = &*m._type {
-        if let Type::Sum(_) = &**l {
+        if let Type::Union(_) = &**l {
             save_single_type(id, l, types);
         }
 
         let mut t = r;
         while let Type::Func(l, r) = &**t {
-            if let Type::Sum(_) = &**l {
+            if let Type::Union(_) = &**l {
                 save_single_type(id, l, types);
             }
 
             t = r;
         }
 
-        if let Type::Sum(_) = **t {
+        if let Type::Union(_) = **t {
             save_single_type(id, t, types);
         }
     }
@@ -1923,7 +1922,7 @@ fn save_types(sexpr: &SExpr, types: &mut HashMap<String, TypeRc>, id: &mut usize
             for a in a.iter() {
                 let _type = if let Type::Tag(_, t) = &*a.0 { t } else { &a.0 };
 
-                if let Type::Sum(_) = &**_type {
+                if let Type::Union(_) = &**_type {
                     save_single_type(id, &_type, types);
                 }
                 save_types(&a.1, types, id);
@@ -1947,7 +1946,7 @@ fn check_type_validity(module: &IRModule, errors: &mut Vec<CorrectnessError>) {
                     ));
                 }
 
-                Type::Sum(s) if s.0.contains(&Rc::new(Type::Symbol(n.clone()))) => {
+                Type::Union(s) if s.0.contains(&arc::new(Type::Symbol(n.clone()))) => {
                     errors.push(CorrectnessError::InfiniteSizedType(
                         m.loc2.clone(),
                         m._type.clone(),
@@ -2665,7 +2664,7 @@ pub fn check_correctness(ir: &mut IR, require_main: bool) -> Result<(), Vec<Corr
                     // Add functions
                     for i in import.1.imports.iter() {
                         let mut func = IRFunction {
-                            args: std::iter::once((String::with_capacity(0), Rc::new(Type::Unknown)))
+                            args: std::iter::once((String::with_capacity(0), arc::new(Type::Unknown)))
                                 .cycle()
                                 .take(i.1 .1)
                                 .collect(),

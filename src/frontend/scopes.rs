@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use super::ir::{BinOp, Location};
-use super::types::{Type, TypeRc};
+use super::types::{arc, Type, TypeRc};
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub enum FunctionName {
@@ -35,297 +34,297 @@ impl Scope {
     pub fn init_builtins(mut self) -> Scope {
         // Prefix operators
         self.func_ret_types
-            .insert(FunctionName::Prefix(Rc::new(Type::Int)), Rc::new(Type::Int));
+            .insert(FunctionName::Prefix(arc::new(Type::Int)), arc::new(Type::Int));
         self.func_ret_types
-            .insert(FunctionName::Prefix(Rc::new(Type::Float)), Rc::new(Type::Float));
+            .insert(FunctionName::Prefix(arc::new(Type::Float)), arc::new(Type::Float));
 
         // Infix operators
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
+            FunctionName::Infix(BinOp::Mul, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
+            FunctionName::Infix(BinOp::Mul, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Float),
+            FunctionName::Infix(BinOp::Mul, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
+            FunctionName::Infix(BinOp::Mul, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mul, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Float),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Div, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
+            FunctionName::Infix(BinOp::Mul, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mod, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
+            FunctionName::Infix(BinOp::Div, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Mod, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
+            FunctionName::Infix(BinOp::Div, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
+            FunctionName::Infix(BinOp::Div, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Float),
+            FunctionName::Infix(BinOp::Div, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Add, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
+            FunctionName::Infix(BinOp::Div, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
+            FunctionName::Infix(BinOp::Mod, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Float),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Sub, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Float),
+            FunctionName::Infix(BinOp::Mod, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSL, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
+            FunctionName::Infix(BinOp::Add, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSL, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
+            FunctionName::Infix(BinOp::Add, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSR, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
+            FunctionName::Infix(BinOp::Add, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BSR, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Rc::new(Type::Char), Rc::new(Type::Char)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Add, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LT, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Add, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Rc::new(Type::Char), Rc::new(Type::Char)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Sub, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Sub, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Sub, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Sub, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GT, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::Sub, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Float),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Char), Rc::new(Type::Char)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::BSL, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::BSL, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::BSR, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::LEQ, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::BSR, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Char), Rc::new(Type::Char)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LT, arc::new(Type::Char), arc::new(Type::Char)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LT, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LT, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LT, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LT, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::GEQ, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Char), Rc::new(Type::Char)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::EQ, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LT, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Bool),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Char), Rc::new(Type::Char)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::GT, arc::new(Type::Char), arc::new(Type::Char)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::GT, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::GT, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Float), Rc::new(Type::Int)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::GT, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Int), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::GT, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Bool),
         );
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::NEQ, Rc::new(Type::Float), Rc::new(Type::Float)),
-            Rc::new(Type::Bool),
-        );
-
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::And, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::And, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Or, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Or, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Xor, Rc::new(Type::Word), Rc::new(Type::Word)),
-            Rc::new(Type::Word),
-        );
-        self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::Xor, Rc::new(Type::Int), Rc::new(Type::Int)),
-            Rc::new(Type::Int),
+            FunctionName::Infix(BinOp::GT, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Bool),
         );
 
         self.func_ret_types.insert(
-            FunctionName::Infix(BinOp::BoolXor, Rc::new(Type::Bool), Rc::new(Type::Bool)),
-            Rc::new(Type::Bool),
+            FunctionName::Infix(BinOp::LEQ, arc::new(Type::Char), arc::new(Type::Char)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::LEQ, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, arc::new(Type::Char), arc::new(Type::Char)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::GEQ, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, arc::new(Type::Char), arc::new(Type::Char)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::EQ, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, arc::new(Type::Char), arc::new(Type::Char)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, arc::new(Type::Float), arc::new(Type::Int)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, arc::new(Type::Int), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::NEQ, arc::new(Type::Float), arc::new(Type::Float)),
+            arc::new(Type::Bool),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::And, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::And, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Or, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Or, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Xor, arc::new(Type::Word), arc::new(Type::Word)),
+            arc::new(Type::Word),
+        );
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::Xor, arc::new(Type::Int), arc::new(Type::Int)),
+            arc::new(Type::Int),
+        );
+
+        self.func_ret_types.insert(
+            FunctionName::Infix(BinOp::BoolXor, arc::new(Type::Bool), arc::new(Type::Bool)),
+            arc::new(Type::Bool),
         );
 
         // Functions
         self.put_var_raw(
             String::from("debug"),
-            Rc::new(Type::Unknown),
+            arc::new(Type::Unknown),
             1,
             None,
             Location::empty(),

@@ -3,7 +3,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Error, Formatter};
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
+use std::sync::Arc;
 
 use super::ir::Location;
 use super::parser::AST;
@@ -31,7 +31,7 @@ impl<T: Hash + Eq> Hash for HashSetWrapper<T> {
     }
 }
 
-pub type TypeRc = Rc<Type>;
+pub type TypeRc = Arc<Type>;
 
 // Represents a type.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -47,7 +47,8 @@ pub enum Type {
     Char,
     Symbol(String),
     Func(TypeRc, TypeRc),
-    Sum(HashSetWrapper<TypeRc>),
+    Union(HashSetWrapper<TypeRc>),
+    // Sum(HashMapWrapper<String, TypeRc>),
     Enum(String),
     Pointer(String),
     Tag(String, TypeRc),
@@ -106,8 +107,8 @@ impl Display for Type {
                 write!(f, " -> {}", a)?;
             }
 
-            // Sum types
-            Type::Sum(fields) => {
+            // Union types
+            Type::Union(fields) => {
                 let mut bar = false;
                 for field in fields.0.iter() {
                     if bar {
@@ -134,25 +135,12 @@ impl Display for Type {
 }
 
 impl Type {
-    // sum_hash(&self, &HashMap<String, TypeRc>) -> u64
+    // sum_hash(&self) -> u64
     // Returns the hash value used by codegenned sum/union types.
-    pub fn sum_hash(&self, types: &HashMap<String, TypeRc>) -> u64 {
-        match self {
-            Type::Symbol(_) => {
-                let mut t = self;
-                while let Type::Symbol(s) = t {
-                    t = types.get(s).unwrap();
-                }
-                let mut hash = DefaultHasher::new();
-                t.hash(&mut hash);
-                hash.finish()
-            }
-            _ => {
-                let mut hash = DefaultHasher::new();
-                self.hash(&mut hash);
-                hash.finish()
-            }
-        }
+    pub fn sum_hash(&self) -> u64 {
+        let mut hash = DefaultHasher::new();
+        self.hash(&mut hash);
+        hash.finish()
     }
 
     // is_ffi_compatible(&self, &HashMap<String, Type>) -> bool
@@ -172,86 +160,12 @@ impl Type {
         }
     }
 
-    // equals(&self, &Type, &HashMap<String, Type>) -> bool
-    // Returns true if the two types are equal, accounting for type aliases.
-    pub fn equals(&self, other: &Type, types: &HashMap<String, TypeRc>) -> bool {
-        let mut _type = self;
-        while let Type::Symbol(s) = _type {
-            if let Some(v) = types.get(s) {
-                _type = v;
-            } else {
-                break;
-            }
-        }
-
-        let mut other = other;
-        while let Type::Symbol(s) = other {
-            if let Some(v) = types.get(s) {
-                other = v;
-            } else {
-                break;
-            }
-        }
-
-        match (_type, other) {
-            (Type::Int, Type::Int)
-            | (Type::Float, Type::Float)
-            | (Type::Bool, Type::Bool)
-            | (Type::Word, Type::Word)
-            | (Type::Char, Type::Char) => true,
-
-            (Type::Func(a1, f1), Type::Func(a2, f2)) => {
-                a1.equals(a2, types) && f1.equals(f2, types)
-            }
-
-            (Type::Sum(v1), Type::Sum(v2)) => {
-                /*
-                if v1.0.len() != v2.0.len() {
-                    return false;
-                }
-
-                'a: for v1 in v1.0.iter() {
-                    for v2 in v2.0.iter() {
-                        if v1.equals(v2, types) {
-                            continue 'a;
-                        }
-                    }
-                    return false;
-                }
-                true
-                */
-                v1 == v2
-            }
-            (Type::Enum(v1), Type::Enum(v2)) => v1 == v2,
-            (Type::Pointer(v1), Type::Pointer(v2)) => v1 == v2,
-            (Type::Tag(s1, t1), Type::Tag(s2, t2)) => s1 == s2 && t1.equals(t2, types),
-
-            _ => false,
-        }
-    }
-
     // is_subtype(&self, &Type, &HashMap<String, Type>) -> bool
     // Returns true if self is a valid subtype in respect to the passed in type.
     pub fn is_subtype(&self, supertype: &Type, types: &HashMap<String, TypeRc>) -> bool {
-        let mut _type = self;
-        while let Type::Symbol(s) = _type {
-            if let Some(t) = types.get(s) {
-                _type = t;
-            } else {
-                break;
-            }
-        }
+        let _type = self;
 
-        let mut supertype = supertype;
-        while let Type::Symbol(s) = supertype {
-            if let Some(t) = types.get(s) {
-                supertype = t;
-            } else {
-                break;
-            }
-        }
-
-        if _type.equals(supertype, types) {
+        if _type == supertype {
             return true;
         }
 
@@ -266,16 +180,16 @@ impl Type {
             // Functions
             Type::Func(sf, sa) => {
                 if let Type::Func(f, a) = _type {
-                    f.equals(sf, types) && a.equals(sa, types)
+                    f == sf && a == sa
                 } else {
                     false
                 }
             }
 
-            // Sum types
-            Type::Sum(fields) => {
-                // Sum types mean the subtype has fields over a subset of fields of the supertype
-                if let Type::Sum(sub) = _type {
+            // Union types
+            Type::Union(fields) => {
+                // Union types mean the subtype has fields over a subset of fields of the supertype
+                if let Type::Union(sub) = _type {
                     for s in sub.0.iter() {
                         let mut is_subtype = false;
                         for f in fields.0.iter() {
@@ -340,10 +254,10 @@ impl Type {
 
 // ast_sum_builder_helper(AST, &str, &mut HashMap<TypeRc, Span>, &mut HashMap<String, Span>) -> Type
 // Helper function for building sum/union types.
-fn ast_sum_builder_helper(ast: AST, filename: &str, fields: &mut HashMap<TypeRc, Span>, labels: &mut HashMap<String, Span>) -> Type {
+fn ast_sum_builder_helper(ast: AST, filename: &str, fields: &mut HashMap<TypeRc, Span>, labels: &mut HashMap<String, (Span, TypeRc)>) -> Type {
     let s = ast.get_span();
     let v = convert_ast_to_type(ast, filename);
-    if let Type::Sum(v) = v {
+    if let Type::Union(v) = v {
         for v in v.0 {
             if let Some(s2) = fields.remove(&v) {
                 return Type::DuplicateTypeError(
@@ -353,50 +267,51 @@ fn ast_sum_builder_helper(ast: AST, filename: &str, fields: &mut HashMap<TypeRc,
                 );
             } else {
                 match &*v {
-                    Type::Enum(v) | Type::Tag(v, _) => {
-                        if let Some(s2) = labels.remove(v) {
+                    Type::Enum(a) | Type::Tag(a, _) => {
+                        if let Some((s2, _)) = labels.remove(a) {
                             return Type::DuplicateTypeError(
                                 Location::new(s, filename),
                                 Location::new(s2, filename),
-                                Rc::new(Type::Symbol(v.clone()))
+                                arc::new(Type::Symbol(a.clone()))
                             );
                         }
 
-                        labels.insert(v.clone(), s.clone());
+                        labels.insert(a.clone(), (s.clone(), v.clone()));
                     }
 
-                    _ => ()
+                    _ => {
+                        fields.insert(v, s.clone());
+                    }
                 }
             }
-
-            fields.insert(v, s.clone());
         }
     } else {
+        let v = arc::new(v);
         if let Some(s2) = fields.remove(&v) {
             return Type::DuplicateTypeError(
                 Location::new(s, filename),
                 Location::new(s2, filename),
-                Rc::new(v),
+                v,
             );
         } else {
-            match &v {
-                Type::Enum(v) | Type::Tag(v, _) => {
-                    if let Some(s2) = labels.remove(v) {
+            match &*v {
+                Type::Enum(a) | Type::Tag(a, _) => {
+                    if let Some((s2, _)) = labels.remove(a) {
                         return Type::DuplicateTypeError(
                             Location::new(s, filename),
                             Location::new(s2, filename),
-                            Rc::new(Type::Symbol(v.clone()))
+                            arc::new(Type::Symbol(a.clone()))
                         );
                     }
 
-                    labels.insert(v.clone(), s.clone());
+                    labels.insert(a.clone(), (s, v.clone()));
                 }
 
-                _ => ()
+                _ => {
+                    fields.insert(v, s);
+                }
             }
         }
-
-        fields.insert(Rc::new(v), s);
     }
 
     Type::Unknown
@@ -478,7 +393,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
             if fields.len() == 1 {
                 (*fields.into_iter().next().unwrap().0).clone()
             } else {
-                Type::Sum(HashSetWrapper(
+                Type::Union(HashSetWrapper(
                     fields.into_iter().map(|v| v.0).collect()
                 ))
             }
@@ -498,7 +413,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
             } else if let Type::DuplicateTypeError(a, b, c) = r {
                 Type::DuplicateTypeError(a, b, c)
             } else {
-                Type::Func(Rc::new(l), Rc::new(r))
+                Type::Func(arc::new(l), arc::new(r))
             }
         }
 
@@ -513,7 +428,7 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
             } else if let Type::Enum(_) = r {
                 Type::UndeclaredTypeError(Location::new(s, filename))
             } else if let AST::Symbol(_, s) = *l {
-                Type::Tag(s, Rc::new(r))
+                Type::Tag(s, arc::new(r))
             } else {
                 unreachable!("Tag always has symbol as left operand");
             }
@@ -523,3 +438,13 @@ pub fn convert_ast_to_type(ast: AST, filename: &str) -> Type {
         _ => Type::UndeclaredTypeError(Location::new(ast.get_span(), filename)),
     }
 }
+
+pub mod arc {
+    use std::sync::Arc;
+    use super::Type;
+
+    pub fn new(t: Type) -> Arc<Type> {
+        Arc::new(t)
+    }
+}
+
