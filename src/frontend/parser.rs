@@ -59,7 +59,7 @@ pub enum Token {
     Whitespace,
 
     #[regex(r"#[^\n]*", logos::skip)]
-    #[regex(r"\{-([^\-]|-[^\}])*-\}", logos::skip)]
+    #[regex(r"\{-([^-]*-+)+\}", logos::skip)]
     Comment,
 
     // Error
