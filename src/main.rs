@@ -20,7 +20,7 @@ use curlyc::frontend::parser;
 pub static DEBUG: bool = false;
 
 #[cfg(target_os = "macos")]
-static COMPILER: &str = "gcc-10";
+static COMPILER: &str = "gcc-11";
 #[cfg(not(target_os = "macos"))]
 static COMPILER: &str = "gcc";
 
