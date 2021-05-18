@@ -12,7 +12,7 @@ use std::result::Result;
 
 use parser::AST;
 
-use curlyc::backends::c::codegen;
+use curlyc::backends;
 use curlyc::frontend::ir;
 use curlyc::frontend::ir::{DuplicateModuleInfo, IRError, IR};
 use curlyc::frontend::parser;
@@ -20,7 +20,7 @@ use curlyc::frontend::parser;
 pub static DEBUG: bool = false;
 
 #[cfg(target_os = "macos")]
-static COMPILER: &str = "gcc-10";
+static COMPILER: &str = "gcc-11";
 #[cfg(not(target_os = "macos"))]
 static COMPILER: &str = "gcc";
 
@@ -241,7 +241,7 @@ fn main() -> Result<(), ()> {
                     copy_o_and_a_files(".lib_archive_files");
 
                     let filename = format!(".lib_archive_files/{}.mod.curly", options.output);
-                    let contents = codegen::generate_module_file(&ir);
+                    let contents = backends::generate_module_file(&ir);
                     if DEBUG {
                         println!(
                             "================ {} ================\n{}\n\n",
@@ -1036,7 +1036,7 @@ fn compile(
     }
 
     // Generate C code
-    let c = codegen::convert_ir_to_c(&ir);
+    let c = backends::compile_ir(&ir, backends::Backend::C); 
     if DEBUG {
         for (filename, contents) in c.iter() {
             println!(
