@@ -1036,7 +1036,7 @@ fn compile(
     }
 
     // Generate C code
-    let c = backends::compile_ir(&ir, backends::Backend::C); 
+    let c = backends::compile_ir(&ir, backends::Backend::Js); 
     if DEBUG {
         for (filename, contents) in c.iter() {
             println!(
